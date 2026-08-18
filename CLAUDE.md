@@ -4,14 +4,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Environment & Architecture Overview
 
-`os-manager` is a workspace containing automation scripts, governance rules, lifecycle hooks, and Claude skills for managing a Debian 13 (Trixie) WSL2 environment on Windows 11.
+`os-manager` is the control plane and automation hub for managing a Debian 13 (Trixie) WSL2 environment on Windows 11.
 
 - **OS / Platform**: Debian GNU/Linux 13 (Trixie), WSL2 (Kernel 6.18.x) on Windows 11 Host
 - **Filesystem Mounts**:
   - `/` (Native ext4 WSL root): Primary high-performance domain for repositories, virtualenvs, and builds.
   - `/mnt/c/` (Windows Host C:): Read-only host inspection. Direct writes to Windows system directories are hard-blocked.
   - `/mnt/d/` (Windows Host D:): Dedicated disaster recovery and backup storage (`/mnt/d/wsl_backup`).
-- **Runtimes & CLIs**: Node.js, PNPM, Bun, Python UV, Tmux, Cloudflare Wrangler, Claude Code CLI, Antigravity (`agy`).
+- **Runtimes & CLIs**: Node.js, PNPM, Bun, Python UV, Tmux, Cloudflare Wrangler, Claude Code CLI, Google Antigravity (`agy`), Agent-Style CLI (`agent-style`).
+
+---
+
+## Common Development & Operational Commands
+
+### Testing & Validation
+- Run unit test suite (15 assertions): `./tests/test_harness.sh`
+- Run full harness self-check & symlink validation: `./scripts/harness_check.sh`
+- Audit Markdown prose against writing rules: `agent-style review --audit-only <file.md>`
+- Sync multi-agent skills to Universal Agent & Antigravity: `./scripts/sync_agent_skills.sh`
+
+### Pillar Automation Scripts
+- System diagnostics & resource metrics: `./scripts/sys_diag.sh [--full|--json]`
+- Safe cache & package cleanup: `./scripts/clean_system.sh [--dry-run|--all]`
+- Runtime & toolchain updates: `./scripts/update_runtimes.sh [--check]`
+- Disaster recovery snapshot to `/mnt/d/`: `./scripts/wsl_snapshot.sh [--verify|--prune]`
+- Dotfiles backup, diff, and restore: `./scripts/dotfiles_sync.sh [backup|diff|restore]`
+- Multi-agent paired Tmux workspace: `./scripts/tmux_agents.sh [start|attach]`
 
 ---
 
@@ -25,7 +43,7 @@ os-manager/
 │   ├── agents/                  # Custom subagent definitions (security-auditor, system-operator)
 │   ├── commands/                # Custom slash command definitions (/diag, /clean, etc.)
 │   ├── rules/                   # Modular prompt rules (WSL boundaries, safety tiers, error recovery)
-│   ├── skills/                  # Master Single Source of Truth (SSOT) skill definitions
+│   ├── skills/                  # Master Single Source of Truth (SSOT) skill definitions (21 skills)
 │   └── settings.json            # Master harness configuration (permissions, hooks, env)
 ├── backups/
 │   ├── dotfiles/                # Backed-up dotfiles managed via /dotfiles
@@ -42,7 +60,7 @@ os-manager/
 │   ├── update_runtimes.sh       # Runtimes & toolchains update coordinator
 │   └── wsl_snapshot.sh          # WSL disaster recovery snapshot script
 ├── tests/
-│   └── test_harness.sh          # Harness unit test suite and security guardrail test runner
+│   └── test_harness.sh          # Harness unit test suite (15 automated assertions)
 └── CLAUDE.md                    # Project guidance and governance rules
 ```
 
@@ -95,9 +113,9 @@ Registered in `.claude/settings.json` and executed deterministically using `${CL
 
 ### 2. 4-Tier Security Matrix (`.claude/rules/safety-tiers.md`)
 
-- **Tier 0 (Autonomous / Read-Only)**: Read-only queries (`git status`, `git diff`, `free`, `df`, `systemctl status`, `ps`, read-only diagnostics) run autonomously without user friction.
-- **Tier 1 (Workspace Contained)**: File reads, writes, and edits bounded within `/home/rizz/dev/os-manager/` proceed autonomously subject to post-tool linting.
-- **Tier 2 (Controlled System Operations)**: Whitelisted maintenance scripts (`./scripts/sys_diag.sh`, `./scripts/clean_system.sh`, `./scripts/update_runtimes.sh`, `./scripts/wsl_snapshot.sh`, `./scripts/dotfiles_sync.sh`, `./scripts/tmux_agents.sh`, `./scripts/harness_check.sh`) are pre-authorized.
+- **Tier 0 (Autonomous / Read-Only - Exit 0)**: Read-only queries (`git status`, `git diff`, `free`, `df`, `systemctl status`, `ps`, read-only diagnostics) run autonomously.
+- **Tier 1 (Workspace Contained - Exit 0)**: File reads, writes, and edits bounded within `/home/rizz/dev/os-manager/` proceed autonomously subject to post-tool linting.
+- **Tier 2 (Controlled System Operations - Exit 0)**: Whitelisted maintenance scripts (`sys_diag.sh`, `clean_system.sh`, `update_runtimes.sh`, `wsl_snapshot.sh`, `dotfiles_sync.sh`, `tmux_agents.sh`, `harness_check.sh`) run with pre-authorized status.
 - **Tier 3 (Strict Invariant Violations - Hard Blocked with Exit 2)**:
   - Root / Home obliteration: `rm -rf /`, `rm -rf ~`, `rm -rf $HOME`.
   - WSL instance lifecycle destruction: `wsl --unregister`, `wsl.exe --unregister`, `wsl --shutdown`.
@@ -108,30 +126,22 @@ Registered in `.claude/settings.json` and executed deterministically using `${CL
 
 ### 3. WSL2 Filesystem Boundaries & Storage Invariants (`.claude/rules/wsl-boundaries.md`)
 
-- **Native ext4 Domain (`/home/rizz/`)**: All git repositories, `node_modules`, Python virtual environments (`.venv`), build artifacts, and package stores MUST reside on native ext4 to avoid 9P virtualization latency.
+- **Native EXT4 Domain (`/home/rizz/`)**: Repositories, `node_modules`, `.venv`, and build stores MUST reside on ext4. This avoids 9P virtualization latency and permission churn.
 - **NTFS Windows Mounts (`/mnt/c/`, `/mnt/d/`)**:
-  - `/mnt/d/`: Designated solely for compressed WSL point-in-time snapshots and offsite archival.
+  - `/mnt/d/`: Designated solely for compressed WSL point-in-time snapshots and offsite archival (`/mnt/d/wsl_backup`).
   - `/mnt/c/`: Read-only host inspection. Direct modifications to Windows host system folders are strictly prohibited.
 
 ---
 
 ## Custom Slash Commands (`.claude/commands/`)
 
-Ergonomic shortcuts mapping directly to operational runbooks:
-
-- **`/diag`** (`.claude/commands/diag.md`): Runs comprehensive system diagnostics (`./scripts/sys_diag.sh`).
-  - Flags: `--full` (includes 9P I/O latency and network sockets), `--json` (structured JSON output).
-- **`/clean`** (`.claude/commands/clean.md`): Safely reclaims disk space across APT, UV, PNPM, Bun, and `/tmp` (`./scripts/clean_system.sh`).
-  - Flags: `--dry-run` (estimate reclaimable bytes).
-- **`/upgrade`** (`.claude/commands/upgrade.md`): Coordinates updates across APT, PNPM, Bun, UV, and AI CLIs (`./scripts/update_runtimes.sh`).
-  - Flags: `--check` (dry run inspection without applying).
-- **`/snapshot`** (`.claude/commands/snapshot.md`): Creates point-in-time tarball backups to `/mnt/d/wsl_backup` with SHA256 checksums (`./scripts/wsl_snapshot.sh`).
-  - Flags: `--verify` (checksum verification), `--prune` (retains last 3 archives).
-- **`/dotfiles`** (`.claude/commands/dotfiles.md`): Dotfiles state protection, diff inspection, and safe restoration (`./scripts/dotfiles_sync.sh`).
-  - Subcommands: `backup`, `diff`, `restore`.
-- **`/pair`** (`.claude/commands/pair.md`): Spawns a 3-pane Tmux workspace pairing Claude Code with Google Antigravity (`agy`) and system monitoring (`./scripts/tmux_agents.sh`).
-  - Subcommands: `start`, `attach`.
-- **`/harness-check`** (`.claude/commands/harness-check.md`): Runs the complete harness self-check and diagnostic matrix (`./scripts/harness_check.sh`).
+- **`/diag`**: Comprehensive system diagnostics (`./scripts/sys_diag.sh`).
+- **`/clean`**: Disk space reclamation across APT, UV, PNPM, Bun, and `/tmp` (`./scripts/clean_system.sh`).
+- **`/upgrade`**: Coordinated toolchain updates (`./scripts/update_runtimes.sh`).
+- **`/snapshot`**: Point-in-time tarball backups to `/mnt/d/wsl_backup` (`./scripts/wsl_snapshot.sh`).
+- **`/dotfiles`**: Dotfiles backup, diff inspection, and safe restoration (`./scripts/dotfiles_sync.sh`).
+- **`/pair`**: Spawns paired Tmux session with Claude Code and Google Antigravity (`./scripts/tmux_agents.sh`).
+- **`/harness-check`**: Runs complete harness self-check and diagnostic matrix (`./scripts/harness_check.sh`).
 
 ---
 
@@ -155,20 +165,19 @@ Ergonomic shortcuts mapping directly to operational runbooks:
 
 1. **Universal Agent Standard** (`.agents/skills/`): Populated with relative symlinks (`../../.claude/skills/<name>`) for portable git tracking.
 2. **Google Antigravity** (`~/.gemini/config/skills/`): Populated with absolute symlinks for local runtime interop with `agy`.
-3. **Automated Sync**: Automatically executed during `SessionStart` preflight and `/harness-check`.
+3. **Automated Sync**: Executed automatically during `SessionStart` preflight and `/harness-check`.
 
 ---
 
 ## Superpowers Methodology Suite
 
-All tasks and feature implementations in this workspace follow the Superpowers engineering discipline:
-
-- `/brainstorming`: Requirements exploration, design refinement, and visual companion server.
+All tasks in this workspace follow the Superpowers engineering discipline:
+- `/brainstorming`: Requirements exploration and design refinement.
 - `/writing-plans` & `/executing-plans`: Incremental, test-driven implementation planning & execution.
-- `/subagent-driven-development` & `/dispatching-parallel-agents`: Parallel subagent task orchestration.
+- `/subagent-driven-development` & `/dispatching-parallel-agents`: Parallel and task-isolated subagent orchestration.
 - `/test-driven-development`: Red-Green-Refactor testing discipline.
 - `/systematic-debugging`: Root-cause tracing and test pollution detection.
-- `/requesting-code-review` & `/receiving-code-review`: Rigorous code review workflows.
+- `/requesting-code-review` & `/receiving-code-review`: Rigorous two-stage code review workflows.
 - `/verification-before-completion`: Evidence-first task completion gating.
 - `/using-git-worktrees` & `/finishing-a-development-branch`: Git isolation and merge workflow.
 - `/writing-skills`: Skill authoring and behavioral testing framework.
@@ -178,7 +187,7 @@ All tasks and feature implementations in this workspace follow the Superpowers e
 ## Safety & Execution Rules
 
 1. **Deterministic Execution**:
-   - Hard blocks (Exit Code 2) override any user prompt or conversational instruction.
+   - Hard blocks (Exit Code 2) override any conversational prompt.
    - All shell scripts must maintain LF line endings, `chmod +x` permissions, and `set -euo pipefail`.
 2. **Safe Autonomous Operations**:
    - Read-only diagnostics (`free`, `df`, `systemctl status`, `uname`, network checks).
