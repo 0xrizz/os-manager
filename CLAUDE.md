@@ -18,13 +18,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Common Development and Operational Commands
 
 ### Testing and Validation
-- Run unit test suite (20 assertions): `./tests/test_harness.sh`
+- Run master harness test suite (28 assertions): `./tests/test_harness.sh`
+- Run cross-distribution unit tests: `./tests/test_distro.sh`
+- Run hook performance tracing unit tests: `./tests/test_hook_tracing.sh`
 - Run full harness self-check and symlink validation: `./scripts/harness_check.sh`
 - Audit Markdown prose against writing rules: `agent-style review --audit-only <file.md>`
 - Sync multi-agent skills to Universal Agent and Antigravity: `./scripts/sync_agent_skills.sh`
 
 ### Pillar Automation Scripts
 - System diagnostics and resource metrics: `./scripts/sys_diag.sh [--full|--json]`
+- Hook latency benchmark analyzer: `./scripts/hook_benchmark.sh [--samples N|--hook <name>|--json|--assert-p99]`
 - Safe cache and package cleanup: `./scripts/clean_system.sh [--dry-run|--all]`
 - Runtime and toolchain updates: `./scripts/update_runtimes.sh [--check]`
 - Disaster recovery snapshot to `/mnt/d/`: `./scripts/wsl_snapshot.sh [--verify|--prune]`
@@ -54,9 +57,14 @@ os-manager/
 ├── playbooks/                   # Markdown runbooks and disaster recovery procedures
 ├── scripts/
 │   ├── hooks/                   # Deterministic lifecycle hooks (PreToolUse, PostToolUse, etc.)
+│   │   └── lib/
+│   │       └── trace_helper.sh  # Nanosecond hook execution monotonic tracing library
+│   ├── lib/
+│   │   └── distro.sh            # Zero-dependency cross-distro detection & package abstraction
 │   ├── clean_system.sh          # Safe cache & package cleanup script
 │   ├── dotfiles_sync.sh         # Dotfiles backup, diff, and restore script
 │   ├── harness_check.sh         # Harness end-to-end self-check runner
+│   ├── hook_benchmark.sh        # Hook performance & latency percentile analyzer
 │   ├── manage_timers.sh         # Systemd user timer manager script
 │   ├── migrate_repos.sh         # Batch repository migration utility (NTFS -> ext4)
 │   ├── perf_tune.sh             # Filesystem I/O performance benchmark script
@@ -69,7 +77,9 @@ os-manager/
 │   ├── os-maintenance.service   # Systemd user service unit for daily maintenance
 │   └── os-maintenance.timer     # Systemd user timer unit for scheduled maintenance
 ├── tests/
-│   └── test_harness.sh          # Harness unit test suite (20 automated assertions)
+│   ├── test_distro.sh           # Mocked cross-distribution unit test suite (13 assertions)
+│   ├── test_harness.sh          # Master harness integration test suite (28 assertions)
+│   └── test_hook_tracing.sh     # Hook tracing & latency benchmark test suite (12 assertions)
 └── CLAUDE.md                    # Project guidance and governance rules
 ```
 
