@@ -38,7 +38,11 @@ benchmark_path() {
     local test_file="${target_dir}/.os_manager_io_test.tmp"
 
     if [ ! -d "${target_dir}" ] || [ ! -w "${target_dir}" ]; then
-        echo "{\"label\":\"${label}\",\"path\":\"${target_dir}\",\"status\":\"unwritable\"}"
+        if [ "${FORMAT}" = "json" ]; then
+            echo "{\"label\":\"${label}\",\"path\":\"${target_dir}\",\"status\":\"unwritable\"}"
+        else
+            echo "[$label] Path: ${target_dir} (Status: unavailable or unwritable)"
+        fi
         return 0
     fi
 

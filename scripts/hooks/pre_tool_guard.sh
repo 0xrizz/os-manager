@@ -51,14 +51,9 @@ if [ "${TOOL_NAME}" = "Bash" ]; then
         exit 0
     fi
 
-    # Tier 2 Fast-Path: Pre-authorized maintenance & diagnostic scripts
-    if echo "${CMD}" | grep -qE '(^|[;&|[:space:]])(\./scripts/|scripts/)?(sys_diag|clean_system|update_runtimes|wsl_snapshot|dotfiles_sync|tmux_agents|harness_check|perf_tune|manage_timers)\.sh(\s|$)'; then
-        exit 0
-    fi
-
     # Invariant Block: Destructive Root / Home Obliteration
     # shellcheck disable=SC2016
-    if echo "${CMD}" | grep -qE '\brm\s+-[rRfF]*\s+(/|/\*|~|~/\*|\$HOME|\$HOME/\*|/home/[^/]+/?(\*|\.))(\s|$)'; then
+    if echo "${CMD}" | grep -qE '\brm\s+-[rRfF]*\s+(/|/\*|~|~/\*|\$HOME|\$HOME/\*|/home/[^/]+/?(\*|\.))([;&|[:space:]]|$)'; then
         echo "[HARNESS SECURITY BLOCKED] Invariant Violation (Tier 3): Destructive deletion of root or home directory is strictly forbidden: ${CMD}" >&2
         exit 2
     fi
@@ -76,9 +71,14 @@ if [ "${TOOL_NAME}" = "Bash" ]; then
     fi
 
     # Invariant Block: Indiscriminate Package Purging
-    if echo "${CMD}" | grep -qE '\b(apt|apt-get|dpkg)\s+(--purge\s+)?(purge|remove)\s+(-y\s+)?\*\b'; then
+    if echo "${CMD}" | grep -qE '\b(apt|apt-get|dpkg)\s+(--purge\s+)?(purge|remove)\s+(-y\s+)?\*(\b|[;&|[:space:]]|$)'; then
         echo "[HARNESS SECURITY BLOCKED] Invariant Violation (Tier 3): Wildcard package purge is strictly forbidden: ${CMD}" >&2
         exit 2
+    fi
+
+    # Tier 2 Fast-Path: Pre-authorized maintenance & diagnostic scripts
+    if echo "${CMD}" | grep -qE '(^|[;&|[:space:]])(\./scripts/|scripts/)?(sys_diag|clean_system|update_runtimes|wsl_snapshot|dotfiles_sync|tmux_agents|harness_check|perf_tune|manage_timers)\.sh(\s|$)'; then
+        exit 0
     fi
 
     exit 0
