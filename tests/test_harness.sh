@@ -28,6 +28,15 @@ echo "=================================================="
 echo "Running Claude Code Harness Test Suite"
 echo "=================================================="
 
+echo "--- Testing Session Preflight & Cleanup Hooks ---"
+set +e
+"${HOOKS_DIR}/session_preflight.sh" > /dev/null 2>&1
+assert_exit_code "session_preflight.sh execution" 0 $?
+
+"${HOOKS_DIR}/session_cleanup.sh" > /dev/null 2>&1
+assert_exit_code "session_cleanup.sh execution" 0 $?
+set -e
+
 # Test PreToolGuard exists
 if [ ! -f "${HOOKS_DIR}/pre_tool_guard.sh" ]; then
     echo "  [FAIL] scripts/hooks/pre_tool_guard.sh does not exist"
