@@ -28,6 +28,8 @@ Whitelisted maintenance and automation scripts run with pre-authorized status.
   - `./scripts/wsl_snapshot.sh` (Disaster recovery tarball creator)
   - `./scripts/dotfiles_sync.sh` (Dotfiles backup, diff, and restore)
   - `./scripts/tmux_agents.sh` (Multi-agent paired workspace manager)
+  - `./scripts/perf_tune.sh` (Filesystem I/O performance benchmark)
+  - `./scripts/manage_timers.sh` (Systemd user timer manager)
   - `./scripts/harness_check.sh` (End-to-end harness self-test suite)
 
 ## Tier 3: Strict Invariant Violations (Hard Blocked with Exit Code 2)

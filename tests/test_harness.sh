@@ -55,6 +55,16 @@ PAYLOAD_TIER2='{"tool_name":"Bash","tool_input":{"command":"./scripts/sys_diag.s
 echo "${PAYLOAD_TIER2}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
 assert_exit_code "Tier 2 Whitelisted Script (sys_diag.sh)" 0 $?
 
+# Tier 2 Allow: Performance benchmark script
+PAYLOAD_TIER2_PERF='{"tool_name":"Bash","tool_input":{"command":"./scripts/perf_tune.sh"}}'
+echo "${PAYLOAD_TIER2_PERF}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
+assert_exit_code "Tier 2 Whitelisted Script (perf_tune.sh)" 0 $?
+
+# Tier 2 Allow: Timer manager script
+PAYLOAD_TIER2_TIMERS='{"tool_name":"Bash","tool_input":{"command":"./scripts/manage_timers.sh"}}'
+echo "${PAYLOAD_TIER2_TIMERS}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
+assert_exit_code "Tier 2 Whitelisted Script (manage_timers.sh)" 0 $?
+
 # Tier 3 Block: Root obliteration
 PAYLOAD_TIER3_ROOT='{"tool_name":"Bash","tool_input":{"command":"rm -rf /"}}'
 echo "${PAYLOAD_TIER3_ROOT}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
@@ -185,6 +195,48 @@ validate_skills_frontmatter() {
 
 validate_skills_frontmatter > /dev/null 2>&1
 assert_exit_code "All Skills Frontmatter & SDO Compliance" 0 $?
+
+echo "--- Testing Automation & Resilience Components ---"
+
+# 1. Performance benchmark execution (--quick)
+set +e
+"${WORKSPACE_ROOT}/scripts/perf_tune.sh" --quick > /dev/null 2>&1
+assert_exit_code "perf_tune.sh --quick execution" 0 $?
+
+# 2. Systemd unit syntax validation
+validate_systemd_units() {
+    local service_file="${WORKSPACE_ROOT}/systemd/os-maintenance.service"
+    local timer_file="${WORKSPACE_ROOT}/systemd/os-maintenance.timer"
+
+    if [ ! -f "${service_file}" ] || [ ! -f "${timer_file}" ]; then
+        return 1
+    fi
+
+    if command -v systemd-analyze >/dev/null 2>&1; then
+        systemd-analyze verify "${service_file}" "${timer_file}" > /dev/null 2>&1 || return 1
+    fi
+    return 0
+}
+validate_systemd_units
+assert_exit_code "Systemd Unit Files & Syntax Validation" 0 $?
+
+# 3. Playbooks existence and agent-style compliance
+validate_playbooks() {
+    local dotfiles_pb="${WORKSPACE_ROOT}/playbooks/dotfiles_sync.md"
+    local disaster_pb="${WORKSPACE_ROOT}/playbooks/disaster_recovery.md"
+
+    if [ ! -f "${dotfiles_pb}" ] || [ ! -f "${disaster_pb}" ]; then
+        return 1
+    fi
+
+    if command -v agent-style >/dev/null 2>&1; then
+        agent-style review --audit-only "${dotfiles_pb}" > /dev/null 2>&1 || return 1
+        agent-style review --audit-only "${disaster_pb}" > /dev/null 2>&1 || return 1
+    fi
+    return 0
+}
+validate_playbooks
+assert_exit_code "Playbooks Existence & Style Compliance" 0 $?
 
 set -e
 

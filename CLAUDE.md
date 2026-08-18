@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Common Development & Operational Commands
 
 ### Testing & Validation
-- Run unit test suite (15 assertions): `./tests/test_harness.sh`
+- Run unit test suite (20 assertions): `./tests/test_harness.sh`
 - Run full harness self-check & symlink validation: `./scripts/harness_check.sh`
 - Audit Markdown prose against writing rules: `agent-style review --audit-only <file.md>`
 - Sync multi-agent skills to Universal Agent & Antigravity: `./scripts/sync_agent_skills.sh`
@@ -30,6 +30,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Disaster recovery snapshot to `/mnt/d/`: `./scripts/wsl_snapshot.sh [--verify|--prune]`
 - Dotfiles backup, diff, and restore: `./scripts/dotfiles_sync.sh [backup|diff|restore]`
 - Multi-agent paired Tmux workspace: `./scripts/tmux_agents.sh [start|attach]`
+- Filesystem I/O performance benchmark: `./scripts/perf_tune.sh [--quick|--json]`
+- Systemd user timer manager: `./scripts/manage_timers.sh [status|install|uninstall]`
 
 ---
 
@@ -41,9 +43,9 @@ os-manager/
 │   └── skills/                  # Relative symlinks to .claude/skills/ (Universal Agent standard)
 ├── .claude/
 │   ├── agents/                  # Custom subagent definitions (security-auditor, system-operator)
-│   ├── commands/                # Custom slash command definitions (/diag, /clean, etc.)
+│   ├── commands/                # Custom slash command definitions (/diag, /clean, /perf, etc.)
 │   ├── rules/                   # Modular prompt rules (WSL boundaries, safety tiers, error recovery)
-│   ├── skills/                  # Master Single Source of Truth (SSOT) skill definitions (21 skills)
+│   ├── skills/                  # Master Single Source of Truth (SSOT) skill definitions (22 skills)
 │   └── settings.json            # Master harness configuration (permissions, hooks, env)
 ├── backups/
 │   ├── dotfiles/                # Backed-up dotfiles managed via /dotfiles
@@ -54,13 +56,18 @@ os-manager/
 │   ├── clean_system.sh          # Safe cache & package cleanup script
 │   ├── dotfiles_sync.sh         # Dotfiles backup, diff, and restore script
 │   ├── harness_check.sh         # Harness end-to-end self-check runner
+│   ├── manage_timers.sh         # Systemd user timer manager script
+│   ├── perf_tune.sh             # Filesystem I/O performance benchmark script
 │   ├── sync_agent_skills.sh     # Multi-agent SSOT symlink synchronization script
 │   ├── sys_diag.sh              # System diagnostic & health inspection script
 │   ├── tmux_agents.sh           # Multi-agent paired tmux workspace manager
 │   ├── update_runtimes.sh       # Runtimes & toolchains update coordinator
 │   └── wsl_snapshot.sh          # WSL disaster recovery snapshot script
+├── systemd/
+│   ├── os-maintenance.service   # Systemd user service unit for daily maintenance
+│   └── os-maintenance.timer     # Systemd user timer unit for scheduled maintenance
 ├── tests/
-│   └── test_harness.sh          # Harness unit test suite (15 automated assertions)
+│   └── test_harness.sh          # Harness unit test suite (20 automated assertions)
 └── CLAUDE.md                    # Project guidance and governance rules
 ```
 
@@ -115,7 +122,7 @@ Registered in `.claude/settings.json` and executed deterministically using `${CL
 
 - **Tier 0 (Autonomous / Read-Only - Exit 0)**: Read-only queries (`git status`, `git diff`, `free`, `df`, `systemctl status`, `ps`, read-only diagnostics) run autonomously.
 - **Tier 1 (Workspace Contained - Exit 0)**: File reads, writes, and edits bounded within `/home/rizz/dev/os-manager/` proceed autonomously subject to post-tool linting.
-- **Tier 2 (Controlled System Operations - Exit 0)**: Whitelisted maintenance scripts (`sys_diag.sh`, `clean_system.sh`, `update_runtimes.sh`, `wsl_snapshot.sh`, `dotfiles_sync.sh`, `tmux_agents.sh`, `harness_check.sh`) run with pre-authorized status.
+- **Tier 2 (Controlled System Operations - Exit 0)**: Whitelisted scripts (`scripts/*.sh`) run with pre-authorized status. Covered utilities include diagnostics, cleanup, updates, snapshots, benchmarks, and timer management.
 - **Tier 3 (Strict Invariant Violations - Hard Blocked with Exit 2)**:
   - Root / Home obliteration: `rm -rf /`, `rm -rf ~`, `rm -rf $HOME`.
   - WSL instance lifecycle destruction: `wsl --unregister`, `wsl.exe --unregister`, `wsl --shutdown`.
@@ -141,6 +148,7 @@ Registered in `.claude/settings.json` and executed deterministically using `${CL
 - **`/snapshot`**: Point-in-time tarball backups to `/mnt/d/wsl_backup` (`./scripts/wsl_snapshot.sh`).
 - **`/dotfiles`**: Dotfiles backup, diff inspection, and safe restoration (`./scripts/dotfiles_sync.sh`).
 - **`/pair`**: Spawns paired Tmux session with Claude Code and Google Antigravity (`./scripts/tmux_agents.sh`).
+- **`/perf`**: System performance and filesystem I/O benchmark (`./scripts/perf_tune.sh`).
 - **`/harness-check`**: Runs complete harness self-check and diagnostic matrix (`./scripts/harness_check.sh`).
 
 ---

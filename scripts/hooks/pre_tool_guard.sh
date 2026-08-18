@@ -2,6 +2,7 @@
 # scripts/hooks/pre_tool_guard.sh - PreToolUse deterministic security policy engine
 set -euo pipefail
 
+# shellcheck disable=SC2034
 WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # Read JSON payload from stdin
@@ -50,7 +51,13 @@ if [ "${TOOL_NAME}" = "Bash" ]; then
         exit 0
     fi
 
+    # Tier 2 Fast-Path: Pre-authorized maintenance & diagnostic scripts
+    if echo "${CMD}" | grep -qE '(^|[;&|[:space:]])(\./scripts/|scripts/)?(sys_diag|clean_system|update_runtimes|wsl_snapshot|dotfiles_sync|tmux_agents|harness_check|perf_tune|manage_timers)\.sh(\s|$)'; then
+        exit 0
+    fi
+
     # Invariant Block: Destructive Root / Home Obliteration
+    # shellcheck disable=SC2016
     if echo "${CMD}" | grep -qE '\brm\s+-[rRfF]*\s+(/|/\*|~|~/\*|\$HOME|\$HOME/\*|/home/[^/]+/?(\*|\.))(\s|$)'; then
         echo "[HARNESS SECURITY BLOCKED] Invariant Violation (Tier 3): Destructive deletion of root or home directory is strictly forbidden: ${CMD}" >&2
         exit 2
