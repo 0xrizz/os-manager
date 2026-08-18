@@ -15,7 +15,7 @@ assert_contains() {
     local haystack="$2"
     local needle="$3"
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
-    if echo "${haystack}" | grep -qF "${needle}"; then
+    if echo "${haystack}" | grep -qF -- "${needle}"; then
         echo "  [PASS] ${test_name}"
         PASSED_TESTS=$((PASSED_TESTS + 1))
     else
