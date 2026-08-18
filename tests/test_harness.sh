@@ -282,6 +282,16 @@ assert_exit_code "notify_host.sh --dry-run WinRT XML generation" 0 $?
 
 "${WORKSPACE_ROOT}/tests/test_notify_host.sh" > /dev/null 2>&1
 assert_exit_code "test_notify_host.sh complete suite" 0 $?
+
+echo "--- Testing Automated Host Disk Compaction Suite ---"
+"${WORKSPACE_ROOT}/scripts/compact_host_disk.sh" --help > /dev/null 2>&1
+assert_exit_code "compact_host_disk.sh --help execution" 0 $?
+
+"${WORKSPACE_ROOT}/scripts/compact_host_disk.sh" --dry-run > /dev/null 2>&1
+assert_exit_code "compact_host_disk.sh --dry-run execution" 0 $?
+
+"${WORKSPACE_ROOT}/tests/test_disk_compaction.sh" > /dev/null 2>&1
+assert_exit_code "test_disk_compaction.sh complete suite" 0 $?
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
