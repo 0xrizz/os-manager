@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Environment & Architecture Overview
+## Environment and Architecture Overview
 
 `os-manager` is the control plane and automation hub for managing a Debian 13 (Trixie) WSL2 environment on Windows 11.
 
@@ -11,27 +11,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - `/` (Native ext4 WSL root): Primary high-performance domain for repositories, virtualenvs, and builds.
   - `/mnt/c/` (Windows Host C:): Read-only host inspection. Direct writes to Windows system directories are hard-blocked.
   - `/mnt/d/` (Windows Host D:): Dedicated disaster recovery and backup storage (`/mnt/d/wsl_backup`).
-- **Runtimes & CLIs**: Node.js, PNPM, Bun, Python UV, Tmux, Cloudflare Wrangler, Claude Code CLI, Google Antigravity (`agy`), Agent-Style CLI (`agent-style`).
+- **Runtimes and CLIs**: Node.js, PNPM, Bun, Python UV, Tmux, Cloudflare Wrangler, Claude Code CLI, Google Antigravity (`agy`), Agent-Style CLI (`agent-style`).
 
 ---
 
-## Common Development & Operational Commands
+## Common Development and Operational Commands
 
-### Testing & Validation
+### Testing and Validation
 - Run unit test suite (20 assertions): `./tests/test_harness.sh`
-- Run full harness self-check & symlink validation: `./scripts/harness_check.sh`
+- Run full harness self-check and symlink validation: `./scripts/harness_check.sh`
 - Audit Markdown prose against writing rules: `agent-style review --audit-only <file.md>`
-- Sync multi-agent skills to Universal Agent & Antigravity: `./scripts/sync_agent_skills.sh`
+- Sync multi-agent skills to Universal Agent and Antigravity: `./scripts/sync_agent_skills.sh`
 
 ### Pillar Automation Scripts
-- System diagnostics & resource metrics: `./scripts/sys_diag.sh [--full|--json]`
-- Safe cache & package cleanup: `./scripts/clean_system.sh [--dry-run|--all]`
-- Runtime & toolchain updates: `./scripts/update_runtimes.sh [--check]`
+- System diagnostics and resource metrics: `./scripts/sys_diag.sh [--full|--json]`
+- Safe cache and package cleanup: `./scripts/clean_system.sh [--dry-run|--all]`
+- Runtime and toolchain updates: `./scripts/update_runtimes.sh [--check]`
 - Disaster recovery snapshot to `/mnt/d/`: `./scripts/wsl_snapshot.sh [--verify|--prune]`
 - Dotfiles backup, diff, and restore: `./scripts/dotfiles_sync.sh [backup|diff|restore]`
 - Multi-agent paired Tmux workspace: `./scripts/tmux_agents.sh [start|attach]`
 - Filesystem I/O performance benchmark: `./scripts/perf_tune.sh [--quick|--json]`
 - Systemd user timer manager: `./scripts/manage_timers.sh [status|install|uninstall]`
+- Repository batch migration to ext4: `./scripts/migrate_repos.sh`
 
 ---
 
@@ -57,6 +58,7 @@ os-manager/
 │   ├── dotfiles_sync.sh         # Dotfiles backup, diff, and restore script
 │   ├── harness_check.sh         # Harness end-to-end self-check runner
 │   ├── manage_timers.sh         # Systemd user timer manager script
+│   ├── migrate_repos.sh         # Batch repository migration utility (NTFS -> ext4)
 │   ├── perf_tune.sh             # Filesystem I/O performance benchmark script
 │   ├── sync_agent_skills.sh     # Multi-agent SSOT symlink synchronization script
 │   ├── sys_diag.sh              # System diagnostic & health inspection script
@@ -118,7 +120,7 @@ Registered in `.claude/settings.json` and executed deterministically using `${CL
 - **`PreCompact`** (`scripts/hooks/pre_compact_state.sh`): Captures active git status and branch telemetry to `backups/logs/compact_snapshot.json` before context truncation.
 - **`SessionEnd`** (`scripts/hooks/session_cleanup.sh`): Flushes session state, logs session completion, and cleans ephemeral test artifacts.
 
-### 2. 4-Tier Security Matrix (`.claude/rules/safety-tiers.md`)
+### 2. Four-Tier Security Matrix (`.claude/rules/safety-tiers.md`)
 
 - **Tier 0 (Autonomous / Read-Only - Exit 0)**: Read-only queries (`git status`, `git diff`, `free`, `df`, `systemctl status`, `ps`, read-only diagnostics) run autonomously.
 - **Tier 1 (Workspace Contained - Exit 0)**: File reads, writes, and edits bounded within `/home/rizz/dev/os-manager/` proceed autonomously subject to post-tool linting.
@@ -131,7 +133,7 @@ Registered in `.claude/settings.json` and executed deterministically using `${CL
   - Windows host intrusions: Modifying `/mnt/c/Windows`, `Program Files`, `AppData`.
   - Linux core system destruction: Modifying `/etc/passwd`, `/etc/shadow`, `/boot/`, `/dev/`.
 
-### 3. WSL2 Filesystem Boundaries & Storage Invariants (`.claude/rules/wsl-boundaries.md`)
+### 3. WSL2 Filesystem Boundaries and Storage Invariants (`.claude/rules/wsl-boundaries.md`)
 
 - **Native EXT4 Domain (`/home/rizz/`)**: Repositories, `node_modules`, `.venv`, and build stores MUST reside on ext4. This avoids 9P virtualization latency and permission churn.
 - **NTFS Windows Mounts (`/mnt/c/`, `/mnt/d/`)**:
@@ -192,7 +194,7 @@ All tasks in this workspace follow the Superpowers engineering discipline:
 
 ---
 
-## Safety & Execution Rules
+## Safety and Execution Rules
 
 1. **Deterministic Execution**:
    - Hard blocks (Exit Code 2) override any conversational prompt.
