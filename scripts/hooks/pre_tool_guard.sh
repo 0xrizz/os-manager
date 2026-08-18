@@ -89,11 +89,11 @@ if [ "${TOOL_NAME}" = "Bash" ]; then
         exit 2
     fi
 
-    # Invariant Block: Indiscriminate Package Purging (Generalized for all distros)
-    if echo "${CMD}" | grep -qE '\b(apt|apt-get|pacman|dnf|zypper|apk)\s+(purge|remove|-Rcs)\s+(\*|all|--all)\b' || \
-       echo "${CMD}" | grep -qE '\b(apt|apt-get|dpkg)\s+(--purge\s+)?(purge|remove)\s+-[a-zA-Z0-9]*\*\b' || \
+    # Invariant Block: Indiscriminate Package Purging (Generalized across all distros)
+    if echo "${CMD}" | grep -qE '\b(apt|apt-get|pacman|dnf|zypper|apk)\s+(purge|remove|del|-Rcs)\s+(\*|all|--all)([;&|[:space:]]|\b|$)' || \
+       echo "${CMD}" | grep -qE '\b(apt|apt-get|dpkg)\s+(--purge\s+)?(purge|remove)\s+-[a-zA-Z0-9]*\*([;&|[:space:]]|\b|$)' || \
        echo "${CMD}" | grep -qE '\bpacman\s+-[Rksu]+\s+.*(\b|\s)(base|systemd|glibc|linux-firmware)(\b|\s|$)' || \
-       echo "${CMD}" | grep -qE '\bdnf\s+(remove|erase)\s+-[a-zA-Z0-9]*\*\b'; then
+       echo "${CMD}" | grep -qE '\bdnf\s+(remove|erase)\s+-[a-zA-Z0-9]*\*([;&|[:space:]]|\b|$)'; then
         echo "[HARNESS SECURITY BLOCKED] Invariant Violation (Tier 3): Destructive mass package removal is strictly forbidden: ${CMD}" >&2
         notify_security_violation "Mass package purge blocked: ${CMD}"
         exit 2

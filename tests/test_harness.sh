@@ -80,6 +80,23 @@ PAYLOAD_TIER3_WSL='{"tool_name":"Bash","tool_input":{"command":"wsl.exe --unregi
 echo "${PAYLOAD_TIER3_WSL}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
 assert_exit_code "Tier 3 Block (wsl --unregister)" 2 $?
 
+# Tier 3 Block: Indiscriminate Package Purge (Pacman, DNF, Zypper, APK)
+PAYLOAD_TIER3_PACMAN='{"tool_name":"Bash","tool_input":{"command":"pacman -Rcs *"}}'
+echo "${PAYLOAD_TIER3_PACMAN}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
+assert_exit_code "Tier 3 Block (pacman -Rcs *)" 2 $?
+
+PAYLOAD_TIER3_DNF='{"tool_name":"Bash","tool_input":{"command":"dnf remove --all"}}'
+echo "${PAYLOAD_TIER3_DNF}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
+assert_exit_code "Tier 3 Block (dnf remove --all)" 2 $?
+
+PAYLOAD_TIER3_ZYPPER='{"tool_name":"Bash","tool_input":{"command":"zypper remove *"}}'
+echo "${PAYLOAD_TIER3_ZYPPER}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
+assert_exit_code "Tier 3 Block (zypper remove *)" 2 $?
+
+PAYLOAD_TIER3_APK='{"tool_name":"Bash","tool_input":{"command":"apk del *"}}'
+echo "${PAYLOAD_TIER3_APK}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
+assert_exit_code "Tier 3 Block (apk del *)" 2 $?
+
 # Tier 3 Block: Windows System Host Write
 PAYLOAD_TIER3_WIN='{"tool_name":"Write","tool_input":{"file_path":"/mnt/c/Windows/System32/drivers/etc/hosts","content":"127.0.0.1 test"}}'
 echo "${PAYLOAD_TIER3_WIN}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
