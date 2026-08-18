@@ -70,6 +70,48 @@ PAYLOAD_TIER3_WIN='{"tool_name":"Write","tool_input":{"file_path":"/mnt/c/Window
 echo "${PAYLOAD_TIER3_WIN}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
 assert_exit_code "Tier 3 Block (Windows System Host Write)" 2 $?
 
+echo "--- Testing PostToolUse Auto-Healing Linting ---"
+
+# Test valid bash file passes
+TEMP_VALID_BASH="/tmp/os_manager_test_valid.sh"
+echo -e '#!/usr/bin/env bash\necho "hello"' > "${TEMP_VALID_BASH}"
+PAYLOAD_VALID_BASH="{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"${TEMP_VALID_BASH}\"}}"
+echo "${PAYLOAD_VALID_BASH}" | "${HOOKS_DIR}/post_tool_lint.sh" > /dev/null 2>&1
+assert_exit_code "PostToolUse Valid Bash Script" 0 $?
+rm -f "${TEMP_VALID_BASH}"
+
+# Test invalid bash syntax fails with Exit 2
+TEMP_INVALID_BASH="/tmp/os_manager_test_invalid.sh"
+echo -e '#!/usr/bin/env bash\nif [ a == b ]; then echo missing fi' > "${TEMP_INVALID_BASH}"
+PAYLOAD_INVALID_BASH="{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"${TEMP_INVALID_BASH}\"}}"
+echo "${PAYLOAD_INVALID_BASH}" | "${HOOKS_DIR}/post_tool_lint.sh" > /dev/null 2>&1
+assert_exit_code "PostToolUse Invalid Bash Script (Auto-Healing Exit 2)" 2 $?
+rm -f "${TEMP_INVALID_BASH}"
+
+# Test valid JSON file passes
+TEMP_VALID_JSON="/tmp/os_manager_test_valid.json"
+echo '{"status":"ok"}' > "${TEMP_VALID_JSON}"
+PAYLOAD_VALID_JSON="{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"${TEMP_VALID_JSON}\"}}"
+echo "${PAYLOAD_VALID_JSON}" | "${HOOKS_DIR}/post_tool_lint.sh" > /dev/null 2>&1
+assert_exit_code "PostToolUse Valid JSON File" 0 $?
+rm -f "${TEMP_VALID_JSON}"
+
+# Test invalid JSON syntax fails with Exit 2
+TEMP_INVALID_JSON="/tmp/os_manager_test_invalid.json"
+echo '{"status": invalid_json' > "${TEMP_INVALID_JSON}"
+PAYLOAD_INVALID_JSON="{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"${TEMP_INVALID_JSON}\"}}"
+echo "${PAYLOAD_INVALID_JSON}" | "${HOOKS_DIR}/post_tool_lint.sh" > /dev/null 2>&1
+assert_exit_code "PostToolUse Invalid JSON File (Auto-Healing Exit 2)" 2 $?
+rm -f "${TEMP_INVALID_JSON}"
+
+echo "--- Testing Failure Telemetry & Pre-Compact Snapshot ---"
+PAYLOAD_FAIL='{"error":"command not found"}'
+echo "${PAYLOAD_FAIL}" | "${HOOKS_DIR}/post_tool_failure.sh" > /dev/null 2>&1
+assert_exit_code "post_tool_failure.sh execution" 0 $?
+
+"${HOOKS_DIR}/pre_compact_state.sh" > /dev/null 2>&1
+assert_exit_code "pre_compact_state.sh execution" 0 $?
+
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
