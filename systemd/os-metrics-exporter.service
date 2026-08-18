@@ -1,0 +1,22 @@
+[Unit]
+Description=OS-Manager Prometheus Metrics Exporter
+Documentation=https://github.com/0xrizz/os-manager
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /home/rizz/dev/os-manager/scripts/metrics_exporter.py --port 9100 --bind 127.0.0.1
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+# Security Sandboxing Settings
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/rizz/dev/os-manager/backups/logs
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
