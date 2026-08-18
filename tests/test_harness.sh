@@ -269,8 +269,19 @@ assert_exit_code "metrics_exporter.py --help execution" 0 $?
 python3 -m unittest "${WORKSPACE_ROOT}/tests/test_metrics_exporter.py" > /dev/null 2>&1
 assert_exit_code "test_metrics_exporter.py unit test suite" 0 $?
 
-[ -f "${WORKSPACE_ROOT}/systemd/os-metrics-exporter.service" ]
-assert_exit_code "os-metrics-exporter.service exists" 0 $?
+[ -f "${WORKSPACE_ROOT}/systemd/os-metrics-exporter.service" ] && SERVICE_EXISTS=0 || SERVICE_EXISTS=1
+assert_exit_code "os-metrics-exporter.service exists" 0 "${SERVICE_EXISTS}"
+
+echo "--- Testing Desktop Notification Bridge Suite ---"
+"${WORKSPACE_ROOT}/scripts/notify_host.sh" --help > /dev/null 2>&1
+assert_exit_code "notify_host.sh --help execution" 0 $?
+
+DRY_RUN_TEST="$("${WORKSPACE_ROOT}/scripts/notify_host.sh" --dry-run --title "Test" --message "Msg")"
+echo "${DRY_RUN_TEST}" | grep -q "ToastNotificationManager"
+assert_exit_code "notify_host.sh --dry-run WinRT XML generation" 0 $?
+
+"${WORKSPACE_ROOT}/tests/test_notify_host.sh" > /dev/null 2>&1
+assert_exit_code "test_notify_host.sh complete suite" 0 $?
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
