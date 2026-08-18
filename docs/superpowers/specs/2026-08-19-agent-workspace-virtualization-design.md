@@ -1,7 +1,7 @@
 # Specification: Agent Workspace Virtualization Architecture
 
 - **Date:** 2026-08-19
-- **Scope:** Container Isolation & Untrusted Execution Sandbox (`/home/rizz/dev/os-manager`)
+- **Scope:** Container Isolation and Untrusted Execution Sandbox (`/home/rizz/dev/os-manager`)
 - **Status:** Approved
 - **Deliverable Reference:** Phase 4, Deliverable 4.4
 
@@ -11,7 +11,7 @@
 
 Autonomous subagents executing complex software engineering workflows (such as dependency installations, test execution, and third-party script evaluation) require an execution sandbox. Running untrusted code directly on the host ext4 workspace creates risks of unintended file modification, credential leakage, and system configuration drift.
 
-Agent Workspace Virtualization provides an ephemeral, rootless container execution sandbox (`scripts/isolate_agent.sh`) powered by rootless Podman. This utility encapsulates subagent executions within an unprivileged Linux user namespace, masking host credentials and Windows filesystem mounts while enforcing strict memory and CPU boundaries.
+Agent Workspace Virtualization provides an ephemeral, rootless container execution sandbox (`scripts/sandbox_exec.sh`) powered by rootless Podman. This utility encapsulates subagent executions within an unprivileged Linux user namespace, masking host credentials and Windows filesystem mounts while enforcing strict memory, CPU, and filesystem boundaries.
 
 ---
 
@@ -23,7 +23,9 @@ Agent Workspace Virtualization provides an ephemeral, rootless container executi
 3. **Resource Exhaustion Vulnerabilities**: Runaway subagent test processes or infinite loops can consume all host memory and CPU cores, degrading interactive system responsiveness.
 
 ### Architectural Goals
+- **Tier 2 Whitelisted Operation**: Register `scripts/sandbox_exec.sh` as a pre-authorized Tier 2 operation in `pre_tool_guard.sh` and `.claude/rules/safety-tiers.md`.
 - **Rootless User Namespace Isolation**: Run sandbox processes under unprivileged UID mappings (`--userns=keep-id`), preventing container breakouts from obtaining host root privileges.
+- **Strict Mount Boundaries**: Mandate `--read-only` rootfs for container execution, and restrict mounted volumes strictly to `/home/rizz/dev/` workspaces.
 - **Sensitive Path Masking**: Ensure host Windows mounts (`/mnt/c`, `/mnt/d`) and private credentials (`~/.ssh`, `~/.gnupg`) are excluded from container mount tables.
 - **Enforced Resource Constraints**: Bound container memory usage (2GB default) and CPU core allocation (2 cores default).
 - **Seamless CLI Delegation**: Provide a transparent POSIX shell wrapper that forwards commands and preserves exit status codes.
@@ -38,13 +40,14 @@ Agent Workspace Virtualization provides an ephemeral, rootless container executi
  ┌─────────────────────────────────────────────────────────────┐
  │       Claude Code Subagent / Antigravity Execution          │
  └──────────────────────────────┬──────────────────────────────┘
-                                │ Invokes: scripts/isolate_agent.sh [opts] -- <cmd>
+                                │ Invokes: scripts/sandbox_exec.sh [opts] -- <cmd>
                                 ▼
  ┌─────────────────────────────────────────────────────────────┐
  │           Rootless Podman Container Sandbox Engine          │
  │ • User Namespace: --userns=keep-id (UID 1000 preserved)     │
+ │ • Root Filesystem: --read-only rootfs                       │
  │ • Resource Limits: --memory=2g --cpus=2 --pids-limit=256    │
- │ • Mount Boundary: Isolated /workspace volume mount only     │
+ │ • Mount Boundary: Isolated /home/rizz/dev/ target only      │
  └──────────────┬──────────────────────────────┬───────────────┘
                 │                              │
         ┌───────┴──────────────┐        ┌──────┴───────────────┐
@@ -58,19 +61,20 @@ Agent Workspace Virtualization provides an ephemeral, rootless container executi
 
 ### Namespace Isolation Invariants
 - **User Namespace**: Uses `--userns=keep-id` so container files match host UID `1000:1000` without permission mismatches.
-- **Filesystem Isolation**: Mounts only the current workspace path to `/workspace`. Host root (`/`), `/etc`, `/var`, `/mnt/c`, and `/mnt/d` are inaccessible.
+- **Root Filesystem**: Enforces `--read-only` rootfs to prevent modification of container system binaries.
+- **Filesystem Isolation**: Mounts only target directories under `/home/rizz/dev/` to `/workspace`. Host root (`/`), `/etc`, `/var`, `/mnt/c`, and `/mnt/d` are inaccessible.
 - **Network Isolation**: Defaults to `--network=none` for air-gapped test execution. Network access (`--network=slirp4netns`) is activated only when explicitly requested.
 - **Process Boundaries**: Defaults to `--pids-limit=256` to prevent fork bomb vulnerabilities.
 
 ---
 
-## 4. Sandbox Wrapper Implementation (`scripts/isolate_agent.sh`)
+## 4. Sandbox Wrapper Implementation (`scripts/sandbox_exec.sh`)
 
 ### 4.1 CLI Parameter Specification
 
 ```bash
-# scripts/isolate_agent.sh — Execute commands in an isolated rootless container
-# Usage: ./scripts/isolate_agent.sh [options] -- <command...>
+# scripts/sandbox_exec.sh - Execute commands in an isolated rootless container
+# Usage: ./scripts/sandbox_exec.sh [options] -- <command...>
 #
 # Options:
 #   --image <image>     Base container image (default: debian:13-slim)
@@ -85,7 +89,7 @@ Agent Workspace Virtualization provides an ephemeral, rootless container executi
 
 ```bash
 #!/usr/bin/env bash
-# scripts/isolate_agent.sh — Rootless container sandbox execution wrapper
+# scripts/sandbox_exec.sh - Rootless container sandbox execution wrapper
 set -euo pipefail
 
 WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -98,6 +102,13 @@ CPU_LIMIT="2"
 READ_ONLY=false
 DRY_RUN=false
 TARGET_DIR="${PWD}"
+
+# Validate Target Workspace Boundary: strictly under /home/rizz/dev/
+CANONICAL_TARGET="$(realpath -m "${TARGET_DIR}")"
+if [[ ! "${CANONICAL_TARGET}" =~ ^/home/rizz/dev(/|$) ]]; then
+    echo "[SECURITY ERROR] Sandbox target directory must reside strictly under /home/rizz/dev/: ${TARGET_DIR}" >&2
+    exit 2
+fi
 
 # Parse CLI Flags
 COMMAND_ARGS=()
@@ -156,11 +167,12 @@ if [ "${READ_ONLY}" = true ]; then
     MOUNT_MODE="ro"
 fi
 
-# Assemble Podman Execution Command
+# Assemble Podman Execution Command with --read-only rootfs
 PODMAN_CMD=(
     podman run
     --rm
     -i
+    --read-only
     --userns=keep-id
     --network="${NETWORK_MODE}"
     --memory="${MEMORY_LIMIT}"
@@ -168,7 +180,7 @@ PODMAN_CMD=(
     --pids-limit=256
     --cap-drop=ALL
     --security-opt=no-new-privileges
-    -v "${TARGET_DIR}:/workspace:${MOUNT_MODE},z"
+    -v "${CANONICAL_TARGET}:/workspace:${MOUNT_MODE},z"
     -w /workspace
     "${IMAGE}"
     "${COMMAND_ARGS[@]}"
@@ -187,9 +199,9 @@ fi
 
 ## 5. Security Guardrail Invariants (`scripts/hooks/pre_tool_guard.sh`)
 
-### 5.1 Privileged Flag Interception
+### 5.1 Privileged Flag Interception and Tier 2 Whitelisting
 
-`pre_tool_guard.sh` prevents subagents from bypassing container isolation by blocking forbidden Podman arguments:
+`pre_tool_guard.sh` whitelists `scripts/sandbox_exec.sh` under Tier 2 while preventing subagents from bypassing container isolation:
 
 ```bash
 # Invariant Block: Dangerous Container Privilege Escalation
@@ -205,7 +217,25 @@ fi
 
 ### Unit Test Assertions (`tests/test_harness.sh`)
 
-1. **Assertion 33**: Verify `scripts/isolate_agent.sh` passes `bash -n` and `shellcheck`.
-2. **Assertion 34**: Verify `scripts/isolate_agent.sh --dry-run` constructs container parameters with `--userns=keep-id`, `--cap-drop=ALL`, and `--security-opt=no-new-privileges`.
+1. **Assertion 33**: Verify `scripts/sandbox_exec.sh` passes `bash -n` and `shellcheck`.
+2. **Assertion 34**: Verify `scripts/sandbox_exec.sh --dry-run` constructs container parameters with `--read-only`, `--userns=keep-id`, `--cap-drop=ALL`, and `--security-opt=no-new-privileges`.
 3. **Assertion 35**: Verify `pre_tool_guard.sh` blocks `podman run --privileged` with Exit Code 2.
-4. **Assertion 36**: Verify `scripts/isolate_agent.sh` rejects unauthorized host mounts.
+4. **Assertion 36**: Verify `scripts/sandbox_exec.sh` rejects unauthorized host mounts outside `/home/rizz/dev/`.
+
+---
+
+## 7. Rollout Sequence and Implementation DAG
+
+Agent Workspace Virtualization belongs to Stage 2 of the implementation plan:
+
+1. **Stage 1 (Foundation Libraries and Tracing)**:
+   - Deliverable 3.4: Hook Performance Tracing (`scripts/hooks/lib/trace_helper.sh`, `scripts/hook_benchmark.sh`).
+   - Deliverable 4.1: Cross-Distribution Engine (`scripts/lib/distro.sh`, generalized package guardrails).
+2. **Stage 2 (Base System Services, Notifications, and Sandbox)**:
+   - Deliverable 3.1: Prometheus Metrics Exporter (`scripts/metrics_exporter.py`).
+   - Deliverable 3.3: Desktop Notification Bridge (`scripts/notify_host.sh`).
+   - Deliverable 3.2: Automated Host Disk Compaction (`scripts/compact_host_disk.sh`).
+   - Deliverable 4.4: Agent Workspace Virtualization (`scripts/sandbox_exec.sh`).
+3. **Stage 3 (Multi-Agent Mesh and Disaster Recovery)**:
+   - Deliverable 4.2: Inter-Agent Message Bus (`scripts/agent_bus.py`, `scripts/bus_send.sh`).
+   - Deliverable 4.3: Automated Disaster Recovery Provisioning (`scripts/bootstrap_wsl.ps1`, `scripts/post_bootstrap.sh`).

@@ -1,7 +1,7 @@
 # Specification: Automated Disaster Recovery Provisioning
 
 - **Date:** 2026-08-19
-- **Scope:** Disaster Recovery & Host Provisioning (`/home/rizz/dev/os-manager`)
+- **Scope:** Disaster Recovery and Host Provisioning (`/home/rizz/dev/os-manager`)
 - **Status:** Approved
 - **Deliverable Reference:** Phase 4, Deliverable 4.3
 
@@ -11,7 +11,7 @@
 
 `playbooks/disaster_recovery.md` documents the manual procedure for restoring Debian WSL2 instances from point-in-time tarball archives. Manual restoration requires multiple interactive steps across PowerShell and bash: locating archives, verifying checksums, executing `wsl --import`, configuring `/etc/wsl.conf`, and re-establishing systemd user units.
 
-Automated Disaster Recovery Provisioning provides a single-command restoration pipeline. It couples a Windows host orchestrator (`scripts/bootstrap_wsl.ps1`) with a Linux post-bootstrap agent (`scripts/post_bootstrap.sh`). This pairing automates archive selection, cryptographic verification, instance registration, user provisioning, and harness validation without manual intervention.
+Automated Disaster Recovery Provisioning provides a single-command restoration pipeline. It couples a Windows host orchestrator (`scripts/bootstrap_wsl.ps1`) with a Linux post-bootstrap verification agent (`scripts/post_bootstrap.sh`). This pairing automates archive selection, cryptographic verification, instance registration, user provisioning, SSOT skill symlink synchronization, systemd reload, and full harness test suite execution.
 
 ---
 
@@ -26,7 +26,7 @@ Automated Disaster Recovery Provisioning provides a single-command restoration p
 - **Single-Command Restoration**: Provision a fully operational WSL2 instance from a backup tarball via one PowerShell invocation.
 - **Cryptographic Verification**: Enforce SHA-256 checksum verification prior to disk allocation.
 - **Automated Default User Provisioning**: Configure `/etc/wsl.conf` automatically to launch the `rizz` user account by default.
-- **Self-Healing Environment Re-establishment**: Execute an internal Linux bootstrap agent on first launch to rebuild symlinks, activate user timers, and run harness self-checks.
+- **Self-Healing Environment Re-establishment**: Execute an internal Linux post-bootstrap agent on first launch to rebuild SSOT skill symlinks, reload systemd units, and execute `./tests/test_harness.sh` for complete verification.
 
 ---
 
@@ -47,14 +47,14 @@ Automated Disaster Recovery Provisioning provides a single-command restoration p
  ┌─────────────────────────────────────────────────────────────┐
  │                First-Boot Lifecycle Execution               │
  └──────────────────────────────┬──────────────────────────────┘
-                                │ Execute: wsl -d <Name> -u root -- /bin/bash /path/to/post_bootstrap.sh
+                                │ Execute: wsl -d <Name> -u <User> -- bash /path/to/post_bootstrap.sh
                                 ▼
  ┌─────────────────────────────────────────────────────────────┐
  │          Linux Post-Bootstrap Agent (post_bootstrap.sh)     │
  │ • Verifies user permissions and script executable bits      │
- │ • Rebuilds multi-agent SSOT skill symlinks                  │
- │ • Re-registers systemd user timers                          │
- │ • Runs harness self-check and writes audit log              │
+ │ • Executes scripts/sync_agent_skills.sh (SSOT Symlinks)     │
+ │ • Reloads systemd daemon & re-enables user maintenance units│
+ │ • Runs ./tests/test_harness.sh and records audit telemetry  │
  └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -100,7 +100,7 @@ param(
 ### 4.2 PowerShell Engine Implementation
 
 ```powershell
-# scripts/bootstrap_wsl.ps1 — Automated WSL2 Distro Provisioning
+# scripts/bootstrap_wsl.ps1 - Automated WSL2 Distro Provisioning
 $ErrorActionPreference = "Stop"
 
 $BackupDirectory = "D:\wsl_backup"
@@ -179,10 +179,10 @@ $WslConfContent = "[user]`ndefault=$DefaultUser`n`n[boot]`nsystemd=true`n"
 $WslConfCommand = "cat <<'EOF' > /etc/wsl.conf`n$WslConfContent`nEOF"
 wsl.exe -d $InstanceName -u root -- bash -c "$WslConfCommand"
 
-# 7. Execute Linux Post-Bootstrap Agent
-Write-Host "==> Executing Linux post-bootstrap agent..."
-$PostBootstrapScript = "/home/$DefaultUser/dev/os-manager/scripts/post_bootstrap.sh"
-wsl.exe -d $InstanceName -u $DefaultUser -- bash -c "if [ -f '$PostBootstrapScript' ]; then bash '$PostBootstrapScript'; fi"
+# 7. Execute Linux Post-Bootstrap Verification Agent
+Write-Host "==> Executing Linux post-bootstrap verification agent..."
+$PostBootstrapCommand = "TARGET_SCRIPT=`$(find /home/$DefaultUser/dev/os-manager/scripts/post_bootstrap.sh -type f 2>/dev/null | head -n 1); if [ -n `"`$TARGET_SCRIPT`" ]; then bash `"`$TARGET_SCRIPT`"; fi"
+wsl.exe -d $InstanceName -u $DefaultUser -- bash -c "$PostBootstrapCommand"
 
 if ($SetAsDefault) {
     Write-Host "==> Setting '$InstanceName' as default WSL instance..."
@@ -196,13 +196,13 @@ Write-Host "==> Provisioning complete. Launch instance using: wsl -d $InstanceNa
 
 ## 5. Linux Post-Bootstrap Agent Specification (`scripts/post_bootstrap.sh`)
 
-The post-bootstrap agent executes within the Linux environment to restore operational invariants.
+The post-bootstrap agent executes within the Linux environment to restore operational invariants and verify harness integrity.
 
 ### 5.1 Agent Script Implementation
 
 ```bash
 #!/usr/bin/env bash
-# scripts/post_bootstrap.sh — First-boot verification and environment initialization
+# scripts/post_bootstrap.sh - First-boot verification and environment initialization
 set -euo pipefail
 
 WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -219,22 +219,25 @@ if [ -f "${WORKSPACE_ROOT}/scripts/sync_agent_skills.sh" ]; then
     bash "${WORKSPACE_ROOT}/scripts/sync_agent_skills.sh"
 fi
 
-echo "==> [3/4] Enabling systemd user maintenance timers..."
+echo "==> [3/4] Reloading systemd user daemon and maintenance timers..."
+systemctl --user daemon-reload || true
 if [ -f "${WORKSPACE_ROOT}/scripts/manage_timers.sh" ]; then
     bash "${WORKSPACE_ROOT}/scripts/manage_timers.sh" install || true
 fi
 
-echo "==> [4/4] Running harness self-check..."
-if [ -f "${WORKSPACE_ROOT}/scripts/harness_check.sh" ]; then
-    bash "${WORKSPACE_ROOT}/scripts/harness_check.sh"
+echo "==> [4/4] Running automated harness test suite..."
+if [ -f "${WORKSPACE_ROOT}/tests/test_harness.sh" ]; then
+    bash "${WORKSPACE_ROOT}/tests/test_harness.sh"
 fi
 
-# Log telemetry event
-TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+# Log telemetry event using unified trace schema
+TIMESTAMP_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+TIMESTAMP_EPOCH="$(date +%s)"
 mkdir -p "$(dirname "${AUDIT_LOG}")"
-echo "{\"timestamp\":\"${TIMESTAMP}\",\"event\":\"post_bootstrap_completed\",\"workspace\":\"${WORKSPACE_ROOT}\"}" >> "${AUDIT_LOG}"
+printf '{"timestamp_iso":"%s","timestamp_epoch":%d,"hook_name":"PostBootstrap","target_tool":null,"duration_ms":0.00,"duration_us":0,"exit_code":0}\n' \
+    "${TIMESTAMP_ISO}" "${TIMESTAMP_EPOCH}" >> "${AUDIT_LOG}" 2>/dev/null || true
 
-echo "Environment restored and verified."
+echo "Environment restored and verified successfully."
 ```
 
 ---
@@ -247,4 +250,22 @@ echo "Environment restored and verified."
 
 ### 6.2 Unit Test Assertions (`tests/test_harness.sh`)
 1. **Assertion 31**: Verify `scripts/post_bootstrap.sh` passes `bash -n` and `shellcheck`.
-2. **Assertion 32**: Verify `scripts/post_bootstrap.sh` updates script permissions and writes a valid JSON record to `backups/logs/harness_audit.jsonl`.
+2. **Assertion 32**: Verify `scripts/post_bootstrap.sh` executes symlink sync, reloads systemd units, and runs `./tests/test_harness.sh` cleanly.
+
+---
+
+## 7. Rollout Sequence and Implementation DAG
+
+Automated Disaster Recovery Provisioning belongs to Stage 3 of the implementation plan:
+
+1. **Stage 1 (Foundation Libraries and Tracing)**:
+   - Deliverable 3.4: Hook Performance Tracing (`scripts/hooks/lib/trace_helper.sh`, `scripts/hook_benchmark.sh`).
+   - Deliverable 4.1: Cross-Distribution Engine (`scripts/lib/distro.sh`, generalized package guardrails).
+2. **Stage 2 (Base System Services, Notifications, and Sandbox)**:
+   - Deliverable 3.1: Prometheus Metrics Exporter (`scripts/metrics_exporter.py`).
+   - Deliverable 3.3: Desktop Notification Bridge (`scripts/notify_host.sh`).
+   - Deliverable 3.2: Automated Host Disk Compaction (`scripts/compact_host_disk.sh`).
+   - Deliverable 4.4: Agent Workspace Virtualization (`scripts/sandbox_exec.sh`).
+3. **Stage 3 (Multi-Agent Mesh and Disaster Recovery)**:
+   - Deliverable 4.2: Inter-Agent Message Bus (`scripts/agent_bus.py`, `scripts/bus_send.sh`).
+   - Deliverable 4.3: Automated Disaster Recovery Provisioning (`scripts/bootstrap_wsl.ps1`, `scripts/post_bootstrap.sh`).

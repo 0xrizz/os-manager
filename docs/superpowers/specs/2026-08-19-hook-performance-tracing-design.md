@@ -1,16 +1,16 @@
 # Technical Design Specification: Hook Performance Tracing (Deliverable 3.4)
 
-## 1. Executive Summary & Objective
+## 1. Executive Summary and Objective
 
-This document defines the technical specification for **Hook Performance Tracing** (Deliverable 3.4 from `docs/PRD.md`).
+This document defines the technical specification for Hook Performance Tracing (Deliverable 3.4 from `docs/PRD.md`).
 
-Autonomous coding agents execute hundreds of tool operations during iterative development. Each tool call triggers lifecycle hooks for security inspection, syntax validation, and telemetry recording. To guarantee that agent execution loops experience zero perceptible friction, Non-Functional Requirement 1 (NFR-1) mandates that hook latency remain under 100 milliseconds at the 99th percentile. 
+Autonomous coding agents execute hundreds of tool operations during iterative development. Each tool call triggers lifecycle hooks for security inspection, syntax validation, and telemetry recording. To guarantee that agent execution loops experience zero perceptible friction, Non-Functional Requirement 1 (NFR-1) mandates that hook latency remain under 100 milliseconds at the 99th percentile.
 
 This specification introduces a zero-overhead monotonic tracing engine (`scripts/hooks/lib/trace_helper.sh`) across all six lifecycle hooks. The engine measures nanosecond-level execution durations, capturing structured trace events into `backups/logs/harness_audit.jsonl`. It also provides a benchmark reporting utility (`scripts/hook_benchmark.sh`) to analyze latency percentiles (p50, p95, p99).
 
 ---
 
-## 2. System Architecture & Component Design
+## 2. System Architecture and Component Design
 
 ```text
  ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -23,7 +23,7 @@ This specification introduces a zero-overhead monotonic tracing engine (`scripts
  ┌──────────────────────────────▼───────────────────────────────────────────────────────────────┐
  │ TARGET HOOK ENTRYPOINT (e.g., `scripts/hooks/pre_tool_guard.sh`)                             │
  │ • Sources `scripts/hooks/lib/trace_helper.sh`                                                │
- │ • Invokes `trace_start "PreToolUse"` (Captures Monotonic Nanoseconds $T_0$)                  │
+ │ • Invokes `trace_start "PreToolUse" "Bash"` (Captures Monotonic Nanoseconds T0)              │
  │ • Sets POSIX Trap: `trap 'trace_finish $?' EXIT`                                             │
  └──────────────────────────────┬───────────────────────────────────────────────────────────────┘
                                 │
@@ -31,12 +31,13 @@ This specification introduces a zero-overhead monotonic tracing engine (`scripts
  │ HOOK CORE LOGIC EXECUTION                                                                    │
  │ • Evaluates security matrix / Runs linters / Captures telemetry                              │
  │ • Completes execution with Exit Code (0 = Pass, 2 = Block/Fail)                              │
+ │ • Non-blocking notification dispatch for Tier 3 blocks via background subshell               │
  └──────────────────────────────┬───────────────────────────────────────────────────────────────┘
                                 │
  ┌──────────────────────────────▼───────────────────────────────────────────────────────────────┐
  │ POSIX EXIT TRAP DISPATCHER (`trace_finish`)                                                  │
- │ • Captures Monotonic Nanoseconds $T_1$ via `date +%s%N`                                      │
- │ • Computes Delta: $\Delta t = (T_1 - T_0) / 1,000,000\text{ ms}$ (Bash Arithmetic)           │
+ │ • Captures Monotonic Nanoseconds T1 via `date +%s%N`                                         │
+ │ • Computes Delta: duration_us and duration_ms via pure Bash 64-bit integer arithmetic        │
  │ • Appends structured JSON line to `backups/logs/harness_audit.jsonl`                         │
  │ • Propagates original exit code faithfully                                                   │
  └──────────────────────────────┬───────────────────────────────────────────────────────────────┘
@@ -53,8 +54,8 @@ This specification introduces a zero-overhead monotonic tracing engine (`scripts
 ### 2.1 Component Breakdown
 
 1. **Shared Tracing Library (`scripts/hooks/lib/trace_helper.sh`)**:
-   - Provides `trace_start(hook_name)` and `trace_finish(exit_code)` functions.
-   - Uses built-in Linux nanosecond timers (`date +%s%N`) and 64-bit integer arithmetic in Bash.
+   - Provides `trace_start(hook_name, target_tool)` and `trace_finish(exit_code)` functions.
+   - Uses built-in Linux nanosecond timers (`date +%s%N`) and pure 64-bit integer arithmetic in Bash.
    - Captures telemetry without spawning secondary Python or Node processes, keeping tracing overhead below 1.0 millisecond.
    - Employs POSIX `EXIT` traps to guarantee execution recording even on early exits, syntax errors, or unhandled failures.
 
@@ -74,22 +75,23 @@ This specification introduces a zero-overhead monotonic tracing engine (`scripts
 
 ---
 
-## 3. Telemetry Schema & Event Fields
+## 3. Telemetry Schema and Event Fields
 
 Every hook invocation appends one line to `backups/logs/harness_audit.jsonl`.
 
-### 3.1 Trace Event JSON Schema
+### 3.1 Unified Trace Event JSON Schema
+
+The schema is shared across Hook Performance Tracing (3.4) and the Prometheus Metrics Exporter (3.1):
 
 ```json
 {
-  "timestamp": "2026-08-19T14:32:05.123Z",
-  "event": "hook_trace",
+  "timestamp_iso": "2026-08-19T14:32:05.123Z",
+  "timestamp_epoch": 1787149925,
   "hook_name": "PreToolUse",
-  "tool_name": "Bash",
+  "target_tool": "Bash",
   "duration_ms": 14.82,
-  "exit_code": 0,
-  "status": "PASS",
-  "pid": 48210
+  "duration_us": 14820,
+  "exit_code": 0
 }
 ```
 
@@ -97,20 +99,19 @@ Every hook invocation appends one line to `backups/logs/harness_audit.jsonl`.
 
 | Field | Type | Description | Example |
 |---|---|---|---|
-| `timestamp` | String (ISO-8601) | UTC timestamp of event completion | `"2026-08-19T14:32:05.123Z"` |
-| `event` | String | Fixed telemetry event category | `"hook_trace"` |
+| `timestamp_iso` | String (ISO-8601) | UTC timestamp of event completion | `"2026-08-19T14:32:05.123Z"` |
+| `timestamp_epoch` | Integer | Unix epoch timestamp in seconds | `1787149925` |
 | `hook_name` | String | Name of the lifecycle hook | `"PreToolUse"`, `"PostToolUse"` |
-| `tool_name` | String | Target tool from tool invocation payload | `"Bash"`, `"Edit"`, `"Write"`, `null` |
+| `target_tool` | String or null | Target tool from tool invocation payload | `"Bash"`, `"Edit"`, `"Write"`, `null` |
 | `duration_ms` | Float | Wall-clock execution time in milliseconds | `14.82` |
+| `duration_us` | Integer | Wall-clock execution time in microseconds | `14820` |
 | `exit_code` | Integer | Process termination exit code | `0`, `2` |
-| `status` | String | Classification status | `"PASS"`, `"BLOCKED"`, `"FAILED"` |
-| `pid` | Integer | Linux process identifier | `48210` |
 
 ---
 
-## 4. Implementation Details & Helper Engine
+## 4. Implementation Details and Helper Engine
 
-### 4.1 Modular Helper Implementation (`scripts/hooks/lib/trace_helper.sh`)
+### 4.1 Zero-Fork Helper Implementation (`scripts/hooks/lib/trace_helper.sh`)
 
 ```bash
 #!/usr/bin/env bash
@@ -118,12 +119,12 @@ Every hook invocation appends one line to `backups/logs/harness_audit.jsonl`.
 set -euo pipefail
 
 TRACE_HOOK_NAME=""
+TRACE_TARGET_TOOL=""
 TRACE_START_NS=0
-TRACE_TOOL_NAME=""
 
 trace_start() {
     TRACE_HOOK_NAME="$1"
-    TRACE_TOOL_NAME="${2:-}"
+    TRACE_TARGET_TOOL="${2:-null}"
     TRACE_START_NS="$(date +%s%N)"
     trap 'trace_finish $?' EXIT
 }
@@ -133,25 +134,29 @@ trace_finish() {
     local end_ns
     end_ns="$(date +%s%N)"
     
-    # Calculate duration in fractional milliseconds using bash arithmetic
+    # Calculate duration in microseconds and fractional milliseconds using pure bash integer arithmetic
     local elapsed_ns=$((end_ns - TRACE_START_NS))
+    local duration_us=$((elapsed_ns / 1000))
+    local ms_int=$((elapsed_ns / 1000000))
+    local ms_frac=$(((elapsed_ns % 1000000) / 10000))
     local duration_ms
-    duration_ms=$(awk "BEGIN {printf \"%.2f\", ${elapsed_ns} / 1000000}")
+    printf -v duration_ms "%d.%02d" "${ms_int}" "${ms_frac}"
     
-    local status="PASS"
-    if [ "${exit_code}" -eq 2 ]; then
-        status="BLOCKED"
-    elif [ "${exit_code}" -ne 0 ]; then
-        status="FAILED"
-    fi
+    local timestamp_iso
+    timestamp_iso="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    local timestamp_epoch
+    timestamp_epoch="$(date +%s)"
     
-    local timestamp
-    timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
     local audit_log="${WORKSPACE_ROOT:-.}/backups/logs/harness_audit.jsonl"
     
     if [ -d "$(dirname "${audit_log}")" ]; then
-        printf '{"timestamp":"%s","event":"hook_trace","hook_name":"%s","tool_name":"%s","duration_ms":%s,"exit_code":%d,"status":"%s","pid":%d}\n' \
-            "${timestamp}" "${TRACE_HOOK_NAME}" "${TRACE_TOOL_NAME}" "${duration_ms}" "${exit_code}" "${status}" "$$" >> "${audit_log}" 2>/dev/null || true
+        if [ "${TRACE_TARGET_TOOL}" = "null" ]; then
+            printf '{"timestamp_iso":"%s","timestamp_epoch":%d,"hook_name":"%s","target_tool":null,"duration_ms":%s,"duration_us":%d,"exit_code":%d}\n' \
+                "${timestamp_iso}" "${timestamp_epoch}" "${TRACE_HOOK_NAME}" "${duration_ms}" "${duration_us}" "${exit_code}" >> "${audit_log}" 2>/dev/null || true
+        else
+            printf '{"timestamp_iso":"%s","timestamp_epoch":%d,"hook_name":"%s","target_tool":"%s","duration_ms":%s,"duration_us":%d,"exit_code":%d}\n' \
+                "${timestamp_iso}" "${timestamp_epoch}" "${TRACE_HOOK_NAME}" "${TRACE_TARGET_TOOL}" "${duration_ms}" "${duration_us}" "${exit_code}" >> "${audit_log}" 2>/dev/null || true
+        fi
     fi
     
     exit "${exit_code}"
@@ -200,7 +205,7 @@ OVERALL VERDICT: PASS (100% of hooks meet the sub-100ms p99 requirement)
 
 ---
 
-## 6. Performance Budget & Security Invariants
+## 6. Performance Budget and Security Invariants
 
 ### 6.1 Overhead Budget
 - **Tracing Latency Overhead**: Sourcing `trace_helper.sh` and calculating timestamps adds less than 1.0 millisecond per hook execution.
@@ -211,9 +216,9 @@ OVERALL VERDICT: PASS (100% of hooks meet the sub-100ms p99 requirement)
 
 ---
 
-## 7. Verification & Automated Testing Plan
+## 7. Verification and Automated Testing Plan
 
-### 7.1 Unit & Script Testing (`tests/test_hook_tracing.sh`)
+### 7.1 Unit and Script Testing (`tests/test_hook_tracing.sh`)
 - Test `trace_helper.sh` timing calculations against synthetic delays (`sleep 0.05`).
 - Test that exit codes (0, 1, 2) propagate accurately through `trace_finish`.
 - Test that `scripts/hook_benchmark.sh` computes percentiles accurately against fixture data.
@@ -221,17 +226,23 @@ OVERALL VERDICT: PASS (100% of hooks meet the sub-100ms p99 requirement)
 
 ### 7.2 Harness Integration Test Suite (`tests/test_harness.sh`)
 - Assert `scripts/hooks/lib/trace_helper.sh` and `scripts/hook_benchmark.sh` pass `bash -n` and `shellcheck`.
-- Assert hook invocations generate valid JSON lines in `backups/logs/harness_audit.jsonl`.
+- Assert hook invocations generate valid JSON lines in `backups/logs/harness_audit.jsonl` adhering to the unified schema.
 - Assert `./scripts/hook_benchmark.sh --json` emits valid structured output.
 
 ---
 
-## 8. Alternative Architectural Plans
+## 8. Rollout Sequence and Implementation DAG
 
-### 8.1 Backup Plan: Standalone Dispatcher Wrapper (`scripts/hooks/run_hook.sh`)
-- **Mechanism**: A single wrapper script configured in `.claude/settings.json` that times child hook execution.
-- **Activation**: Used if centralizing configuration in `.claude/settings.json` becomes preferable to sourcing helper libraries in each script.
+Hook Performance Tracing belongs to Stage 1 of the implementation plan:
 
-### 8.2 Backup Plan: Python-Based Monotonic Tracer
-- **Mechanism**: A micro Python helper invoked via `python3 -c ...` to record timestamps with sub-microsecond precision.
-- **Activation**: Used on systems where `date +%s%N` is unavailable (such as BSD or legacy non-GNU environments).
+1. **Stage 1 (Foundation Libraries and Tracing)**:
+   - Deliverable 3.4: Hook Performance Tracing (`scripts/hooks/lib/trace_helper.sh`, `scripts/hook_benchmark.sh`).
+   - Deliverable 4.1: Cross-Distribution Engine (`scripts/lib/distro.sh`, generalized package guardrails).
+2. **Stage 2 (Base System Services, Notifications, and Sandbox)**:
+   - Deliverable 3.1: Prometheus Metrics Exporter (`scripts/metrics_exporter.py`).
+   - Deliverable 3.3: Desktop Notification Bridge (`scripts/notify_host.sh`).
+   - Deliverable 3.2: Automated Host Disk Compaction (`scripts/compact_host_disk.sh`).
+   - Deliverable 4.4: Agent Workspace Virtualization (`scripts/sandbox_exec.sh`).
+3. **Stage 3 (Multi-Agent Mesh and Disaster Recovery)**:
+   - Deliverable 4.2: Inter-Agent Message Bus (`scripts/agent_bus.py`, `scripts/bus_send.sh`).
+   - Deliverable 4.3: Automated Disaster Recovery Provisioning (`scripts/bootstrap_wsl.ps1`, `scripts/post_bootstrap.sh`).

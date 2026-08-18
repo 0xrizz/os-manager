@@ -1,7 +1,7 @@
 # Specification: Inter-Agent Message Bus Architecture
 
 - **Date:** 2026-08-19
-- **Scope:** Multi-Agent Communication & Event Routing (`/home/rizz/dev/os-manager`)
+- **Scope:** Multi-Agent Communication and Event Routing (`/home/rizz/dev/os-manager`)
 - **Status:** Approved
 - **Deliverable Reference:** Phase 4, Deliverable 4.2
 
@@ -11,7 +11,7 @@
 
 As development workflows scale across multiple autonomous agents (Claude Code subagents, Google Antigravity `agy`, and background task runners), agents require a structured, low-latency communication layer.
 
-The Inter-Agent Message Bus introduces an asynchronous message broker (`scripts/agent_bus.py`) bound to a local Unix domain socket. This broker enables publish-subscribe event distribution, direct peer routing, and structured JSON-RPC 2.0 message framing across independent terminal processes.
+The Inter-Agent Message Bus introduces an asynchronous message broker (`scripts/agent_bus.py`) bound to a local Unix domain socket at `$XDG_RUNTIME_DIR/os-manager/bus.sock` (with fallback to `~/.local/run/os-manager/bus.sock`). This broker enables publish-subscribe event distribution, direct peer routing, and structured JSON-RPC 2.0 message framing across independent terminal processes without symlink hijacking risks.
 
 ---
 
@@ -21,9 +21,11 @@ The Inter-Agent Message Bus introduces an asynchronous message broker (`scripts/
 1. **Isolated Agent Execution**: Subagents operating in separate tmux panes or background processes lack a direct mechanism to exchange intermediate task states.
 2. **File-Polling Bottlenecks**: State synchronization currently relies on disk files, introducing filesystem latency and file locking contention.
 3. **Unstructured Telemetry**: Multi-agent events are captured across disparate log files without unified event correlation.
+4. **Temporary Directory Insecurity**: Placing shared domain sockets in global `/tmp` exposes services to symlink collision and auto-cleanup purging during periodic maintenance.
 
 ### Architectural Goals
-- **Sub-Millisecond Message Delivery**: Deliver structured messages between agents with minimal latency over a Unix domain socket.
+- **Sub-Millisecond Message Delivery**: Deliver structured messages between agents with minimal latency over a secure Unix domain socket.
+- **FHS-Compliant Socket Paths**: Bind sockets strictly under `$XDG_RUNTIME_DIR/os-manager/` (fallback `~/.local/run/os-manager/`) with `0700` directory and `0600` socket permissions.
 - **Standards-Compliant RPC Framing**: Use newline-delimited JSON-RPC 2.0 envelopes for all socket interactions.
 - **Decoupled Event Distribution**: Support both topic-based publish-subscribe patterns and direct point-to-point agent messaging.
 - **Fail-Safe Non-Blocking Design**: Ensure calling scripts and lifecycle hooks degrade gracefully when the message daemon is offline.
@@ -42,7 +44,7 @@ The Inter-Agent Message Bus introduces an asynchronous message broker (`scripts/
                                 ▼
  ┌─────────────────────────────────────────────────────────────┐
  │       Inter-Agent Message Bus (scripts/agent_bus.py)        │
- │ • asyncio stream server on /tmp/os-manager-bus.sock         │
+ │ • asyncio stream server on $XDG_RUNTIME_DIR/os-manager/bus.sock │
  │ • Topic Pub/Sub engine & Point-to-Point routing             │
  │ • In-memory ring buffer (1000 items) & Dead-Letter queue    │
  └──────────────┬──────────────────────────────┬───────────────┘
@@ -55,8 +57,10 @@ The Inter-Agent Message Bus introduces an asynchronous message broker (`scripts/
 ```
 
 ### Transport and Socket Invariants
-- **Socket Path**: `/tmp/os-manager-bus.sock`
-- **File Permissions**: `0600` (restricted strictly to the executing user)
+- **Primary Socket Path**: `$XDG_RUNTIME_DIR/os-manager/bus.sock` (typically `/run/user/1000/os-manager/bus.sock`)
+- **Fallback Socket Path**: `~/.local/run/os-manager/bus.sock`
+- **Directory Permissions**: `0700` (restricted exclusively to the owning user)
+- **Socket Permissions**: `0600`
 - **Protocol Framing**: Newline-delimited JSON (`\n`) UTF-8 text streams
 - **Maximum Frame Size**: 1 megabyte per message frame
 
@@ -184,7 +188,7 @@ Clients send point-to-point requests directly to a designated `agent_id`:
 
 ### 5.1 Python Async Daemon (`scripts/agent_bus.py`)
 
-The daemon implementation uses Python's standard library `asyncio`:
+The daemon implementation uses Python's standard library `asyncio` and resolves paths dynamically:
 
 ```python
 #!/usr/bin/env python3
@@ -197,7 +201,16 @@ import sys
 import time
 from typing import Dict, Set
 
-SOCKET_PATH = "/tmp/os-manager-bus.sock"
+def resolve_socket_path() -> str:
+    xdg_runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if xdg_runtime and os.path.isdir(xdg_runtime):
+        base = os.path.join(xdg_runtime, "os-manager")
+    else:
+        base = os.path.expanduser("~/.local/run/os-manager")
+    os.makedirs(base, mode=0o700, exist_ok=True)
+    return os.path.join(base, "bus.sock")
+
+SOCKET_PATH = resolve_socket_path()
 LOG_FILE = "backups/logs/agent_bus.jsonl"
 MAX_PAYLOAD_SIZE = 1024 * 1024  # 1MB
 
@@ -320,7 +333,15 @@ A lightweight POSIX shell helper for publishing events from hooks and automation
 # scripts/bus_send.sh — Publish JSON payloads to the Inter-Agent Message Bus
 set -euo pipefail
 
-SOCKET_PATH="/tmp/os-manager-bus.sock"
+resolve_bus_socket() {
+    if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "${XDG_RUNTIME_DIR}" ]; then
+        echo "${XDG_RUNTIME_DIR}/os-manager/bus.sock"
+    else
+        echo "${HOME}/.local/run/os-manager/bus.sock"
+    fi
+}
+
+SOCKET_PATH="$(resolve_bus_socket)"
 
 if [ $# -lt 2 ]; then
     echo "Usage: $0 <topic> <json_payload>" >&2
@@ -369,11 +390,15 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStartPre=/usr/bin/rm -f /tmp/os-manager-bus.sock
 ExecStart=%h/dev/os-manager/scripts/agent_bus.py
-ExecStopPost=/usr/bin/rm -f /tmp/os-manager-bus.sock
 Restart=on-failure
 RestartSec=2s
+
+# Security Sandboxing
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%t/os-manager %h/.local/run/os-manager %h/dev/os-manager/backups/logs
+NoNewPrivileges=true
 
 [Install]
 WantedBy=default.target
@@ -385,7 +410,25 @@ WantedBy=default.target
 
 ### Unit Test Assertions (`tests/test_harness.sh`)
 
-1. **Assertion 27**: Verify daemon initialization creates `/tmp/os-manager-bus.sock` with `0600` permissions.
-2. **Assertion 28**: Verify client registration handshake over Unix socket.
+1. **Assertion 27**: Verify daemon initialization creates `bus.sock` under `$XDG_RUNTIME_DIR/os-manager/` (or `~/.local/run/os-manager/`) with `0600` permissions.
+2. **Assertion 28**: Verify client registration handshake over the secure Unix socket.
 3. **Assertion 29**: Verify pub/sub broadcast delivery to subscribed topic listeners.
 4. **Assertion 30**: Verify `scripts/bus_send.sh` executes cleanly and degrades gracefully when the socket is unavailable.
+
+---
+
+## 8. Rollout Sequence and Implementation DAG
+
+The Inter-Agent Message Bus belongs to Stage 3 of the implementation plan:
+
+1. **Stage 1 (Foundation Libraries and Tracing)**:
+   - Deliverable 3.4: Hook Performance Tracing (`scripts/hooks/lib/trace_helper.sh`, `scripts/hook_benchmark.sh`).
+   - Deliverable 4.1: Cross-Distribution Engine (`scripts/lib/distro.sh`, generalized package guardrails).
+2. **Stage 2 (Base System Services, Notifications, and Sandbox)**:
+   - Deliverable 3.1: Prometheus Metrics Exporter (`scripts/metrics_exporter.py`).
+   - Deliverable 3.3: Desktop Notification Bridge (`scripts/notify_host.sh`).
+   - Deliverable 3.2: Automated Host Disk Compaction (`scripts/compact_host_disk.sh`).
+   - Deliverable 4.4: Agent Workspace Virtualization (`scripts/sandbox_exec.sh`).
+3. **Stage 3 (Multi-Agent Mesh and Disaster Recovery)**:
+   - Deliverable 4.2: Inter-Agent Message Bus (`scripts/agent_bus.py`, `scripts/bus_send.sh`).
+   - Deliverable 4.3: Automated Disaster Recovery Provisioning (`scripts/bootstrap_wsl.ps1`, `scripts/post_bootstrap.sh`).
