@@ -1,32 +1,52 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# update_runtimes.sh — Update Node, NVM, PNPM, Bun, UV, and Global CLIs
+# update_runtimes.sh - Update Runtimes, Toolchains, and Package Repositories
 # ==============================================================================
 set -euo pipefail
 
-echo "==> [1/5] Updating APT package repositories..."
-sudo apt update && sudo apt upgrade -y
+WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Source Distribution Engine
+if [ -f "${WORKSPACE_ROOT}/scripts/lib/distro.sh" ]; then
+    # shellcheck source=scripts/lib/distro.sh
+    source "${WORKSPACE_ROOT}/scripts/lib/distro.sh"
+fi
+
+echo "==> [1/5] Updating system package repositories (${OS_DISTRO_NAME:-Linux})..."
+if declare -F pkg_update >/dev/null 2>&1 && declare -F pkg_upgrade >/dev/null 2>&1; then
+    pkg_update || true
+    pkg_upgrade || true
+elif command -v apt &>/dev/null; then
+    sudo apt update && sudo apt upgrade -y
+fi
 
 echo "==> [2/5] Updating Node / NVM toolchains..."
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-corepack prepare pnpm@latest --activate || true
+export NVM_DIR="${HOME}/.nvm"
+if [ -s "${NVM_DIR}/nvm.sh" ]; then
+    # shellcheck disable=SC1090,SC1091
+    source "${NVM_DIR}/nvm.sh"
+fi
+if command -v corepack &>/dev/null; then
+    corepack prepare pnpm@latest --activate 2>/dev/null || true
+fi
 
 echo "==> [3/5] Updating Bun runtime..."
 if command -v bun &>/dev/null; then
-  bun upgrade || true
+    bun upgrade 2>/dev/null || true
 fi
 
 echo "==> [4/5] Updating Astral UV..."
 if command -v uv &>/dev/null; then
-  uv self update || true
+    uv self update 2>/dev/null || true
 fi
 
 echo "==> [5/5] Updating AI Coding and Cloudflare CLIs..."
-npm install -g @anthropic-ai/claude-code --allow-scripts || true
-npm install -g wrangler --allow-scripts || true
+if command -v npm &>/dev/null; then
+    npm install -g @anthropic-ai/claude-code --allow-scripts 2>/dev/null || true
+    npm install -g wrangler --allow-scripts 2>/dev/null || true
+fi
 if command -v agy &>/dev/null; then
-  curl -fsSL https://antigravity.google/cli/install.sh | bash || true
+    curl -fsSL https://antigravity.google/cli/install.sh | bash 2>/dev/null || true
 fi
 
 echo "All runtimes updated."
