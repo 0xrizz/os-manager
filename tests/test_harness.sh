@@ -112,6 +112,80 @@ assert_exit_code "post_tool_failure.sh execution" 0 $?
 "${HOOKS_DIR}/pre_compact_state.sh" > /dev/null 2>&1
 assert_exit_code "pre_compact_state.sh execution" 0 $?
 
+echo "--- Testing Skills Frontmatter & SDO Compliance ---"
+validate_skills_frontmatter() {
+    local skill_dir="${WORKSPACE_ROOT}/.claude/skills"
+    local invalid_count=0
+    local total_skills=0
+
+    for skill_file in "${skill_dir}"/*/SKILL.md; do
+        [ -f "${skill_file}" ] || continue
+        total_skills=$((total_skills + 1))
+
+        # 1. Verify file begins with "---"
+        local first_line
+        first_line="$(head -n 1 "${skill_file}")"
+        if [ "${first_line}" != "---" ]; then
+            echo "  [ERROR] $(basename "$(dirname "${skill_file}")"): does not start with '---'" >&2
+            invalid_count=$((invalid_count + 1))
+            continue
+        fi
+
+        # 2. Extract frontmatter (between first and second '---')
+        local end_line
+        end_line="$(awk 'NR > 1 && /^---$/ { print NR; exit }' "${skill_file}")"
+        if [ -z "${end_line}" ]; then
+            echo "  [ERROR] $(basename "$(dirname "${skill_file}")"): missing closing '---' delimiter" >&2
+            invalid_count=$((invalid_count + 1))
+            continue
+        fi
+
+        local frontmatter
+        frontmatter="$(sed -n "2,$((end_line - 1))p" "${skill_file}")"
+
+        # 3. Check name: field exists and is non-empty
+        if ! echo "${frontmatter}" | grep -qE '^name:[[:space:]]+.+'; then
+            echo "  [ERROR] $(basename "$(dirname "${skill_file}")"): missing or empty 'name:' in frontmatter" >&2
+            invalid_count=$((invalid_count + 1))
+            continue
+        fi
+
+        # 4. Check description: field exists and is non-empty
+        if ! echo "${frontmatter}" | grep -qE '^description:[[:space:]]+.+'; then
+            echo "  [ERROR] $(basename "$(dirname "${skill_file}")"): missing or empty 'description:' in frontmatter" >&2
+            invalid_count=$((invalid_count + 1))
+            continue
+        fi
+
+        # 5. Check description begins with 'Use when' or 'You MUST use this'
+        local desc_val
+        desc_val="$(echo "${frontmatter}" | grep -E '^description:' | head -n 1 | sed -E 's/^description:[[:space:]]*//; s/^["'"'"']//')"
+        case "${desc_val}" in
+            "Use when"*|"You MUST use this"*)
+                ;;
+            *)
+                echo "  [ERROR] $(basename "$(dirname "${skill_file}")"): description does not start with 'Use when' or 'You MUST use this' (got: ${desc_val})" >&2
+                invalid_count=$((invalid_count + 1))
+                continue
+                ;;
+        esac
+    done
+
+    if [ "${total_skills}" -eq 0 ]; then
+        echo "  [ERROR] No skills found in ${skill_dir}" >&2
+        return 1
+    fi
+
+    if [ "${invalid_count}" -gt 0 ]; then
+        return 1
+    fi
+
+    return 0
+}
+
+validate_skills_frontmatter > /dev/null 2>&1
+assert_exit_code "All Skills Frontmatter & SDO Compliance" 0 $?
+
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
