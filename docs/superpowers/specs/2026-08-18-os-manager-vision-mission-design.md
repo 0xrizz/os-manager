@@ -1,4 +1,4 @@
-# Specification: os-manager Vision, Mission, and Responsibilities Blueprint
+# Specification: OS-Manager Vision, Mission, and Responsibilities Blueprint
 
 - **Date:** 2026-08-18
 - **Scope:** Workspace Architecture & System Governance (`/home/rizz/dev/os-manager`)
@@ -48,7 +48,7 @@
 
 ### Pillar 2: AI Multi-Agent & Superpowers Orchestration Hub
 - **Paired Development Sessions**: Launch coordinated tmux layouts (`scripts/tmux_agents.sh`, `/tmux-agents` skill, `/pair` command) pairing Claude Code with Antigravity (`agy`) and telemetry monitoring.
-- **Claude Code Agent Harness & Security Engine**: Governed by `docs/superpowers/specs/2026-08-18-claude-harness-architecture.md` featuring 4-Tier Security Guardrails (Exit 2 blocks), closed-loop auto-healing quality gates, and zero-copy SSOT symlink synchronization (`scripts/sync_agent_skills.sh`).
+- **Claude Code Agent Harness & Security Engine**: Governed by `docs/superpowers/specs/2026-08-18-claude-harness-architecture.md`. Features 4-Tier Security Guardrails (Exit 2 blocks), closed-loop auto-healing quality gates, and 21-skill SSOT symlink sync (`scripts/sync_agent_skills.sh`).
 - **Superpowers Methodology Suite**: Host and enforce the Superpowers development lifecycle under `.claude/skills/`:
   - Requirements & Design: `/brainstorming`
   - Planning & Execution: `/writing-plans`, `/executing-plans`, `/subagent-driven-development`, `/dispatching-parallel-agents`
@@ -66,7 +66,7 @@
 
 ### Pillar 4: State Protection & Disaster Recovery
 - **Dotfiles Sync & Backup**: Safeguard user configurations (`~/.bashrc`, `~/.tmux.conf`, `~/.gitconfig`) into `backups/dotfiles/` via `scripts/dotfiles_sync.sh` (`/dotfiles` command) with diff checks prior to applying modifications.
-- **WSL2 Snapshot Protocol**: Facilitate safe, full-distro tarball exports (`scripts/wsl_snapshot.sh`, `/wsl-snapshot` skill, `/snapshot` command) targeting Windows storage (`/mnt/d/wsl_backup`).
+- **WSL2 Snapshot Protocol**: Creates safe, full-distro tarball exports (`scripts/wsl_snapshot.sh`, `/wsl-snapshot` skill, `/snapshot` command) targeting Windows storage (`/mnt/d/wsl_backup`).
 - **Recovery Playbooks**: Maintain actionable markdown playbooks under `playbooks/` for environment bootstrapping and systemd recovery.
 
 ---
@@ -85,6 +85,6 @@
 
 ## 5. Roadmap & Next Evolutions
 
-- **Phase 1 [Completed]**: Implement Claude Code Agent Harness (`docs/superpowers/specs/2026-08-18-claude-harness-architecture.md`), dotfiles sync script (`scripts/dotfiles_sync.sh`), custom commands palette (`/diag`, `/clean`, `/upgrade`, `/snapshot`, `/dotfiles`, `/pair`, `/harness-check`), and Multi-Agent SSOT bridge (`scripts/sync_agent_skills.sh`).
+- **Phase 1 [Completed]**: Implement Claude Code Agent Harness and dotfiles sync (`scripts/dotfiles_sync.sh`). Standardize 21 SSOT skills, custom command palette, and multi-agent symlink bridge (`scripts/sync_agent_skills.sh`).
 - **Phase 2**: Add systemd / cron timer definitions for background safe maintenance and create recovery playbook (`playbooks/dotfiles_sync.md`).
 - **Phase 3**: Create performance tuning utility (`scripts/perf_tune.sh`) for measuring I/O latency between ext4 and 9P mounts.
