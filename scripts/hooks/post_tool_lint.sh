@@ -2,6 +2,8 @@
 # scripts/hooks/post_tool_lint.sh - PostToolUse auto-healing linter and syntax validator
 set -euo pipefail
 
+WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
 INPUT_JSON="$(cat)"
 
 if [ -z "${INPUT_JSON}" ]; then
@@ -11,6 +13,13 @@ fi
 TOOL_NAME="$(echo "${INPUT_JSON}" | jq -r '.tool_name // .name // empty' 2>/dev/null || echo "")"
 if [[ ! "${TOOL_NAME}" =~ ^(Edit|Write)$ ]]; then
     exit 0
+fi
+
+# Source Performance Tracing Helper
+if [ -f "${WORKSPACE_ROOT}/scripts/hooks/lib/trace_helper.sh" ]; then
+    # shellcheck source=scripts/hooks/lib/trace_helper.sh
+    source "${WORKSPACE_ROOT}/scripts/hooks/lib/trace_helper.sh"
+    trace_start "PostToolUse" "${TOOL_NAME}"
 fi
 
 TARGET_PATH="$(echo "${INPUT_JSON}" | jq -r '.tool_input.file_path // empty')"

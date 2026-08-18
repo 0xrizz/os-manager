@@ -6,8 +6,12 @@ WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LOGS_DIR="${WORKSPACE_ROOT}/backups/logs"
 mkdir -p "${LOGS_DIR}"
 
-AUDIT_LOG="${LOGS_DIR}/harness_audit.jsonl"
-TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+# Source Performance Tracing Helper
+if [ -f "${WORKSPACE_ROOT}/scripts/hooks/lib/trace_helper.sh" ]; then
+    # shellcheck source=scripts/hooks/lib/trace_helper.sh
+    source "${WORKSPACE_ROOT}/scripts/hooks/lib/trace_helper.sh"
+    trace_start "SessionStart" "null"
+fi
 
 # 1. RAM / Resource inspection
 AVAILABLE_MEM_MB=$(free -m | awk '/^Mem:/{print $7}')
@@ -23,8 +27,10 @@ for tool in jq python3 uv node; do
     fi
 done
 
+# shellcheck disable=SC2034
 STATUS="OK"
 if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
+    # shellcheck disable=SC2034
     STATUS="DEGRADED (missing: ${MISSING_TOOLS[*]})"
 fi
 
@@ -33,6 +39,4 @@ if [ -x "${WORKSPACE_ROOT}/scripts/sync_agent_skills.sh" ]; then
     "${WORKSPACE_ROOT}/scripts/sync_agent_skills.sh" >/dev/null 2>&1 || true
 fi
 
-# 4. Log session start event
-echo "{\"timestamp\":\"${TIMESTAMP}\",\"event\":\"SessionStart\",\"status\":\"${STATUS}\",\"available_mem_mb\":${AVAILABLE_MEM_MB:-0}}" >> "${AUDIT_LOG}"
 exit 0

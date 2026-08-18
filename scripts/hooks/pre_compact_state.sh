@@ -6,6 +6,12 @@ WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LOGS_DIR="${WORKSPACE_ROOT}/backups/logs"
 mkdir -p "${LOGS_DIR}"
 
+if [ -f "${WORKSPACE_ROOT}/scripts/hooks/lib/trace_helper.sh" ]; then
+    # shellcheck source=scripts/hooks/lib/trace_helper.sh
+    source "${WORKSPACE_ROOT}/scripts/hooks/lib/trace_helper.sh"
+    trace_start "PreCompact" "null"
+fi
+
 SNAPSHOT_FILE="${LOGS_DIR}/compact_snapshot.json"
 TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 

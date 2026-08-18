@@ -6,11 +6,13 @@ WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LOGS_DIR="${WORKSPACE_ROOT}/backups/logs"
 mkdir -p "${LOGS_DIR}"
 
-AUDIT_LOG="${LOGS_DIR}/harness_audit.jsonl"
-TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+if [ -f "${WORKSPACE_ROOT}/scripts/hooks/lib/trace_helper.sh" ]; then
+    # shellcheck source=scripts/hooks/lib/trace_helper.sh
+    source "${WORKSPACE_ROOT}/scripts/hooks/lib/trace_helper.sh"
+    trace_start "SessionEnd" "null"
+fi
 
 # Clean ephemeral test / temp artifacts if present
 rm -f /tmp/os_manager_temp_* 2>/dev/null || true
 
-echo "{\"timestamp\":\"${TIMESTAMP}\",\"event\":\"SessionEnd\",\"status\":\"SUCCESS\"}" >> "${AUDIT_LOG}"
 exit 0
