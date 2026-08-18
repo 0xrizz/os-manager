@@ -14,8 +14,8 @@ fi
 
 echo "==> [1/5] Updating system package repositories (${OS_DISTRO_NAME:-Linux})..."
 if declare -F pkg_update >/dev/null 2>&1 && declare -F pkg_upgrade >/dev/null 2>&1; then
-    pkg_update || true
-    pkg_upgrade || true
+    pkg_update "$@" || true
+    pkg_upgrade "$@" || true
 elif command -v apt &>/dev/null; then
     sudo apt update && sudo apt upgrade -y
 fi
