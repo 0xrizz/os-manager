@@ -74,8 +74,7 @@ assert_contains "security alert urgent sound" "${SEC_OUT}" "Notification.Urgent"
 # shellcheck disable=SC2016
 ESCAPE_OUT="$("${NOTIFIER_SCRIPT}" --dry-run --title "Alert & <Special>" --message 'Quotes "and" $variables and `backticks`' --type error)"
 assert_contains "XML ampersand escaping" "${ESCAPE_OUT}" "Alert &amp; &lt;Special&gt;"
-# shellcheck disable=SC2016
-assert_contains "PowerShell quote escaping" "${ESCAPE_OUT}" '`"and`"'
+assert_contains "XML quote escaping" "${ESCAPE_OUT}" '&quot;and&quot;'
 # shellcheck disable=SC2016
 assert_contains "PowerShell variable escaping" "${ESCAPE_OUT}" '`$variables'
 # shellcheck disable=SC2016
@@ -88,9 +87,9 @@ assert_contains "silent attribute enabled" "${SILENT_OUT}" 'silent="true"'
 # 7. Test rate limiting / debouncing
 set +e
 RATE_LIMIT_CAT="unit_test_debounce"
-"${NOTIFIER_SCRIPT}" --dry-run --title "Rate1" --message "M1" --category "${RATE_LIMIT_CAT}" > /dev/null 2>&1
+"${NOTIFIER_SCRIPT}" --title "Rate1" --message "M1" --category "${RATE_LIMIT_CAT}" > /dev/null 2>&1
 FIRST_EXIT=$?
-"${NOTIFIER_SCRIPT}" --dry-run --title "Rate2" --message "M2" --category "${RATE_LIMIT_CAT}" > /dev/null 2>&1
+"${NOTIFIER_SCRIPT}" --title "Rate2" --message "M2" --category "${RATE_LIMIT_CAT}" > /dev/null 2>&1
 SECOND_EXIT=$?
 assert_exit_code "First notification succeeds" 0 ${FIRST_EXIT}
 assert_exit_code "Rapid duplicate category debounced cleanly" 0 ${SECOND_EXIT}
