@@ -1,0 +1,13 @@
+[Unit]
+Description=OS-Manager Automated System Maintenance
+Documentation=https://github.com/0xrizz/os-manager
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/rizz/dev/os-manager/scripts/clean_system.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
