@@ -259,6 +259,18 @@ validate_playbooks() {
 validate_playbooks
 assert_exit_code "Playbooks Existence & Style Compliance" 0 $?
 
+echo "--- Testing Prometheus Metrics Exporter Suite ---"
+python3 -m py_compile "${WORKSPACE_ROOT}/scripts/metrics_exporter.py" > /dev/null 2>&1
+assert_exit_code "metrics_exporter.py bytecode compilation" 0 $?
+
+"${WORKSPACE_ROOT}/scripts/metrics_exporter.py" --help > /dev/null 2>&1
+assert_exit_code "metrics_exporter.py --help execution" 0 $?
+
+python3 -m unittest "${WORKSPACE_ROOT}/tests/test_metrics_exporter.py" > /dev/null 2>&1
+assert_exit_code "test_metrics_exporter.py unit test suite" 0 $?
+
+[ -f "${WORKSPACE_ROOT}/systemd/os-metrics-exporter.service" ]
+assert_exit_code "os-metrics-exporter.service exists" 0 $?
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
