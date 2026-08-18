@@ -65,6 +65,11 @@ PAYLOAD_TIER2_TIMERS='{"tool_name":"Bash","tool_input":{"command":"./scripts/man
 echo "${PAYLOAD_TIER2_TIMERS}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
 assert_exit_code "Tier 2 Whitelisted Script (manage_timers.sh)" 0 $?
 
+# Tier 2 Allow: Hook benchmark script
+PAYLOAD_TIER2_BENCH='{"tool_name":"Bash","tool_input":{"command":"./scripts/hook_benchmark.sh --summary"}}'
+echo "${PAYLOAD_TIER2_BENCH}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
+assert_exit_code "Tier 2 Whitelisted Script (hook_benchmark.sh)" 0 $?
+
 # Tier 3 Block: Root obliteration
 PAYLOAD_TIER3_ROOT='{"tool_name":"Bash","tool_input":{"command":"rm -rf /"}}'
 echo "${PAYLOAD_TIER3_ROOT}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
@@ -122,6 +127,12 @@ assert_exit_code "post_tool_failure.sh execution" 0 $?
 "${HOOKS_DIR}/pre_compact_state.sh" > /dev/null 2>&1
 assert_exit_code "pre_compact_state.sh execution" 0 $?
 
+echo "--- Testing Hook Performance Tracing Unit Suite ---"
+set +e
+"${WORKSPACE_ROOT}/tests/test_hook_tracing.sh" > /dev/null 2>&1
+assert_exit_code "test_hook_tracing.sh complete suite" 0 $?
+set -e
+
 echo "--- Testing Skills Frontmatter & SDO Compliance ---"
 validate_skills_frontmatter() {
     local skill_dir="${WORKSPACE_ROOT}/.claude/skills"
@@ -132,20 +143,16 @@ validate_skills_frontmatter() {
         [ -f "${skill_file}" ] || continue
         total_skills=$((total_skills + 1))
 
-        # 1. Verify file begins with "---"
         local first_line
         first_line="$(head -n 1 "${skill_file}")"
         if [ "${first_line}" != "---" ]; then
-            echo "  [ERROR] $(basename "$(dirname "${skill_file}")"): does not start with '---'" >&2
             invalid_count=$((invalid_count + 1))
             continue
         fi
 
-        # 2. Extract frontmatter (between first and second '---')
         local end_line
         end_line="$(awk 'NR > 1 && /^---$/ { print NR; exit }' "${skill_file}")"
         if [ -z "${end_line}" ]; then
-            echo "  [ERROR] $(basename "$(dirname "${skill_file}")"): missing closing '---' delimiter" >&2
             invalid_count=$((invalid_count + 1))
             continue
         fi
@@ -153,43 +160,31 @@ validate_skills_frontmatter() {
         local frontmatter
         frontmatter="$(sed -n "2,$((end_line - 1))p" "${skill_file}")"
 
-        # 3. Check name: field exists and is non-empty
         if ! echo "${frontmatter}" | grep -qE '^name:[[:space:]]+.+'; then
-            echo "  [ERROR] $(basename "$(dirname "${skill_file}")"): missing or empty 'name:' in frontmatter" >&2
             invalid_count=$((invalid_count + 1))
             continue
         fi
 
-        # 4. Check description: field exists and is non-empty
         if ! echo "${frontmatter}" | grep -qE '^description:[[:space:]]+.+'; then
-            echo "  [ERROR] $(basename "$(dirname "${skill_file}")"): missing or empty 'description:' in frontmatter" >&2
             invalid_count=$((invalid_count + 1))
             continue
         fi
 
-        # 5. Check description begins with 'Use when' or 'You MUST use this'
         local desc_val
         desc_val="$(echo "${frontmatter}" | grep -E '^description:' | head -n 1 | sed -E 's/^description:[[:space:]]*//; s/^["'"'"']//')"
         case "${desc_val}" in
             "Use when"*|"You MUST use this"*)
                 ;;
             *)
-                echo "  [ERROR] $(basename "$(dirname "${skill_file}")"): description does not start with 'Use when' or 'You MUST use this' (got: ${desc_val})" >&2
                 invalid_count=$((invalid_count + 1))
                 continue
                 ;;
         esac
     done
 
-    if [ "${total_skills}" -eq 0 ]; then
-        echo "  [ERROR] No skills found in ${skill_dir}" >&2
+    if [ "${total_skills}" -eq 0 ] || [ "${invalid_count}" -gt 0 ]; then
         return 1
     fi
-
-    if [ "${invalid_count}" -gt 0 ]; then
-        return 1
-    fi
-
     return 0
 }
 
@@ -198,12 +193,10 @@ assert_exit_code "All Skills Frontmatter & SDO Compliance" 0 $?
 
 echo "--- Testing Automation & Resilience Components ---"
 
-# 1. Performance benchmark execution (--quick)
 set +e
 "${WORKSPACE_ROOT}/scripts/perf_tune.sh" --quick > /dev/null 2>&1
 assert_exit_code "perf_tune.sh --quick execution" 0 $?
 
-# 2. Systemd unit syntax validation
 validate_systemd_units() {
     local service_file="${WORKSPACE_ROOT}/systemd/os-maintenance.service"
     local timer_file="${WORKSPACE_ROOT}/systemd/os-maintenance.timer"
@@ -220,7 +213,6 @@ validate_systemd_units() {
 validate_systemd_units
 assert_exit_code "Systemd Unit Files & Syntax Validation" 0 $?
 
-# 3. Playbooks existence and agent-style compliance
 validate_playbooks() {
     local dotfiles_pb="${WORKSPACE_ROOT}/playbooks/dotfiles_sync.md"
     local disaster_pb="${WORKSPACE_ROOT}/playbooks/disaster_recovery.md"
