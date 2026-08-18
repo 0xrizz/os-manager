@@ -292,6 +292,17 @@ assert_exit_code "compact_host_disk.sh --dry-run execution" 0 $?
 
 "${WORKSPACE_ROOT}/tests/test_disk_compaction.sh" > /dev/null 2>&1
 assert_exit_code "test_disk_compaction.sh complete suite" 0 $?
+
+echo "--- Testing Agent Workspace Virtualization Suite ---"
+"${WORKSPACE_ROOT}/scripts/sandbox_exec.sh" --help > /dev/null 2>&1
+assert_exit_code "sandbox_exec.sh --help execution" 0 $?
+
+DRY_RUN_SANDBOX="$("${WORKSPACE_ROOT}/scripts/sandbox_exec.sh" --dry-run --target-dir "${WORKSPACE_ROOT}" -- echo "test")"
+echo "${DRY_RUN_SANDBOX}" | grep -q -- "--read-only"
+assert_exit_code "sandbox_exec.sh --dry-run contains --read-only" 0 $?
+
+"${WORKSPACE_ROOT}/tests/test_sandbox.sh" > /dev/null 2>&1
+assert_exit_code "test_sandbox.sh complete suite" 0 $?
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
