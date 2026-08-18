@@ -100,7 +100,7 @@ if [ "${TOOL_NAME}" = "Bash" ]; then
     fi
 
     # Invariant Block: Dangerous Container Privilege Escalation
-    if echo "${CMD}" | grep -qE '\bpodman\s+run\b.*\b(--privileged|--pid=host|--net=host|--cap-add=ALL|-v\s+/(dev|proc|sys|root|etc))\b'; then
+    if echo "${CMD}" | grep -qE '\bpodman\s+run\b.*(--privileged|--pid=host|--net=host|--cap-add=ALL|-v\s+/(dev|proc|sys|root|etc))\b'; then
         echo "[HARNESS SECURITY BLOCKED] Invariant Violation (Tier 3): Container privilege escalation is strictly forbidden: ${CMD}" >&2
         notify_security_violation "Container privilege escalation blocked: ${CMD}"
         exit 2

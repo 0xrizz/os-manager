@@ -80,27 +80,35 @@ PAYLOAD_TIER3_WSL='{"tool_name":"Bash","tool_input":{"command":"wsl.exe --unregi
 echo "${PAYLOAD_TIER3_WSL}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
 assert_exit_code "Tier 3 Block (wsl --unregister)" 2 $?
 
-# Tier 3 Block: Indiscriminate Package Purge (Pacman, DNF, Zypper, APK)
-PAYLOAD_TIER3_PACMAN='{"tool_name":"Bash","tool_input":{"command":"pacman -Rcs *"}}'
-echo "${PAYLOAD_TIER3_PACMAN}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
-assert_exit_code "Tier 3 Block (pacman -Rcs *)" 2 $?
-
-PAYLOAD_TIER3_DNF='{"tool_name":"Bash","tool_input":{"command":"dnf remove --all"}}'
-echo "${PAYLOAD_TIER3_DNF}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
-assert_exit_code "Tier 3 Block (dnf remove --all)" 2 $?
-
-PAYLOAD_TIER3_ZYPPER='{"tool_name":"Bash","tool_input":{"command":"zypper remove *"}}'
-echo "${PAYLOAD_TIER3_ZYPPER}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
-assert_exit_code "Tier 3 Block (zypper remove *)" 2 $?
-
-PAYLOAD_TIER3_APK='{"tool_name":"Bash","tool_input":{"command":"apk del *"}}'
-echo "${PAYLOAD_TIER3_APK}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
-assert_exit_code "Tier 3 Block (apk del *)" 2 $?
-
 # Tier 3 Block: Windows System Host Write
 PAYLOAD_TIER3_WIN='{"tool_name":"Write","tool_input":{"file_path":"/mnt/c/Windows/System32/drivers/etc/hosts","content":"127.0.0.1 test"}}'
 echo "${PAYLOAD_TIER3_WIN}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
 assert_exit_code "Tier 3 Block (Windows System Host Write)" 2 $?
+
+# Tier 3 Block: Container Privilege Escalation
+PAYLOAD_TIER3_PODMAN='{"tool_name":"Bash","tool_input":{"command":"podman run --privileged ubuntu bash"}}'
+echo "${PAYLOAD_TIER3_PODMAN}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
+assert_exit_code "Tier 3 Block (podman run --privileged)" 2 $?
+
+# Tier 3 Block: APT Wildcard Purge
+PAYLOAD_TIER3_APT='{"tool_name":"Bash","tool_input":{"command":"apt purge *"}}'
+echo "${PAYLOAD_TIER3_APT}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
+assert_exit_code "Tier 3 Block (apt purge *)" 2 $?
+
+# Tier 3 Block: Pacman Wildcard Removal
+PAYLOAD_TIER3_PACMAN='{"tool_name":"Bash","tool_input":{"command":"pacman -Rcs *"}}'
+echo "${PAYLOAD_TIER3_PACMAN}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
+assert_exit_code "Tier 3 Block (pacman -Rcs *)" 2 $?
+
+# Tier 3 Block: DNF Mass Removal
+PAYLOAD_TIER3_DNF='{"tool_name":"Bash","tool_input":{"command":"dnf remove --all"}}'
+echo "${PAYLOAD_TIER3_DNF}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
+assert_exit_code "Tier 3 Block (dnf remove --all)" 2 $?
+
+# Tier 3 Block: Zypper Wildcard Removal
+PAYLOAD_TIER3_ZYPPER='{"tool_name":"Bash","tool_input":{"command":"zypper remove *"}}'
+echo "${PAYLOAD_TIER3_ZYPPER}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
+assert_exit_code "Tier 3 Block (zypper remove *)" 2 $?
 
 echo "--- Testing PostToolUse Auto-Healing Linting ---"
 
@@ -148,6 +156,10 @@ echo "--- Testing Hook Performance Tracing Unit Suite ---"
 set +e
 "${WORKSPACE_ROOT}/tests/test_hook_tracing.sh" > /dev/null 2>&1
 assert_exit_code "test_hook_tracing.sh complete suite" 0 $?
+
+echo "--- Testing Cross-Distribution Discovery Unit Suite ---"
+"${WORKSPACE_ROOT}/tests/test_distro.sh" > /dev/null 2>&1
+assert_exit_code "test_distro.sh complete suite" 0 $?
 set -e
 
 echo "--- Testing Skills Frontmatter & SDO Compliance ---"
