@@ -32,3 +32,22 @@ backups/*.wsl
 .claude/worktrees/
 .claude/scheduled_tasks.json
 .claude/tasks/
+.claude/plans/
+.superpowers/
+CLAUDE.local.md
+
+# Telemetry, Sockets & PID Daemons
+backups/logs/*.jsonl
+backups/logs/*.json
+!backups/logs/.gitkeep
+*.sock
+*.pid
+
+# WSL & Windows Metadata
+*:Zone.Identifier
+
+# Python Test & Tooling Caches
+.coverage
+htmlcov/
+.mypy_cache/
+.uv/

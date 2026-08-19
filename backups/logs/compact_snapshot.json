@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-08-18T19:57:43Z",
+  "timestamp": "2026-08-19T17:32:19Z",
   "branch": "main",
-  "git_status": " M .claude/agents/system-operator.md\n M backups/logs/compact_snapshot.json\n M backups/logs/harness_audit.jsonl\n M backups/logs/harness_errors.jsonl\n?? scripts/migrate_repos.sh"
+  "git_status": " D .superpowers/sdd/agent-workspace-virtualization/progress.md\n D .superpowers/sdd/automated-disk-compaction/progress.md\n D .superpowers/sdd/desktop-notification-bridge/progress.md\n D .superpowers/sdd/prometheus-metrics-exporter/progress.md\n M backups/logs/compact_snapshot.json\n M backups/logs/harness_audit.jsonl\n M backups/logs/harness_errors.jsonl\n?? .superpowers/sdd/2026-08-19-ci-cd-release-engineering/\n?? .superpowers/sdd/2026-08-19-gtm-marketing-community/\n?? .superpowers/sdd/2026-08-19-ux-dx-enhancements/\n?? .superpowers/sdd/phase5/\n?? CLAUDE.local.md\n?? uv.lock"
 }

@@ -18,8 +18,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Common Development and Operational Commands
 
 ### Testing and Validation
-- Run master harness test suite (50 assertions): `./tests/test_harness.sh`
+- Run master harness test suite (58 assertions): `./tests/test_harness.sh`
 - Run individual test suites:
+  - UX & DX enhancements tests: `./tests/test_ux_dx.sh`
+  - CI/CD and release workflow tests: `./tests/test_ci_cd.sh`
+  - Marketing assets & launch playbook tests: `./tests/test_marketing_assets.sh`
   - Inter-Agent Message Bus unit tests: `python3 -m unittest tests/test_agent_bus.py`
   - Disaster Recovery Provisioning tests: `./tests/test_bootstrap.sh`
   - Prometheus metrics exporter tests: `python3 -m unittest tests/test_metrics_exporter.py`
@@ -31,6 +34,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Run full harness self-check and symlink validation: `./scripts/harness_check.sh`
 - Audit Markdown prose against writing rules: `agent-style review --audit-only <file.md>`
 - Sync multi-agent skills to Universal Agent and Antigravity: `./scripts/sync_agent_skills.sh`
+- Standalone installer & scaffolding: `./install.sh [--global|--project <dir>|--uninstall|--dry-run]`
 
 ### Pillar Automation Scripts
 - Inter-Agent Message Bus daemon: `python3 ./scripts/agent_bus.py [--socket-path <path>]`
