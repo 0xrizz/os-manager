@@ -352,6 +352,13 @@ else
     echo "  [FAIL] Hardcoded personal path leak detected: ${REPO_LEAK_CHECK}"
     assert_exit_code "Repository-wide path sanitization" 0 1
 fi
+
+echo "--- Testing Packaging and CLI Suite ---"
+"${WORKSPACE_ROOT}/tests/test_installer.sh" > /dev/null 2>&1
+assert_exit_code "test_installer.sh execution" 0 $?
+
+python3 -m unittest "${WORKSPACE_ROOT}/tests/test_cli.py" > /dev/null 2>&1
+assert_exit_code "test_cli.py execution" 0 $?
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
