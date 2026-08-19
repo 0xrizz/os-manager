@@ -1,3 +1,12 @@
+```text
+ ██████╗ ███████╗      ███╗   ███╗ █████╗ ███╗   ██╗ █████╗  ██████╗ ███████╗██████╗ 
+██╔═══██╗██╔════╝      ████╗ ████║██╔══██╗████╗  ██║██╔══██╗██╔════╝ ██╔════╝██╔══██╗
+██║   ██║███████╗█████╗██╔████╔██║███████║██╔██╗ ██║███████║██║  ███╗█████╗  ██████╔╝
+██║   ██║╚════██║╚════╝██║╚██╔╝██║██╔══██║██║╚██╗██║██╔══██║██║   ██║██╔══╝  ██╔══██╗
+╚██████╔╝███████║      ██║ ╚═╝ ██║██║  ██║██║ ╚████║██║  ██║╚██████╔╝███████╗██║  ██║
+ ╚═════╝ ╚══════╝      ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝
+```
+
 # os-manager — Autonomous Claude Code Harness, Security Matrix & WSL2 Automation Suite
 
 <p align="center">
@@ -29,6 +38,16 @@ uv tool install 0xrizz-os-manager
 osm check
 ```
 
+```text
+┌── [osm] System & Harness Status ─────────────────────────────────────────┐
+│ • Platform      : Debian 13 (Trixie) WSL2 | Linux 6.18.x                 │
+│ • Security      : Tier 0-3 Guard Active (Exit 2 on host violation)       │
+│ • Virtualization: Rootless Podman Sandbox Fallback Ready                 │
+│ • Observability : Prometheus Exporter (:9100) + Monotonic Tracing        │
+│ • Test Engine   : 59/59 Assertions Passing [100% OK]                     │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
 ---
 
 ## 🛡️ Core Features
@@ -44,33 +63,36 @@ osm check
 ## 🏛️ Harness Architecture
 
 ```text
- ══════════════════════════════════════════════════════════════════════════════════════════════════
-                                CLAUDE-FIRST AGENT HARNESS TOPOLOGY                                  
- ══════════════════════════════════════════════════════════════════════════════════════════════════
-                                               │
- ┌─────────────────────────────────────────────▼──────────────────────────────────────────────────┐
- │ HARNESS CONFIGURATION & GOVERNANCE LAYER                                                       │
- │ • .claude/settings.json (Permissions, Env, Hook Registrations)                                 │
- │ • CLAUDE.md & .claude/rules/ (WSL Boundaries, Safety Tiers, Error Recovery Protocols)         │
- └─────────────────────────────────────────────┬──────────────────────────────────────────────────┘
-                                               │
-        ┌──────────────────────────────────────┼──────────────────────────────────────┐
-        ▼                                      ▼                                      ▼
- ┌──────────────┐                       ┌──────────────┐                       ┌──────────────┐
- │  LIFECYCLE   │                       │    CUSTOM    │                       │ MULTI-AGENT  │
- │    HOOKS     │                       │   COMMANDS   │                       │ INTEROP &    │
- │    ENGINE    │                       │   & SKILLS   │                       │  SUBAGENTS   │
- ├──────────────┤                       ├──────────────┤                       ├──────────────┤
- │•SessionStart │                       │• /diag       │                       │•.claude/     │
- │•PreToolUse   │                       │• /clean      │                       │  skills/     │
- │•PostToolUse  │                       │• /upgrade    │                       │•.agents/     │
- │•PostFailure  │                       │• /snapshot   │                       │  skills/     │
- │•PreCompact   │                       │• /dotfiles   │                       │•~/.gemini/   │
- │•SessionEnd   │                       │• /pair       │                       │  config/     │
- │              │                       │• /harness-   │                       │  skills/     │
- │              │                       │  check       │                       │•.claude/     │
- │              │                       │              │                       │  agents/     │
- └──────────────┘                       └──────────────┘                       └──────────────┘
+╔════════════════════════════════════════════════════════════════════════════════════╗
+║═════════════════════════ OS-MANAGER CONTROL PLANE MATRIX ══════════════════════════║
+╠════════════════════════════════════════════════════════════════════════════════════╣
+║                                                                                    ║
+║  ┌─ [01] GOVERNANCE & CORE HARNESS ────────────────────────────────────────────┐   ║
+║  │  • .claude/settings.json       • .claude/rules/ (Safety & WSL Boundaries)   │   ║
+║  │  • CLAUDE.md Governance        • Zero 9P Latency Native EXT4 Enforcement    │   ║
+║  └─────────────────────────────────────┬───────────────────────────────────────┘   ║
+║                                        │ [DISPATCH]                                ║
+║         ┌──────────────────────────────┼──────────────────────────────┐            ║
+║         ▼                              ▼                              ▼            ║
+║  ┌──────────────┐              ┌──────────────┐              ┌──────────────┐      ║
+║  │  LIFECYCLE   │              │   COMMANDS   │              │ MULTI-AGENT  │      ║
+║  │    HOOKS     │              │    SUITE     │              │    BRIDGE    │      ║
+║  ├──────────────┤              ├──────────────┤              ├──────────────┤      ║
+║  │•SessionStart │              │• /diag       │              │• Claude Code │      ║
+║  │•PreToolGuard │              │• /clean      │              │• UniversalAgt│      ║
+║  │•PostToolLint │              │• /upgrade    │              │• Antigravity │      ║
+║  │•PostFailure  │              │• /snapshot   │              │• Message Bus │      ║
+║  │•PreCompact   │              │• /pair       │              │  (JSON-RPC)  │      ║
+║  └──────┬───────┘              └──────────────┘              └──────┬───────┘      ║
+║         │                                                           │              ║
+║         ▼                                                           ▼              ║
+║  ┌─────────────────────────────────────┐   ┌────────────────────────────────┐      ║
+║  │ 4-TIER SECURITY MATRIX (HARD VETO 2)│   │ROOTLESS PODMAN SANDBOX FALLBACK│      ║
+║  │[T0: ReadOnly] [T1: Local] [T2: Safe]│<─>│Isolated Execution for Risky Cmd│      ║
+║  │[T3: Invariant Block / Root Guard]   │   │(Zero Host Sabotage Guaranteed) │      ║
+║  └─────────────────────────────────────┘   └────────────────────────────────┘      ║
+║                                                                                    ║
+╚════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
 ---
