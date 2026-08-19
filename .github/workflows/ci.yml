@@ -1,4 +1,4 @@
-name: CI Suite
+name: CI
 
 on:
   push:
@@ -6,48 +6,55 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  lint:
-    name: Code Quality & Static Analysis
+  lint-and-security:
+    name: Lint, Static Analysis & Secret Scanning
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install Linting Tools
+      - name: Install Shell Tools
         run: |
           sudo apt update && sudo apt install -y shellcheck jq
-          pip install flake8 pyyaml
+          pip install ruff
 
       - name: ShellCheck Lint
         run: |
-          shellcheck scripts/**/*.sh tests/**/*.sh install.sh
+          shellcheck -S warning scripts/**/*.sh tests/**/*.sh install.sh
 
-      - name: Python Syntax & Lint
+      - name: Python Lint & Format (Ruff)
         run: |
-          python3 -m py_compile scripts/*.py tests/*.py os_manager/**/*.py
-          flake8 scripts/ os_manager/ tests/ --max-line-length=120 --ignore=E402,W503
+          ruff check scripts/ os_manager/ tests/
+          ruff format --check scripts/ os_manager/ tests/
 
-      - name: Validate YAML Syntax
-        run: |
-          python3 -c '
-          import yaml, glob
-          for yml in glob.glob(".github/**/*.yml", recursive=True):
-              with open(yml, "r", encoding="utf-8") as f:
-                  yaml.safe_load(f)
-          '
+      - name: Gitleaks Secret Detection
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  test-linux:
-    name: Linux Harness Test Suite
-    needs: lint
+  test-matrix:
+    name: Multi-OS Test Matrix (${{ matrix.os }} - Py${{ matrix.python-version }})
+    needs: lint-and-security
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04]
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.11", "3.12"]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -56,31 +63,15 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
 
-      - name: Install Runtime Prerequisites
+      - name: Install Linux Prerequisites
+        if: runner.os == 'Linux'
         run: |
           sudo apt update && sudo apt install -y jq curl podman
 
-      - name: Run Master Harness Test Suite
-        run: |
-          chmod +x tests/*.sh scripts/*.sh install.sh
-          ./tests/test_harness.sh
-
-  test-macos:
-    name: macOS Harness Test Suite
-    needs: lint
-    runs-on: macos-14
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install Runtime Prerequisites
+      - name: Install macOS Prerequisites
+        if: runner.os == 'macOS'
         run: |
           brew install jq
 
@@ -88,3 +79,7 @@ jobs:
         run: |
           chmod +x tests/*.sh scripts/*.sh install.sh
           ./tests/test_harness.sh
+
+      - name: Run Harness Self-Check
+        run: |
+          ./scripts/harness_check.sh
