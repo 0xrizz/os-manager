@@ -4,7 +4,7 @@
   <a href="https://github.com/0xrizz/os-manager/actions"><img src="https://img.shields.io/github/actions/workflow/status/0xrizz/os-manager/ci.yml?branch=main&label=CI&logo=github" alt="CI Status"></a>
   <a href="https://pypi.org/project/os-manager/"><img src="https://img.shields.io/pypi/v/os-manager?color=blue&logo=pypi" alt="PyPI Version"></a>
   <a href="https://github.com/0xrizz/os-manager/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
-  <a href="https://github.com/0xrizz/os-manager"><img src="https://img.shields.io/badge/tests-55%2F55%20passing-brightgreen" alt="Tests"></a>
+  <a href="https://github.com/0xrizz/os-manager"><img src="https://img.shields.io/badge/tests-59%2F59%20passing-brightgreen" alt="Tests"></a>
 </p>
 
 <p align="center">

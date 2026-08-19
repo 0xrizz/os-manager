@@ -65,7 +65,7 @@ JSON
 fi
 
 if [ "${FULL_MODE}" = false ]; then
-    echo -e "┌─ ${C_BOLD}os-manager v1.2${C_RESET} ────────────────────────────────────────────────────────┐"
+    echo -e "┌─ ${C_BOLD}os-manager v1.0.0${C_RESET} ──────────────────────────────────────────────────────┐"
     echo -e "│  Host: ${OS_DISTRO_NAME:-Linux} (${OS_DISTRO_FAMILY:-Linux})  •  Kernel: ${KERNEL_VER}  •  RAM: ${RAM_SUMMARY}  │"
     echo -e "│  Disk: ${DISK_SUMMARY}  •  Status: ${BADGE_OK}  •  Sandbox: ${BADGE_SANDBOX} Ready     │"
     echo -e "└──────────────────────────────────────────────────────────────────────────┘"
