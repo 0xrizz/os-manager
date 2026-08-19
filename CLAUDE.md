@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **OS / Platform**: Debian GNU/Linux 13 (Trixie), WSL2 (Kernel 6.18.x) on Windows 11 Host
 - **Filesystem Mounts**:
-  - `/` (Native ext4 WSL root): Primary high-performance domain for repositories, virtualenvs, and builds.
+  - `/` (Native ext4 WSL root): Primary high-performance domain for repositories, virtual environments, and builds.
   - `/mnt/c/` (Windows Host C:): Read-only host inspection. Direct writes to Windows system directories are hard-blocked.
   - `/mnt/d/` (Windows Host D:): Dedicated disaster recovery and backup storage (`/mnt/d/wsl_backup`).
 - **Runtimes and CLIs**: Node.js, PNPM, Bun, Python UV, Tmux, Cloudflare Wrangler, Claude Code CLI, Google Antigravity (`agy`), Agent-Style CLI (`agent-style`).
@@ -18,8 +18,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Common Development and Operational Commands
 
 ### Testing and Validation
-- Run master harness test suite (41 assertions): `./tests/test_harness.sh`
+- Run master harness test suite (50 assertions): `./tests/test_harness.sh`
 - Run individual test suites:
+  - Inter-Agent Message Bus unit tests: `python3 -m unittest tests/test_agent_bus.py`
+  - Disaster Recovery Provisioning tests: `./tests/test_bootstrap.sh`
   - Prometheus metrics exporter tests: `python3 -m unittest tests/test_metrics_exporter.py`
   - Desktop notification bridge tests: `./tests/test_notify_host.sh`
   - Host disk compaction tests: `./tests/test_disk_compaction.sh`
@@ -31,6 +33,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Sync multi-agent skills to Universal Agent and Antigravity: `./scripts/sync_agent_skills.sh`
 
 ### Pillar Automation Scripts
+- Inter-Agent Message Bus daemon: `python3 ./scripts/agent_bus.py [--socket-path <path>]`
+- Inter-Agent message publisher client: `./scripts/bus_send.sh [--topic <topic>|--to <agent>] --payload '<json>'`
+- Automated WSL2 disaster recovery provisioner: `powershell.exe -ExecutionPolicy Bypass -File ./scripts/bootstrap_wsl.ps1 [-SnapshotPath <path>] [-DryRun]`
+- Linux post-bootstrap verification agent: `./scripts/post_bootstrap.sh [--audit-only]`
 - System diagnostics and resource metrics: `./scripts/sys_diag.sh [--full|--json]`
 - Zero-dependency Prometheus metrics exporter: `python3 ./scripts/metrics_exporter.py [--port 9100]`
 - Windows desktop toast notification bridge: `./scripts/notify_host.sh --title "..." --message "..." [--type info|warning|error]`
@@ -70,6 +76,9 @@ os-manager/
 │   │       └── trace_helper.sh  # Nanosecond hook execution monotonic tracing library
 │   ├── lib/
 │   │   └── distro.sh            # Zero-dependency cross-distro detection & package abstraction
+│   ├── agent_bus.py             # Asynchronous JSON-RPC 2.0 Unix socket message broker
+│   ├── bootstrap_wsl.ps1        # Windows host PowerShell WSL2 disaster recovery provisioner
+│   ├── bus_send.sh              # Non-blocking fail-safe CLI publisher for agent bus
 │   ├── clean_system.sh          # Safe cache & package cleanup script
 │   ├── compact_host_disk.sh     # Host VHDX slack space compaction utility
 │   ├── dotfiles_sync.sh         # Dotfiles backup, diff, and restore script
@@ -80,6 +89,7 @@ os-manager/
 │   ├── migrate_repos.sh         # Batch repository migration utility (NTFS -> ext4)
 │   ├── notify_host.sh           # Windows WinRT desktop toast notification dispatcher
 │   ├── perf_tune.sh             # Filesystem I/O performance benchmark script
+│   ├── post_bootstrap.sh        # Linux first-boot verification and self-healing agent
 │   ├── sandbox_exec.sh          # Rootless Podman agent isolation wrapper
 │   ├── sync_agent_skills.sh     # Multi-agent SSOT symlink synchronization script
 │   ├── sys_diag.sh              # System diagnostic & health inspection script
@@ -87,13 +97,16 @@ os-manager/
 │   ├── update_runtimes.sh       # Runtimes & toolchains update coordinator
 │   └── wsl_snapshot.sh          # WSL disaster recovery snapshot script
 ├── systemd/
+│   ├── agent-bus.service        # Systemd user service unit for inter-agent message bus
 │   ├── os-maintenance.service   # Systemd user service unit for daily maintenance
 │   ├── os-maintenance.timer     # Systemd user timer unit for scheduled maintenance
 │   └── os-metrics-exporter.service # Systemd user service unit for metrics exporter
 ├── tests/
+│   ├── test_agent_bus.py        # Unit tests for Inter-Agent Message Bus (10 tests)
+│   ├── test_bootstrap.sh        # Unit tests for Automated Disaster Recovery Provisioning (15 assertions)
 │   ├── test_disk_compaction.sh  # Unit tests for host disk compaction
 │   ├── test_distro.sh           # Mocked cross-distribution unit test suite (13 assertions)
-│   ├── test_harness.sh          # Master harness integration test suite (41 assertions)
+│   ├── test_harness.sh          # Master harness integration test suite (50 assertions)
 │   ├── test_hook_tracing.sh     # Hook tracing & latency benchmark test suite (12 assertions)
 │   ├── test_metrics_exporter.py # Unit tests for Prometheus metrics exporter (11 tests)
 │   ├── test_notify_host.sh      # Unit tests for Windows toast notification bridge (15 tests)
@@ -152,7 +165,7 @@ Registered in `.claude/settings.json` and executed deterministically using `${CL
 
 - **Tier 0 (Autonomous / Read-Only - Exit 0)**: Read-only queries (`git status`, `git diff`, `free`, `df`, `systemctl status`, `ps`, read-only diagnostics) run autonomously.
 - **Tier 1 (Workspace Contained - Exit 0)**: File reads, writes, and edits bounded within `/home/rizz/dev/os-manager/` proceed autonomously subject to post-tool linting.
-- **Tier 2 (Controlled System Operations - Exit 0)**: Whitelisted scripts (`scripts/*.sh`, `scripts/metrics_exporter.py`) run with pre-authorized status. Covered utilities include diagnostics, cleanup, updates, snapshots, benchmarks, metrics, notifications, disk compaction, sandboxing, and timer management.
+- **Tier 2 (Controlled System Operations - Exit 0)**: Whitelisted scripts (`scripts/*.sh`, `scripts/metrics_exporter.py`, `scripts/agent_bus.py`) run with pre-authorized status. Covered utilities include diagnostics, cleanup, updates, snapshots, benchmarks, metrics, notifications, disk compaction, sandboxing, timer management, message bus operations, and recovery provisioning.
 - **Tier 3 (Strict Invariant Violations - Hard Blocked with Exit 2)**:
   - Root / Home obliteration: `rm -rf /`, `rm -rf ~`, `rm -rf $HOME`.
   - WSL instance lifecycle destruction: `wsl --unregister`, `wsl.exe --unregister`, `wsl --shutdown`.
