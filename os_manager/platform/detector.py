@@ -2,13 +2,13 @@
 
 import os
 import platform
-from typing import Dict, Any
+from typing import Any
 
 
-def detect_platform() -> Dict[str, Any]:
+def detect_platform() -> dict[str, Any]:
     """Detect current operating system, kernel, and package manager."""
     system = platform.system()
-    info: Dict[str, Any] = {
+    info: dict[str, Any] = {
         "system": system,
         "platform": "unknown",
         "distro_id": "unknown",
@@ -19,13 +19,15 @@ def detect_platform() -> Dict[str, Any]:
     }
 
     if system == "Darwin":
-        info.update({
-            "platform": "macos",
-            "distro_id": "darwin",
-            "distro_family": "darwin",
-            "pkg_manager": "brew",
-            "service_manager": "launchd",
-        })
+        info.update(
+            {
+                "platform": "macos",
+                "distro_id": "darwin",
+                "distro_family": "darwin",
+                "pkg_manager": "brew",
+                "service_manager": "launchd",
+            }
+        )
     elif system == "Linux":
         # Check WSL
         is_wsl = False

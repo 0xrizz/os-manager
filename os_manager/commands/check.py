@@ -2,10 +2,9 @@
 
 import subprocess
 import sys
-from typing import List
 
 
-def run_check(args: List[str]) -> int:
+def run_check(args: list[str]) -> int:
     """Run master test suite."""
     print("=== Running OS-Manager Master Harness Check ===")
     try:

@@ -13,14 +13,14 @@ import socketserver
 import subprocess
 import sys
 import time
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 START_TIME = time.time()
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_WORKSPACE_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 
 
-def parse_loadavg(content: str) -> Tuple[int, Dict[str, float]]:
+def parse_loadavg(content: str) -> tuple[int, dict[str, float]]:
     """Extract CPU cores and 1m, 5m, 15m load averages."""
     cores = os.cpu_count() or 1
     loads = {"1m": 0.0, "5m": 0.0, "15m": 0.0}
@@ -35,9 +35,9 @@ def parse_loadavg(content: str) -> Tuple[int, Dict[str, float]]:
     return cores, loads
 
 
-def parse_meminfo(content: str) -> Dict[str, int]:
+def parse_meminfo(content: str) -> dict[str, int]:
     """Parse /proc/meminfo into byte measurements."""
-    raw_kb: Dict[str, int] = {}
+    raw_kb: dict[str, int] = {}
     for line in content.splitlines():
         line = line.strip()
         if not line or ":" not in line:
@@ -71,7 +71,7 @@ def parse_meminfo(content: str) -> Dict[str, int]:
     }
 
 
-def collect_storage_metrics(path: str = "/") -> Dict[str, int]:
+def collect_storage_metrics(path: str = "/") -> dict[str, int]:
     """Calculate filesystem capacity and usage using os.statvfs."""
     try:
         st = os.statvfs(path)
@@ -87,7 +87,7 @@ def collect_storage_metrics(path: str = "/") -> Dict[str, int]:
         return {"total_bytes": 0, "free_bytes": 0, "available_bytes": 0}
 
 
-def collect_systemd_metrics() -> Dict[str, int]:
+def collect_systemd_metrics() -> dict[str, int]:
     """Collect systemd unit health status for system and user scopes."""
     results = {
         "system_failed_units": 0,
@@ -157,11 +157,11 @@ def collect_systemd_metrics() -> Dict[str, int]:
     return results
 
 
-def collect_harness_metrics(audit_log_path: str, error_log_path: str) -> Dict[str, Any]:
+def collect_harness_metrics(audit_log_path: str, error_log_path: str) -> dict[str, Any]:
     """Aggregate lifecycle hook executions, blocks, and tool failures."""
-    hook_executions: Dict[str, int] = {}
-    hook_blocks: Dict[str, int] = {}
-    latest_durations_ms: Dict[str, float] = {}
+    hook_executions: dict[str, int] = {}
+    hook_blocks: dict[str, int] = {}
+    latest_durations_ms: dict[str, float] = {}
     tool_failures_total = 0
 
     if os.path.isfile(audit_log_path):
@@ -203,7 +203,7 @@ def collect_harness_metrics(audit_log_path: str, error_log_path: str) -> Dict[st
     }
 
 
-def collect_all_metrics(workspace_root: str) -> Dict[str, Any]:
+def collect_all_metrics(workspace_root: str) -> dict[str, Any]:
     """Gather all system and harness telemetry."""
     t0 = time.perf_counter()
 
@@ -252,9 +252,9 @@ def collect_all_metrics(workspace_root: str) -> Dict[str, Any]:
     }
 
 
-def format_prometheus_metrics(data: Dict[str, Any]) -> str:
+def format_prometheus_metrics(data: dict[str, Any]) -> str:
     """Format dictionary into Prometheus 0.0.4 text representation."""
-    lines: List[str] = []
+    lines: list[str] = []
 
     # CPU
     lines.append("# HELP wsl_cpu_cores_total Total virtual CPU cores allocated to WSL2.")
@@ -370,7 +370,6 @@ class MetricsHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: Any) -> None:
         """Suppress default stdout logging for silent background operation."""
-        pass
 
     def _verify_client(self) -> bool:
         """Enforce strict loopback client address constraint."""
@@ -440,7 +439,7 @@ class MetricsServer(socketserver.TCPServer):
 
     allow_reuse_address = True
 
-    def __init__(self, server_address: Tuple[str, int], workspace_root: str):
+    def __init__(self, server_address: tuple[str, int], workspace_root: str):
         self.workspace_root = workspace_root
         super().__init__(server_address, MetricsHTTPRequestHandler)
 

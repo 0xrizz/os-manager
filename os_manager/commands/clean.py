@@ -1,9 +1,7 @@
 """System cache cleanup command."""
 
-from typing import List
 
-
-def run_clean(args: List[str]) -> int:
+def run_clean(args: list[str]) -> int:
     """Execute multi-tier cache cleanup."""
     dry_run = "--dry-run" in args
     mode_str = "[DRY RUN] " if dry_run else ""

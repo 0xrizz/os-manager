@@ -3,11 +3,11 @@
 import json
 import os
 import shutil
-from typing import List
+
 from ..platform.detector import detect_platform
 
 
-def run_diag(args: List[str]) -> int:
+def run_diag(args: list[str]) -> int:
     """Execute diagnostic inspection and format output."""
     json_mode = "--json" in args
     plat = detect_platform()

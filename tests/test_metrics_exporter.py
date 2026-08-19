@@ -22,13 +22,12 @@ if WORKSPACE_ROOT not in sys.path:
     sys.path.insert(0, WORKSPACE_ROOT)
 
 from scripts.metrics_exporter import (
+    collect_harness_metrics,
+    collect_storage_metrics,
+    create_server,
+    format_prometheus_metrics,
     parse_loadavg,
     parse_meminfo,
-    collect_storage_metrics,
-    collect_systemd_metrics,
-    collect_harness_metrics,
-    format_prometheus_metrics,
-    create_server,
 )
 
 
@@ -96,8 +95,7 @@ class TestMetricsParsers(unittest.TestCase):
                 {"hook_name": "PostToolUse", "exit_code": 0, "duration_ms": 15.4},
             ]
             with open(audit_log, "w", encoding="utf-8") as f:
-                for r in records:
-                    f.write(json.dumps(r) + "\n")
+                f.writelines(json.dumps(r) + "\n" for r in records)
                 f.write("corrupted json line\n")
 
             with open(error_log, "w", encoding="utf-8") as f:

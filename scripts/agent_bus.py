@@ -11,14 +11,12 @@ import asyncio
 import json
 import os
 import signal
-import sys
 import time
-from typing import Dict, Optional, Set
 
 MAX_PAYLOAD_SIZE = 1024 * 1024  # 1MB limit
 
 
-def resolve_socket_path(custom_path: Optional[str] = None) -> str:
+def resolve_socket_path(custom_path: str | None = None) -> str:
     """Resolve the Unix domain socket path adhering to FHS standards."""
     if custom_path:
         target_dir = os.path.dirname(os.path.abspath(custom_path))
@@ -40,13 +38,11 @@ class MessageBroker:
     """Manages client connections, topic subscriptions, and message routing."""
 
     def __init__(self):
-        self.clients: Dict[str, asyncio.StreamWriter] = {}
-        self.writers_to_id: Dict[asyncio.StreamWriter, str] = {}
-        self.subscriptions: Dict[str, Set[str]] = {}
+        self.clients: dict[str, asyncio.StreamWriter] = {}
+        self.writers_to_id: dict[asyncio.StreamWriter, str] = {}
+        self.subscriptions: dict[str, set[str]] = {}
 
-    async def handle_client(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-    ):
+    async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         """Handle individual client connection lifecycle and stream frames."""
         try:
             while True:
@@ -264,9 +260,7 @@ async def run_server(socket_path: str):
             pass
 
     broker = MessageBroker()
-    server = await asyncio.start_unix_server(
-        broker.handle_client, path=socket_path, limit=MAX_PAYLOAD_SIZE * 2
-    )
+    server = await asyncio.start_unix_server(broker.handle_client, path=socket_path, limit=MAX_PAYLOAD_SIZE * 2)
     os.chmod(socket_path, 0o600)
 
     loop = asyncio.get_running_loop()

@@ -1,9 +1,7 @@
 """Filesystem and memory benchmark command."""
 
-from typing import List
 
-
-def run_perf(args: List[str]) -> int:
+def run_perf(args: list[str]) -> int:
     """Execute I/O performance benchmark."""
     quick = "--quick" in args
     print("=== OS-Manager I/O Performance Benchmark ===")

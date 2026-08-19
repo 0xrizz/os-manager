@@ -2,13 +2,13 @@
 
 import argparse
 import sys
-from typing import Optional, List
+
 from . import __version__
-from .commands.diag import run_diag
-from .commands.clean import run_clean
-from .commands.perf import run_perf
 from .commands.check import run_check
+from .commands.clean import run_clean
+from .commands.diag import run_diag
 from .commands.init import run_init
+from .commands.perf import run_perf
 from .commands.service import run_service
 
 
@@ -19,7 +19,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Autonomous governance harness and control plane for Claude Code.",
     )
     parser.add_argument(
-        "-v", "--version",
+        "-v",
+        "--version",
         action="version",
         version=f"%(prog)s {__version__}",
     )
@@ -57,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     """CLI execution entrypoint."""
     if argv is None:
         argv = sys.argv[1:]

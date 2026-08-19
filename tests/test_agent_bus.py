@@ -11,7 +11,6 @@ import json
 import os
 import sys
 import tempfile
-import time
 import unittest
 
 # Ensure workspace root is in sys.path
@@ -21,9 +20,9 @@ if WORKSPACE_ROOT not in sys.path:
     sys.path.insert(0, WORKSPACE_ROOT)
 
 from scripts.agent_bus import (
-    resolve_socket_path,
-    MessageBroker,
     MAX_PAYLOAD_SIZE,
+    MessageBroker,
+    resolve_socket_path,
 )
 
 
@@ -70,9 +69,7 @@ class TestMessageBrokerAsync(unittest.IsolatedAsyncioTestCase):
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.socket_path = os.path.join(self.tmp_dir.name, "bus.sock")
         self.broker = MessageBroker()
-        self.server = await asyncio.start_unix_server(
-            self.broker.handle_client, path=self.socket_path, limit=MAX_PAYLOAD_SIZE * 2
-        )
+        self.server = await asyncio.start_unix_server(self.broker.handle_client, path=self.socket_path, limit=MAX_PAYLOAD_SIZE * 2)
 
     async def asyncTearDown(self):
         self.server.close()
@@ -80,9 +77,7 @@ class TestMessageBrokerAsync(unittest.IsolatedAsyncioTestCase):
         self.tmp_dir.cleanup()
 
     async def _create_client(self):
-        return await asyncio.open_unix_connection(
-            self.socket_path, limit=MAX_PAYLOAD_SIZE * 2
-        )
+        return await asyncio.open_unix_connection(self.socket_path, limit=MAX_PAYLOAD_SIZE * 2)
 
     async def _send_frame(self, writer: asyncio.StreamWriter, obj: dict):
         data = (json.dumps(obj) + "\n").encode("utf-8")

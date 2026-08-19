@@ -1,9 +1,7 @@
 """Claude Code governance scaffolding command."""
 
-from typing import List
 
-
-def run_init(args: List[str]) -> int:
+def run_init(args: list[str]) -> int:
     """Initialize governance files and rules."""
     dry_run = "--dry-run" in args
     print("=== OS-Manager Claude Code Scaffolding Init ===")

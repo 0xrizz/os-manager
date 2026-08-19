@@ -26,3 +26,13 @@ osm = "os_manager.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["os_manager"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E402", "E501"]
+
+
