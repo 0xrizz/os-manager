@@ -5,7 +5,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/home/rizz/dev/os-manager/scripts/clean_system.sh --all
+ExecStart=%h/dev/os-manager/scripts/clean_system.sh --all
 StandardOutput=journal
 StandardError=journal
 

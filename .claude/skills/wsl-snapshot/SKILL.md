@@ -15,7 +15,7 @@ Generates point-in-time compressed backups, verification hashes, and disaster re
 
 ## Invocation
 ```bash
-/home/rizz/dev/os-manager/scripts/wsl_snapshot.sh [flags]
+${CLAUDE_PROJECT_DIR}/scripts/wsl_snapshot.sh [flags]
 ```
 
 ## Command Options

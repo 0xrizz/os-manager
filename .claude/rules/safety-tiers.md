@@ -12,7 +12,7 @@ Read-only inspection commands execute autonomously without confirmation or tool 
 
 ## Tier 1: Workspace-Contained Modifications (Exit Code 0)
 
-Modifications bounded strictly within `/home/rizz/dev/os-manager/` proceed autonomously, subject to post-tool linting gates.
+Modifications bounded strictly within `${CLAUDE_PROJECT_DIR}/` proceed autonomously, subject to post-tool linting gates.
 
 - **Allowed Actions**: `Edit` and `Write` invocations targeting files within the workspace root.
 - **Verification Gate**: Syntax validation (`bash -n`, `shellcheck`, `jq empty`, `python3 -m py_compile`) runs automatically upon file write.

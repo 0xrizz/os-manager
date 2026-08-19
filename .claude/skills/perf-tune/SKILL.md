@@ -9,12 +9,12 @@ Measures write and read throughput across native Linux ext4 partitions and Windo
 
 ## Trigger Scenarios
 - Investigating slow build times or package installation bottlenecks
-- Comparing I/O latency between native ext4 (`/home/rizz/`) and Windows host mounts
+- Comparing I/O latency between native ext4 (`${HOME}/`) and Windows host mounts
 - Verifying storage performance before running intensive data or AI workflows
 
 ## Invocation
 ```bash
-/home/rizz/dev/os-manager/scripts/perf_tune.sh [flags]
+${CLAUDE_PROJECT_DIR}/scripts/perf_tune.sh [flags]
 ```
 
 ## Command Options

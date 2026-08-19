@@ -15,7 +15,7 @@ Comprehensive diagnostic engine for inspecting Debian WSL2 system health, resour
 
 ## Invocation
 ```bash
-/home/rizz/dev/os-manager/scripts/sys_diag.sh [flags]
+${CLAUDE_PROJECT_DIR}/scripts/sys_diag.sh [flags]
 ```
 
 ## Command Options

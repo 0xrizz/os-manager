@@ -4,7 +4,7 @@ Orchestrates multi-pane terminal workflows pairing Claude Code with Google Antig
 
 ## Invocation
 ```bash
-/home/rizz/dev/os-manager/scripts/tmux_agents.sh "$@"
+${CLAUDE_PROJECT_DIR}/scripts/tmux_agents.sh "$@"
 ```
 
 ## Description

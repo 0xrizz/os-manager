@@ -4,7 +4,7 @@ Generates point-in-time compressed backups and snapshot verification for the Deb
 
 ## Invocation
 ```bash
-/home/rizz/dev/os-manager/scripts/wsl_snapshot.sh "$@"
+${CLAUDE_PROJECT_DIR}/scripts/wsl_snapshot.sh "$@"
 ```
 
 ## Description

@@ -2,12 +2,12 @@
 
 Storage discipline and cross-OS interoperability rules for the Debian 13 WSL2 environment on Windows 11.
 
-## 1. Native EXT4 Performance Domain (`/home/rizz/`)
+## 1. Native EXT4 Performance Domain (`${HOME}/`)
 
 The native Linux ext4 partition is the designated primary domain for all development workloads.
 
 - **High-Throughput Workloads**:
-  - Keep all Git repositories, Node.js packages (`node_modules`), Python virtual environments (`.venv`), Cargo target directories, build artifacts, and package stores on `/home/rizz/`.
+  - Keep all Git repositories, Node.js packages (`node_modules`), Python virtual environments (`.venv`), Cargo target directories, build artifacts, and package stores on `${HOME}/`.
   - Avoid initializing developer workspaces across 9P filesystem mounts (`/mnt/c/`, `/mnt/d/`) to prevent severe I/O virtualization latency, inotify event loss, and POSIX permission churn.
 - **File System Hygiene**:
   - Maintain Unix LF line endings across all workspace files.

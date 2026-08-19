@@ -4,7 +4,7 @@ Executes comprehensive synthetic probes and test suites validating Claude Code h
 
 ## Invocation
 ```bash
-/home/rizz/dev/os-manager/tests/test_harness.sh
+${CLAUDE_PROJECT_DIR}/tests/test_harness.sh
 ```
 
 ## Description

@@ -14,7 +14,7 @@ Provides state protection, drift detection, and controlled restoration for criti
 
 ## Invocation
 ```bash
-/home/rizz/dev/os-manager/scripts/dotfiles_sync.sh <subcommand>
+${CLAUDE_PROJECT_DIR}/scripts/dotfiles_sync.sh <subcommand>
 ```
 
 ## Tracked Files
@@ -35,4 +35,4 @@ The skill manages the following configuration files:
 
 ## Safety Classification & Confirmation Protocol
 - **Tier 0 (Diff)** / **Tier 1 (Backup)**: Safe, low-risk state inspections and workspace-contained backups.
-- **Restore Confirmation Gate**: Restoring dotfiles overwrites active shell configuration in `$HOME`. Always run `/home/rizz/dev/os-manager/scripts/dotfiles_sync.sh diff` first, present the diff to the user, and obtain explicit confirmation before running `restore`.
+- **Restore Confirmation Gate**: Restoring dotfiles overwrites active shell configuration in `$HOME`. Always run `${CLAUDE_PROJECT_DIR}/scripts/dotfiles_sync.sh diff` first, present the diff to the user, and obtain explicit confirmation before running `restore`.

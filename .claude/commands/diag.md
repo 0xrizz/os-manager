@@ -4,7 +4,7 @@ Run full system health, resource consumption, systemd unit status, and runtime v
 
 ## Invocation
 ```bash
-/home/rizz/dev/os-manager/scripts/sys_diag.sh "$@"
+${CLAUDE_PROJECT_DIR}/scripts/sys_diag.sh "$@"
 ```
 
 ## Description
