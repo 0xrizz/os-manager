@@ -169,8 +169,8 @@ class MessageBroker:
                 if sub_topic == topic:
                     is_match = True
                 elif sub_topic.endswith(".*"):
-                    prefix = sub_topic[:-2]
-                    if topic.startswith(prefix):
+                    namespace = sub_topic[:-1]  # e.g. "task."
+                    if topic.startswith(namespace) or topic == sub_topic[:-2]:
                         is_match = True
 
                 if is_match:
@@ -249,9 +249,10 @@ class MessageBroker:
         """Remove disconnected client writer and clean up all subscriptions."""
         agent_id = self.writers_to_id.pop(writer, None)
         if agent_id:
-            self.clients.pop(agent_id, None)
-            for topic_set in self.subscriptions.values():
-                topic_set.discard(agent_id)
+            if self.clients.get(agent_id) is writer:
+                self.clients.pop(agent_id, None)
+                for topic_set in self.subscriptions.values():
+                    topic_set.discard(agent_id)
 
 
 async def run_server(socket_path: str):

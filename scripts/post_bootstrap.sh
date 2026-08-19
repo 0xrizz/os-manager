@@ -18,6 +18,7 @@ echo "================================================================="
 
 echo "==> [1/4] Auditing script permissions and workspace ownership..."
 find "${WORKSPACE_ROOT}/scripts" -type f -name "*.sh" -exec chmod +x {} + 2>/dev/null || true
+find "${WORKSPACE_ROOT}/tests" -type f -name "*.sh" -exec chmod +x {} + 2>/dev/null || true
 if [ -f "${WORKSPACE_ROOT}/scripts/agent_bus.py" ]; then
     chmod +x "${WORKSPACE_ROOT}/scripts/agent_bus.py" 2>/dev/null || true
 fi

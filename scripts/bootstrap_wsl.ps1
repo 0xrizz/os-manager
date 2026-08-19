@@ -55,7 +55,8 @@ if (-not $SnapshotPath) {
     if (-not (Test-Path $BackupDirectory)) {
         throw "Backup directory '$BackupDirectory' does not exist."
     }
-    $LatestSnapshot = Get-ChildItem -Path "$BackupDirectory\*.tar*", "$BackupDirectory\*.tar.gz" -ErrorAction SilentlyContinue |
+    $LatestSnapshot = Get-ChildItem -Path $BackupDirectory -File -ErrorAction SilentlyContinue |
+        Where-Object { ($_.Extension -eq '.tar' -or $_.Name -like '*.tar.gz') -and $_.Extension -ne '.sha256' } |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
 
@@ -115,7 +116,7 @@ if (Test-Path $InstallLocation) {
     }
 }
 
-$DriveLetter = (Get-Item (Split-Path $InstallLocation -Parent)).PSDrive.Name
+$DriveLetter = (Split-Path -Qualifier $InstallLocation 2>$null).TrimEnd(':')
 if (-not $DriveLetter) {
     $DriveLetter = "D"
 }
