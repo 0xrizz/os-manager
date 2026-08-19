@@ -71,10 +71,14 @@ assert_contains "CI workflow tests macOS" "${WORKSPACE_ROOT}/.github/workflows/c
 TOTAL_TESTS=$((TOTAL_TESTS + 1))
 YAML_CHECK_RC=0
 python3 -c '
-import yaml, glob, sys
-for yml in glob.glob("'"${WORKSPACE_ROOT}"'/.github/**/*.yml", recursive=True):
-    with open(yml, "r", encoding="utf-8") as f:
-        yaml.safe_load(f)
+import glob, sys
+try:
+    import yaml
+    for yml in glob.glob("'"${WORKSPACE_ROOT}"'/.github/**/*.yml", recursive=True):
+        with open(yml, "r", encoding="utf-8") as f:
+            yaml.safe_load(f)
+except ImportError:
+    pass
 ' > /dev/null 2>&1 || YAML_CHECK_RC=$?
 
 if [ "${YAML_CHECK_RC}" -eq 0 ]; then

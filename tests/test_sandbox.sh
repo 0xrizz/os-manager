@@ -78,7 +78,11 @@ assert_contains "custom network mode" "${CUSTOM_DRY}" "--network=slirp4netns"
 assert_contains "read-only mount mode" "${CUSTOM_DRY}" ":ro,z"
 
 # 5. Test workspace boundary violation (target directory outside dev root)
-EXPECTED_DEV_ROOT="$(realpath -m "${OSM_DEV_ROOT:-${HOME}/dev}")"
+DEFAULT_DEV_ROOT="${WORKSPACE_ROOT}"
+if [ -d "${HOME}/dev" ]; then
+    DEFAULT_DEV_ROOT="${HOME}/dev"
+fi
+EXPECTED_DEV_ROOT="$(realpath -m "${OSM_DEV_ROOT:-${DEFAULT_DEV_ROOT}}")"
 set +e
 BOUNDARY_OUT="$("${SANDBOX_SCRIPT}" --dry-run --target-dir "/etc" -- echo "fail" 2>&1)"
 BOUNDARY_EXIT=$?
