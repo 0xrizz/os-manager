@@ -44,7 +44,7 @@ jobs:
           ruff format --check scripts/ os_manager/ tests/
 
       - name: Gitleaks Secret Detection
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
