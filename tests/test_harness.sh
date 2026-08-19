@@ -359,6 +359,10 @@ assert_exit_code "test_installer.sh execution" 0 $?
 
 python3 -m unittest "${WORKSPACE_ROOT}/tests/test_cli.py" > /dev/null 2>&1
 assert_exit_code "test_cli.py execution" 0 $?
+
+echo "--- Testing Governance & CI Configuration Suite ---"
+"${WORKSPACE_ROOT}/tests/test_governance.sh" > /dev/null 2>&1
+assert_exit_code "test_governance.sh execution" 0 $?
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
