@@ -332,6 +332,26 @@ assert_exit_code "post_bootstrap.sh syntax verification (bash -n)" 0 $?
 
 "${WORKSPACE_ROOT}/tests/test_bootstrap.sh" > /dev/null 2>&1
 assert_exit_code "test_bootstrap.sh complete suite" 0 $?
+
+echo "--- Testing Platform Abstraction & Path Sanitization Suite ---"
+"${WORKSPACE_ROOT}/tests/test_platform.sh" > /dev/null 2>&1
+assert_exit_code "test_platform.sh execution" 0 $?
+
+# Verify zero hardcoded /home/rizz references across all active repository code
+REPO_LEAK_CHECK="$(grep -rnI --exclude-dir=__pycache__ "/home/rizz" \
+    "${WORKSPACE_ROOT}/scripts" \
+    "${WORKSPACE_ROOT}/systemd" \
+    "${WORKSPACE_ROOT}/.claude/commands" \
+    "${WORKSPACE_ROOT}/.claude/rules" \
+    "${WORKSPACE_ROOT}/.claude/skills" \
+    "${WORKSPACE_ROOT}/backups/dotfiles" || true)"
+
+if [ -z "${REPO_LEAK_CHECK}" ]; then
+    assert_exit_code "Repository-wide path sanitization" 0 0
+else
+    echo "  [FAIL] Hardcoded personal path leak detected: ${REPO_LEAK_CHECK}"
+    assert_exit_code "Repository-wide path sanitization" 0 1
+fi
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
