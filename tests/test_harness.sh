@@ -363,6 +363,10 @@ assert_exit_code "test_cli.py execution" 0 $?
 echo "--- Testing Governance & CI Configuration Suite ---"
 "${WORKSPACE_ROOT}/tests/test_governance.sh" > /dev/null 2>&1
 assert_exit_code "test_governance.sh execution" 0 $?
+
+echo "--- Testing UX & DX Enhancements Suite ---"
+"${WORKSPACE_ROOT}/tests/test_ux_dx.sh" > /dev/null 2>&1
+assert_exit_code "UX & DX Enhancements Unit Tests" 0 $?
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
