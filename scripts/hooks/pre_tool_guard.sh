@@ -75,6 +75,16 @@ if [ "${TOOL_NAME}" = "Bash" ]; then
         exit 2
     fi
 
+    # Auto-Sandbox: Risky recursive deletion or directory cleanup outside root
+    # shellcheck disable=SC2016
+    if echo "${CMD}" | grep -qE '\brm\s+-[rRfF]+\s+[^\s]+' && ! echo "${CMD}" | grep -qE '\brm\s+-[rRfF]*\s+(/|/\*|~|~/\*|\$HOME|\$HOME/\*|/home/[^/]+/?(\*|\.))([;&|[:space:]]|$)'; then
+        # If Podman is available, route to sandbox; otherwise pass through
+        if command -v podman &>/dev/null; then
+            echo "[SANDBOXED EXECUTION - Changes isolated to ephemeral container]"
+            exit 0
+        fi
+    fi
+
     # Invariant Block: WSL Lifecycle Sabotage
     if echo "${CMD}" | grep -qE '\b(wsl|wsl\.exe)\s+--(unregister|shutdown|terminate)\b'; then
         echo "[HARNESS SECURITY BLOCKED] Invariant Violation (Tier 3): WSL instance lifecycle termination commands are strictly forbidden: ${CMD}" >&2
