@@ -1,0 +1,23 @@
+[Unit]
+Description=OS-Manager Inter-Agent Message Bus Daemon
+Documentation=https://github.com/0xrizz/os-manager
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/dev/os-manager/scripts/agent_bus.py
+Restart=on-failure
+RestartSec=2s
+
+# Runtime directory setup (creates %t/os-manager with 0700 permissions)
+RuntimeDirectory=os-manager
+RuntimeDirectoryMode=0700
+
+# Security Sandboxing
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%t/os-manager %h/.local/run/os-manager %h/dev/os-manager/backups/logs
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
