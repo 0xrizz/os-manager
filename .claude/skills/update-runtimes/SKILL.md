@@ -15,7 +15,7 @@ Coordinates automated updates across Debian package repositories, Node/NVM toolc
 
 ## Invocation
 ```bash
-/home/rizz/dev/os-manager/scripts/update_runtimes.sh [flags]
+${CLAUDE_PROJECT_DIR}/scripts/update_runtimes.sh [flags]
 ```
 
 ## Command Options

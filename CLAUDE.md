@@ -164,7 +164,7 @@ Registered in `.claude/settings.json` and executed deterministically using `${CL
 ### 2. Four-Tier Security Matrix (`.claude/rules/safety-tiers.md`)
 
 - **Tier 0 (Autonomous / Read-Only - Exit 0)**: Read-only queries (`git status`, `git diff`, `free`, `df`, `systemctl status`, `ps`, read-only diagnostics) run autonomously.
-- **Tier 1 (Workspace Contained - Exit 0)**: File reads, writes, and edits bounded within `/home/rizz/dev/os-manager/` proceed autonomously subject to post-tool linting.
+- **Tier 1 (Workspace Contained - Exit 0)**: File reads, writes, and edits bounded within `${CLAUDE_PROJECT_DIR}` proceed autonomously subject to post-tool linting.
 - **Tier 2 (Controlled System Operations - Exit 0)**: Whitelisted scripts (`scripts/*.sh`, `scripts/metrics_exporter.py`, `scripts/agent_bus.py`) run with pre-authorized status. Covered utilities include diagnostics, cleanup, updates, snapshots, benchmarks, metrics, notifications, disk compaction, sandboxing, timer management, message bus operations, and recovery provisioning.
 - **Tier 3 (Strict Invariant Violations - Hard Blocked with Exit 2)**:
   - Root / Home obliteration: `rm -rf /`, `rm -rf ~`, `rm -rf $HOME`.
@@ -177,7 +177,7 @@ Registered in `.claude/settings.json` and executed deterministically using `${CL
 
 ### 3. WSL2 Filesystem Boundaries and Storage Invariants (`.claude/rules/wsl-boundaries.md`)
 
-- **Native EXT4 Domain (`/home/rizz/`)**: Repositories, `node_modules`, `.venv`, and build stores MUST reside on ext4. This avoids 9P virtualization latency and permission churn.
+- **Native EXT4 Domain (`${HOME}/`)**: Repositories, `node_modules`, `.venv`, and build stores MUST reside on ext4. This avoids 9P virtualization latency and permission churn.
 - **NTFS Windows Mounts (`/mnt/c/`, `/mnt/d/`)**:
   - `/mnt/d/`: Designated solely for compressed WSL point-in-time snapshots and offsite archival (`/mnt/d/wsl_backup`).
   - `/mnt/c/`: Read-only host inspection. Direct modifications to Windows host system folders are strictly prohibited.

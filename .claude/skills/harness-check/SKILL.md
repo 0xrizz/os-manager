@@ -15,7 +15,7 @@ End-to-end self-diagnostic verification engine for the Claude Code agent harness
 
 ## Invocation
 ```bash
-/home/rizz/dev/os-manager/scripts/harness_check.sh
+${CLAUDE_PROJECT_DIR}/scripts/harness_check.sh
 ```
 
 ## Validation Matrix

@@ -4,13 +4,13 @@ Benchmark disk throughput and compare I/O latency across native Linux ext4 and W
 
 ## Invocation
 ```bash
-/home/rizz/dev/os-manager/scripts/perf_tune.sh "$@"
+${CLAUDE_PROJECT_DIR}/scripts/perf_tune.sh "$@"
 ```
 
 ## Description
 Executes storage performance benchmarks:
 - Writes and reads test blocks to measure throughput
-- Compares native ext4 (`/home/rizz/`) against Windows 9P mounts (`/mnt/c/`, `/mnt/d/`)
+- Compares native ext4 (`${HOME}/`) against Windows 9P mounts (`/mnt/c/`, `/mnt/d/`)
 - Measures operations latency and provides optimization guidance
 
 ## Flags & Arguments

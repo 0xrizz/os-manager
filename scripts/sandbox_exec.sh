@@ -32,7 +32,7 @@ Options:
   -h, --help             Show this help message and exit
 
 Security Invariants:
-  - Target directory must reside strictly under /home/rizz/dev/
+  - Target directory must reside strictly under developer root (${OSM_DEV_ROOT:-${HOME}/dev})
   - Container root filesystem is mounted --read-only
   - Linux capabilities dropped via --cap-drop=ALL
   - Enforces --security-opt=no-new-privileges and --pids-limit=256
@@ -90,10 +90,11 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Validate Target Workspace Boundary: strictly under /home/rizz/dev/
+# Validate Target Workspace Boundary: strictly under ${OSM_DEV_ROOT:-${HOME}/dev}
 CANONICAL_TARGET="$(realpath -m "${TARGET_DIR}" 2>/dev/null || echo "${TARGET_DIR}")"
-if [[ ! "${CANONICAL_TARGET}" =~ ^/home/rizz/dev(/|$) ]]; then
-    echo "[SECURITY ERROR] Sandbox target directory must reside strictly under /home/rizz/dev/: ${TARGET_DIR}" >&2
+ALLOWED_DEV_ROOT="$(realpath -m "${OSM_DEV_ROOT:-${HOME}/dev}")"
+if [[ ! "${CANONICAL_TARGET}" =~ ^${ALLOWED_DEV_ROOT}(/|$) ]]; then
+    echo "[SECURITY ERROR] Sandbox target directory must reside strictly under ${ALLOWED_DEV_ROOT}: ${TARGET_DIR}" >&2
     exit 2
 fi
 

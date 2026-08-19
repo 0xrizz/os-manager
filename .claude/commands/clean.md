@@ -4,7 +4,7 @@ Perform safe cleanup of package caches, temporary build artifacts, and package m
 
 ## Invocation
 ```bash
-/home/rizz/dev/os-manager/scripts/clean_system.sh "$@"
+${CLAUDE_PROJECT_DIR}/scripts/clean_system.sh "$@"
 ```
 
 ## Description

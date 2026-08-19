@@ -194,6 +194,18 @@ test_path_defaults() {
 }
 test_path_defaults
 
+# 11. Test Path Sanitization (Assertion 17)
+TOTAL_TESTS=$((TOTAL_TESTS + 1))
+HARDCODED_MATCHES="$(grep -rnI --exclude-dir=__pycache__ "/home/rizz" "${WORKSPACE_ROOT}/scripts" "${WORKSPACE_ROOT}/systemd" "${WORKSPACE_ROOT}/.claude/commands" "${WORKSPACE_ROOT}/.claude/rules" "${WORKSPACE_ROOT}/.claude/skills" || true)"
+if [ -z "${HARDCODED_MATCHES}" ]; then
+    echo "  [PASS] Path Sanitization (Zero hardcoded /home/rizz references)"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+else
+    echo "  [FAIL] Hardcoded user home found in active files:"
+    echo "${HARDCODED_MATCHES}"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+fi
+
 echo "=================================================="
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
 echo "=================================================="

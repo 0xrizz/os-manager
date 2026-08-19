@@ -4,7 +4,7 @@ Inspects, backs up, and safely restores user configuration dotfiles (`.bashrc`, 
 
 ## Invocation
 ```bash
-/home/rizz/dev/os-manager/scripts/dotfiles_sync.sh "$@"
+${CLAUDE_PROJECT_DIR}/scripts/dotfiles_sync.sh "$@"
 ```
 
 ## Description

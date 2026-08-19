@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Repository Migration Utility (Windows NTFS /mnt/d/dev -> Debian ext4 /home/rizz/dev)
+# Repository Migration Utility (Windows NTFS /mnt/d/dev -> Native ext4 developer root)
 # ==============================================================================
 set -euo pipefail
 
 SOURCE_BASE="/mnt/d/dev"
-DEST_BASE="/home/rizz/dev"
+DEST_BASE="${OSM_DEV_ROOT:-${HOME}/dev}"
 
 REPOS=(
   "agy-os"

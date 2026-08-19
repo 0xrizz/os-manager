@@ -15,7 +15,7 @@ Reclaims disk space on the native ext4 WSL root volume by safely removing packag
 
 ## Invocation
 ```bash
-/home/rizz/dev/os-manager/scripts/clean_system.sh [flags]
+${CLAUDE_PROJECT_DIR}/scripts/clean_system.sh [flags]
 ```
 
 ## Command Options
