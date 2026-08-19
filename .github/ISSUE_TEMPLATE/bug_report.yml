@@ -1,0 +1,53 @@
+name: Bug Report
+description: Report an issue or unexpected failure in os-manager
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug. Please provide clear details to help reproduce the issue.
+  - type: input
+    id: version
+    attributes:
+      label: OS-Manager Version
+      description: What version of os-manager are you running? (Run `osm --version` or check git commit)
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Operating Platform
+      description: Select your operating environment
+      options:
+        - "WSL2 (Windows 11)"
+        - "Linux (Debian / Ubuntu)"
+        - "Linux (Arch / Fedora / openSUSE)"
+        - "macOS (Darwin)"
+        - "Other"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Bug
+      description: A clear and concise description of what happened.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Exact commands executed leading to the error.
+      placeholder: |
+        1. Run 'osm clean'
+        2. Inspect output
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Diagnostic Logs
+      description: Relevant output from `./scripts/sys_diag.sh` or `backups/logs/`.
+      render: shell
