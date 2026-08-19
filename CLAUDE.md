@@ -18,23 +18,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Common Development and Operational Commands
 
 ### Testing and Validation
-- Run master harness test suite (28 assertions): `./tests/test_harness.sh`
-- Run cross-distribution unit tests: `./tests/test_distro.sh`
-- Run hook performance tracing unit tests: `./tests/test_hook_tracing.sh`
+- Run master harness test suite (41 assertions): `./tests/test_harness.sh`
+- Run individual test suites:
+  - Prometheus metrics exporter tests: `python3 -m unittest tests/test_metrics_exporter.py`
+  - Desktop notification bridge tests: `./tests/test_notify_host.sh`
+  - Host disk compaction tests: `./tests/test_disk_compaction.sh`
+  - Agent workspace virtualization sandbox tests: `./tests/test_sandbox.sh`
+  - Cross-distribution abstraction tests: `./tests/test_distro.sh`
+  - Hook latency monotonic tracing tests: `./tests/test_hook_tracing.sh`
 - Run full harness self-check and symlink validation: `./scripts/harness_check.sh`
 - Audit Markdown prose against writing rules: `agent-style review --audit-only <file.md>`
 - Sync multi-agent skills to Universal Agent and Antigravity: `./scripts/sync_agent_skills.sh`
 
 ### Pillar Automation Scripts
 - System diagnostics and resource metrics: `./scripts/sys_diag.sh [--full|--json]`
+- Zero-dependency Prometheus metrics exporter: `python3 ./scripts/metrics_exporter.py [--port 9100]`
+- Windows desktop toast notification bridge: `./scripts/notify_host.sh --title "..." --message "..." [--type info|warning|error]`
+- Automated host VHDX disk compaction: `./scripts/compact_host_disk.sh [--dry-run|--threshold-gb 10]`
+- Rootless Podman agent workspace sandbox: `./scripts/sandbox_exec.sh --workdir <dir> -- <cmd>`
 - Hook latency benchmark analyzer: `./scripts/hook_benchmark.sh [--samples N|--hook <name>|--json|--assert-p99]`
-- Safe cache and package cleanup: `./scripts/clean_system.sh [--dry-run|--all]`
+- Safe cache and package cleanup: `./scripts/clean_system.sh [--dry-run|--all|--compact]`
 - Runtime and toolchain updates: `./scripts/update_runtimes.sh [--check]`
 - Disaster recovery snapshot to `/mnt/d/`: `./scripts/wsl_snapshot.sh [--verify|--prune]`
 - Dotfiles backup, diff, and restore: `./scripts/dotfiles_sync.sh [backup|diff|restore]`
 - Multi-agent paired Tmux workspace: `./scripts/tmux_agents.sh [start|attach]`
 - Filesystem I/O performance benchmark: `./scripts/perf_tune.sh [--quick|--json]`
-- Systemd user timer manager: `./scripts/manage_timers.sh [status|install|uninstall]`
+- Systemd user timer manager: `./scripts/manage_timers.sh [status|install|uninstall|enable|disable]`
 - Repository batch migration to ext4: `./scripts/migrate_repos.sh`
 
 ---
@@ -62,12 +71,16 @@ os-manager/
 │   ├── lib/
 │   │   └── distro.sh            # Zero-dependency cross-distro detection & package abstraction
 │   ├── clean_system.sh          # Safe cache & package cleanup script
+│   ├── compact_host_disk.sh     # Host VHDX slack space compaction utility
 │   ├── dotfiles_sync.sh         # Dotfiles backup, diff, and restore script
 │   ├── harness_check.sh         # Harness end-to-end self-check runner
 │   ├── hook_benchmark.sh        # Hook performance & latency percentile analyzer
-│   ├── manage_timers.sh         # Systemd user timer manager script
+│   ├── manage_timers.sh         # Systemd user timer & service manager
+│   ├── metrics_exporter.py      # Prometheus 0.0.4 metrics daemon (127.0.0.1:9100)
 │   ├── migrate_repos.sh         # Batch repository migration utility (NTFS -> ext4)
+│   ├── notify_host.sh           # Windows WinRT desktop toast notification dispatcher
 │   ├── perf_tune.sh             # Filesystem I/O performance benchmark script
+│   ├── sandbox_exec.sh          # Rootless Podman agent isolation wrapper
 │   ├── sync_agent_skills.sh     # Multi-agent SSOT symlink synchronization script
 │   ├── sys_diag.sh              # System diagnostic & health inspection script
 │   ├── tmux_agents.sh           # Multi-agent paired tmux workspace manager
@@ -75,11 +88,16 @@ os-manager/
 │   └── wsl_snapshot.sh          # WSL disaster recovery snapshot script
 ├── systemd/
 │   ├── os-maintenance.service   # Systemd user service unit for daily maintenance
-│   └── os-maintenance.timer     # Systemd user timer unit for scheduled maintenance
+│   ├── os-maintenance.timer     # Systemd user timer unit for scheduled maintenance
+│   └── os-metrics-exporter.service # Systemd user service unit for metrics exporter
 ├── tests/
+│   ├── test_disk_compaction.sh  # Unit tests for host disk compaction
 │   ├── test_distro.sh           # Mocked cross-distribution unit test suite (13 assertions)
-│   ├── test_harness.sh          # Master harness integration test suite (28 assertions)
-│   └── test_hook_tracing.sh     # Hook tracing & latency benchmark test suite (12 assertions)
+│   ├── test_harness.sh          # Master harness integration test suite (41 assertions)
+│   ├── test_hook_tracing.sh     # Hook tracing & latency benchmark test suite (12 assertions)
+│   ├── test_metrics_exporter.py # Unit tests for Prometheus metrics exporter (11 tests)
+│   ├── test_notify_host.sh      # Unit tests for Windows toast notification bridge (15 tests)
+│   └── test_sandbox.sh          # Unit tests for agent workspace virtualization (19 tests)
 └── CLAUDE.md                    # Project guidance and governance rules
 ```
 
@@ -134,11 +152,12 @@ Registered in `.claude/settings.json` and executed deterministically using `${CL
 
 - **Tier 0 (Autonomous / Read-Only - Exit 0)**: Read-only queries (`git status`, `git diff`, `free`, `df`, `systemctl status`, `ps`, read-only diagnostics) run autonomously.
 - **Tier 1 (Workspace Contained - Exit 0)**: File reads, writes, and edits bounded within `/home/rizz/dev/os-manager/` proceed autonomously subject to post-tool linting.
-- **Tier 2 (Controlled System Operations - Exit 0)**: Whitelisted scripts (`scripts/*.sh`) run with pre-authorized status. Covered utilities include diagnostics, cleanup, updates, snapshots, benchmarks, and timer management.
+- **Tier 2 (Controlled System Operations - Exit 0)**: Whitelisted scripts (`scripts/*.sh`, `scripts/metrics_exporter.py`) run with pre-authorized status. Covered utilities include diagnostics, cleanup, updates, snapshots, benchmarks, metrics, notifications, disk compaction, sandboxing, and timer management.
 - **Tier 3 (Strict Invariant Violations - Hard Blocked with Exit 2)**:
   - Root / Home obliteration: `rm -rf /`, `rm -rf ~`, `rm -rf $HOME`.
   - WSL instance lifecycle destruction: `wsl --unregister`, `wsl.exe --unregister`, `wsl --shutdown`.
-  - Package manager wildcard purges: `apt purge *`, `apt remove -y *`.
+  - Package manager wildcard purges: `apt purge *`, `apt remove -y *`, `pacman -Rcs *`, `dnf remove --all`, `zypper remove *`.
+  - Privileged container escape vectors: `podman run --privileged`, `docker run --privileged`.
   - Raw disk partitioning / formatting: `mkfs.*`, `fdisk`, `dd if=... of=/dev/sd*`.
   - Windows host intrusions: Modifying `/mnt/c/Windows`, `Program Files`, `AppData`.
   - Linux core system destruction: Modifying `/etc/passwd`, `/etc/shadow`, `/boot/`, `/dev/`.
