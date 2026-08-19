@@ -371,6 +371,10 @@ assert_exit_code "UX & DX Enhancements Unit Tests" 0 $?
 echo "--- Testing CI/CD & Release Engineering Suite ---"
 "${WORKSPACE_ROOT}/tests/test_ci_cd.sh" > /dev/null 2>&1
 assert_exit_code "CI/CD & Release Engineering Unit Tests" 0 $?
+
+echo "--- Testing Marketing Assets & GTM Suite ---"
+"${WORKSPACE_ROOT}/tests/test_marketing_assets.sh" > /dev/null 2>&1
+assert_exit_code "Marketing Assets & GTM Unit Tests" 0 $?
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
