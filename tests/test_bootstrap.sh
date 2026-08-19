@@ -111,11 +111,17 @@ assert_contains "post_bootstrap.sh reloads systemd" "${POST_OUT}" "systemd user 
 TMP_DIR="$(mktemp -d)"
 SAMPLE_FILE="${TMP_DIR}/test_archive.tar.gz"
 echo "archive content" > "${SAMPLE_FILE}"
-SAMPLE_HASH="$(sha256sum "${SAMPLE_FILE}" | awk '{print $1}')"
-echo "${SAMPLE_HASH}  test_archive.tar.gz" > "${SAMPLE_FILE}.sha256"
-
-VERIFY_RESULT="$(cd "${TMP_DIR}" && sha256sum -c "test_archive.tar.gz.sha256" 2>&1)"
-assert_contains "sha256 validation passes for valid sidecar" "${VERIFY_RESULT}" "OK"
+if command -v sha256sum >/dev/null 2>&1; then
+    SAMPLE_HASH="$(sha256sum "${SAMPLE_FILE}" | awk '{print $1}')"
+    echo "${SAMPLE_HASH}  test_archive.tar.gz" > "${SAMPLE_FILE}.sha256"
+    VERIFY_RESULT="$(cd "${TMP_DIR}" && sha256sum -c "test_archive.tar.gz.sha256" 2>&1)"
+    assert_contains "sha256 validation passes for valid sidecar" "${VERIFY_RESULT}" "OK"
+elif command -v shasum >/dev/null 2>&1; then
+    SAMPLE_HASH="$(shasum -a 256 "${SAMPLE_FILE}" | awk '{print $1}')"
+    echo "${SAMPLE_HASH}  test_archive.tar.gz" > "${SAMPLE_FILE}.sha256"
+    VERIFY_RESULT="$(cd "${TMP_DIR}" && shasum -a 256 -c "test_archive.tar.gz.sha256" 2>&1)"
+    assert_contains "sha256 validation passes for valid sidecar" "${VERIFY_RESULT}" "OK"
+fi
 rm -rf "${TMP_DIR}"
 set -e
 

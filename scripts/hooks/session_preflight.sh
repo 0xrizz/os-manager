@@ -14,9 +14,11 @@ if [ -f "${WORKSPACE_ROOT}/scripts/hooks/lib/trace_helper.sh" ]; then
 fi
 
 # 1. RAM / Resource inspection
-AVAILABLE_MEM_MB=$(free -m | awk '/^Mem:/{print $7}')
-if [ -n "${AVAILABLE_MEM_MB}" ] && [ "${AVAILABLE_MEM_MB}" -lt 300 ]; then
-    echo "[WARN] Low memory in WSL2: ${AVAILABLE_MEM_MB}MB available." >&2
+if command -v free >/dev/null 2>&1; then
+    AVAILABLE_MEM_MB=$(free -m | awk '/^Mem:/{print $7}')
+    if [ -n "${AVAILABLE_MEM_MB}" ] && [ "${AVAILABLE_MEM_MB}" -lt 300 ]; then
+        echo "[WARN] Low memory in WSL2: ${AVAILABLE_MEM_MB}MB available." >&2
+    fi
 fi
 
 # 2. Check essential binaries

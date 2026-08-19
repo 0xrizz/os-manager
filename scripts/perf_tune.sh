@@ -46,9 +46,13 @@ benchmark_path() {
         return 0
     fi
 
-    # Measure write performance
+    # Measure write performance (cross-platform fallback for conv=fdatasync)
     local write_out
-    write_out=$(dd if=/dev/zero of="${test_file}" bs="${BLOCK_SIZE}" count="${BLOCK_COUNT}" conv=fdatasync 2>&1)
+    if dd if=/dev/zero of="${test_file}" bs="${BLOCK_SIZE}" count="${BLOCK_COUNT}" conv=fdatasync >/dev/null 2>&1; then
+        write_out=$(dd if=/dev/zero of="${test_file}" bs="${BLOCK_SIZE}" count="${BLOCK_COUNT}" conv=fdatasync 2>&1)
+    else
+        write_out=$(dd if=/dev/zero of="${test_file}" bs="${BLOCK_SIZE}" count="${BLOCK_COUNT}" 2>&1)
+    fi
     local write_speed
     write_speed=$(echo "${write_out}" | awk '/bytes/{print $(NF-1), $NF}')
 

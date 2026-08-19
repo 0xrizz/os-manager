@@ -51,6 +51,7 @@ test_mock_os_release() {
     # Execute in a subshell sourcing distro.sh with overridden OS_RELEASE_FILE
     local result
     result="$(
+        export OSM_UNAME_S="Linux"
         export OS_RELEASE_FILE="${mock_file}"
         # shellcheck disable=SC1090
         source "${DISTRO_LIB}"

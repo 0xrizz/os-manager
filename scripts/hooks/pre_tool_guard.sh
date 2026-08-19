@@ -36,7 +36,10 @@ notify_security_violation() {
 if [[ "${TOOL_NAME}" =~ ^(Edit|Write|Read)$ ]]; then
     TARGET_PATH="$(echo "${INPUT_JSON}" | jq -r '.tool_input.file_path // .tool_input.notebook_path // empty')"
     if [ -n "${TARGET_PATH}" ]; then
-        CANONICAL_PATH="$(realpath -m "${TARGET_PATH}" 2>/dev/null || echo "${TARGET_PATH}")"
+        CANONICAL_PATH="${TARGET_PATH}"
+        if command -v realpath >/dev/null 2>&1 && realpath -m "${TARGET_PATH}" >/dev/null 2>&1; then
+            CANONICAL_PATH="$(realpath -m "${TARGET_PATH}" 2>/dev/null || echo "${TARGET_PATH}")"
+        fi
 
         # Invariant Block: Windows Host System Directories
         if [[ "${CANONICAL_PATH}" =~ ^/mnt/c/(Windows|Program\ Files|Program\ Files\ \(x86\)|Users/[^/]+/AppData) ]]; then

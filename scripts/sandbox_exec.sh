@@ -90,13 +90,19 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Validate Target Workspace Boundary: strictly under ${OSM_DEV_ROOT:-${WORKSPACE_ROOT}}
+# Validate Target Workspace Boundary
 DEFAULT_DEV_ROOT="${WORKSPACE_ROOT}"
 if [ -d "${HOME}/dev" ]; then
     DEFAULT_DEV_ROOT="${HOME}/dev"
 fi
-CANONICAL_TARGET="$(realpath -m "${TARGET_DIR}" 2>/dev/null || echo "${TARGET_DIR}")"
-ALLOWED_DEV_ROOT="$(realpath -m "${OSM_DEV_ROOT:-${DEFAULT_DEV_ROOT}}")"
+CANONICAL_TARGET="${TARGET_DIR}"
+if command -v realpath >/dev/null 2>&1 && realpath -m "${TARGET_DIR}" >/dev/null 2>&1; then
+    CANONICAL_TARGET="$(realpath -m "${TARGET_DIR}" 2>/dev/null || echo "${TARGET_DIR}")"
+fi
+ALLOWED_DEV_ROOT="${OSM_DEV_ROOT:-${DEFAULT_DEV_ROOT}}"
+if command -v realpath >/dev/null 2>&1 && realpath -m "${ALLOWED_DEV_ROOT}" >/dev/null 2>&1; then
+    ALLOWED_DEV_ROOT="$(realpath -m "${ALLOWED_DEV_ROOT}")"
+fi
 if [[ ! "${CANONICAL_TARGET}" =~ ^${ALLOWED_DEV_ROOT}(/|$) ]]; then
     echo "[SECURITY ERROR] Sandbox target directory must reside strictly under ${ALLOWED_DEV_ROOT}: ${TARGET_DIR}" >&2
     exit 2
