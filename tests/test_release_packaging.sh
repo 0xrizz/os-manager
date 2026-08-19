@@ -73,12 +73,12 @@ cp "${TMP_DIST_DIR}"/* "${TMP_ASSETS_DIR}/"
 cp "${WORKSPACE_ROOT}/install.sh" "${TMP_ASSETS_DIR}/"
 
 if command -v sha256sum >/dev/null 2>&1; then
-    (cd "${TMP_ASSETS_DIR}" && sha256sum ./* > checksums.sha256)
+    (cd "${TMP_ASSETS_DIR}" && sha256sum -- install.sh ./*.whl ./*.tar.gz > checksums.sha256)
     assert_file_exists "checksums.sha256 generated" "${TMP_ASSETS_DIR}/checksums.sha256"
     (cd "${TMP_ASSETS_DIR}" && sha256sum -c checksums.sha256 > /dev/null 2>&1)
     assert_exit_code "All release assets pass sha256sum verification" 0 $?
 elif command -v shasum >/dev/null 2>&1; then
-    (cd "${TMP_ASSETS_DIR}" && shasum -a 256 ./* > checksums.sha256)
+    (cd "${TMP_ASSETS_DIR}" && shasum -a 256 -- install.sh ./*.whl ./*.tar.gz > checksums.sha256)
     assert_file_exists "checksums.sha256 generated" "${TMP_ASSETS_DIR}/checksums.sha256"
     (cd "${TMP_ASSETS_DIR}" && shasum -a 256 -c checksums.sha256 > /dev/null 2>&1)
     assert_exit_code "All release assets pass shasum verification" 0 $?

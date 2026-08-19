@@ -70,11 +70,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt update && sudo apt install -y jq curl podman
+          pip install build hatchling
 
       - name: Install macOS Prerequisites
         if: runner.os == 'macOS'
         run: |
           brew install jq
+          pip install build hatchling
 
       - name: Run Master Harness Test Suite
         run: |
