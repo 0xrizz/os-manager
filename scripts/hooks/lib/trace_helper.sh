@@ -6,17 +6,28 @@ TRACE_HOOK_NAME=""
 TRACE_TARGET_TOOL=""
 TRACE_START_NS=0
 
+_get_nanoseconds() {
+    local ns
+    ns="$(date +%s%N 2>/dev/null || true)"
+    if [[ "${ns}" =~ ^[0-9]{10,}$ ]]; then
+        echo "${ns}"
+    else
+        # Fallback for BSD / macOS date which does not support %N
+        python3 -c "import time; print(int(time.time() * 1000000000))" 2>/dev/null || date +%s000000000
+    fi
+}
+
 trace_start() {
     TRACE_HOOK_NAME="$1"
     TRACE_TARGET_TOOL="${2:-null}"
-    TRACE_START_NS="$(date +%s%N)"
+    TRACE_START_NS="$(_get_nanoseconds)"
     trap 'trace_finish $?' EXIT
 }
 
 trace_finish() {
     local exit_code="$1"
     local end_ns
-    end_ns="$(date +%s%N)"
+    end_ns="$(_get_nanoseconds)"
 
     # Calculate duration in microseconds and fractional milliseconds using pure bash integer arithmetic
     local elapsed_ns=$((end_ns - TRACE_START_NS))
