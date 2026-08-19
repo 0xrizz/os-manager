@@ -1,0 +1,90 @@
+name: CI Suite
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Code Quality & Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Linting Tools
+        run: |
+          sudo apt update && sudo apt install -y shellcheck jq
+          pip install flake8 pyyaml
+
+      - name: ShellCheck Lint
+        run: |
+          shellcheck scripts/**/*.sh tests/**/*.sh install.sh
+
+      - name: Python Syntax & Lint
+        run: |
+          python3 -m py_compile scripts/*.py tests/*.py os_manager/**/*.py
+          flake8 scripts/ os_manager/ tests/ --max-line-length=120 --ignore=E402,W503
+
+      - name: Validate YAML Syntax
+        run: |
+          python3 -c '
+          import yaml, glob
+          for yml in glob.glob(".github/**/*.yml", recursive=True):
+              with open(yml, "r", encoding="utf-8") as f:
+                  yaml.safe_load(f)
+          '
+
+  test-linux:
+    name: Linux Harness Test Suite
+    needs: lint
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Runtime Prerequisites
+        run: |
+          sudo apt update && sudo apt install -y jq curl podman
+
+      - name: Run Master Harness Test Suite
+        run: |
+          chmod +x tests/*.sh scripts/*.sh install.sh
+          ./tests/test_harness.sh
+
+  test-macos:
+    name: macOS Harness Test Suite
+    needs: lint
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Runtime Prerequisites
+        run: |
+          brew install jq
+
+      - name: Run Master Harness Test Suite
+        run: |
+          chmod +x tests/*.sh scripts/*.sh install.sh
+          ./tests/test_harness.sh
