@@ -71,7 +71,7 @@ class TestMessageBrokerAsync(unittest.IsolatedAsyncioTestCase):
         self.socket_path = os.path.join(self.tmp_dir.name, "bus.sock")
         self.broker = MessageBroker()
         self.server = await asyncio.start_unix_server(
-            self.broker.handle_client, path=self.socket_path
+            self.broker.handle_client, path=self.socket_path, limit=MAX_PAYLOAD_SIZE * 2
         )
 
     async def asyncTearDown(self):
@@ -80,7 +80,9 @@ class TestMessageBrokerAsync(unittest.IsolatedAsyncioTestCase):
         self.tmp_dir.cleanup()
 
     async def _create_client(self):
-        return await asyncio.open_unix_connection(self.socket_path)
+        return await asyncio.open_unix_connection(
+            self.socket_path, limit=MAX_PAYLOAD_SIZE * 2
+        )
 
     async def _send_frame(self, writer: asyncio.StreamWriter, obj: dict):
         data = (json.dumps(obj) + "\n").encode("utf-8")
