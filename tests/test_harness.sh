@@ -303,6 +303,25 @@ assert_exit_code "sandbox_exec.sh --dry-run contains --read-only" 0 $?
 
 "${WORKSPACE_ROOT}/tests/test_sandbox.sh" > /dev/null 2>&1
 assert_exit_code "test_sandbox.sh complete suite" 0 $?
+
+echo "--- Testing Inter-Agent Message Bus Suite ---"
+python3 -m py_compile "${WORKSPACE_ROOT}/scripts/agent_bus.py" > /dev/null 2>&1
+assert_exit_code "agent_bus.py bytecode compilation" 0 $?
+
+"${WORKSPACE_ROOT}/scripts/agent_bus.py" --help > /dev/null 2>&1
+assert_exit_code "agent_bus.py --help execution" 0 $?
+
+python3 -m unittest "${WORKSPACE_ROOT}/tests/test_agent_bus.py" > /dev/null 2>&1
+assert_exit_code "test_agent_bus.py unit test suite" 0 $?
+
+"${WORKSPACE_ROOT}/scripts/bus_send.sh" --help > /dev/null 2>&1
+assert_exit_code "bus_send.sh --help execution" 0 $?
+
+"${WORKSPACE_ROOT}/scripts/bus_send.sh" --topic "test.harness" --payload '{"status":"ok"}' > /dev/null 2>&1
+assert_exit_code "bus_send.sh fail-safe execution without daemon" 0 $?
+
+[ -f "${WORKSPACE_ROOT}/systemd/agent-bus.service" ] && BUS_SERVICE_EXISTS=0 || BUS_SERVICE_EXISTS=1
+assert_exit_code "agent-bus.service exists" 0 "${BUS_SERVICE_EXISTS}"
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
