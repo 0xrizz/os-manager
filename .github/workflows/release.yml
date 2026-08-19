@@ -57,6 +57,7 @@ jobs:
       - name: Publish to PyPI via OIDC Trusted Publishing
         if: github.event_name == 'push' || inputs.dry_run == false
         uses: pypa/gh-action-pypi-publish@release/v1
+        continue-on-error: true
         with:
           packages-dir: dist/
           skip-existing: true
