@@ -1,0 +1,10 @@
+# ~/.tmux.conf - Generic tmux configuration template
+set -g default-terminal "screen-256color"
+set -g history-limit 50000
+set -g mouse on
+set -s escape-time 0
+
+# Status bar styling
+set -g status-style bg=black,fg=white
+set -g status-left "#[fg=green]#S "
+set -g status-right "#[fg=cyan]%Y-%m-%d %H:%M"

@@ -1,0 +1,17 @@
+# ~/.bashrc - Generic interactive shell configuration template
+[ -z "$PS1" ] && return
+
+shopt -s checkwinsize
+shopt -s histappend
+
+HISTCONTROL=ignoreboth
+HISTSIZE=10000
+HISTFILESIZE=20000
+
+export PATH="${HOME}/.local/bin:${PATH}"
+export EDITOR="nano"
+
+# Aliases
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'

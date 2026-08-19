@@ -206,6 +206,30 @@ else
     FAILED_TESTS=$((FAILED_TESTS + 1))
 fi
 
+# 12. Test Dotfile Templates Existence (Assertion 18)
+TOTAL_TESTS=$((TOTAL_TESTS + 1))
+if [ -f "${WORKSPACE_ROOT}/backups/dotfiles/.bashrc.example" ] && \
+   [ -f "${WORKSPACE_ROOT}/backups/dotfiles/.tmux.conf.example" ] && \
+   [ -f "${WORKSPACE_ROOT}/backups/dotfiles/.gitconfig.example" ]; then
+    echo "  [PASS] Dotfiles .example templates exist"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+else
+    echo "  [FAIL] Missing .example dotfile templates"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+fi
+
+# 13. Test Dotfile Sanitization (Assertion 19)
+TOTAL_TESTS=$((TOTAL_TESTS + 1))
+DOTFILES_MATCHES="$(grep -rnI "/home/rizz" "${WORKSPACE_ROOT}/backups/dotfiles" || true)"
+if [ -z "${DOTFILES_MATCHES}" ]; then
+    echo "  [PASS] Dotfiles templates sanitized (Zero personal paths)"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+else
+    echo "  [FAIL] Personal paths found in dotfiles templates:"
+    echo "${DOTFILES_MATCHES}"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+fi
+
 echo "=================================================="
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
 echo "=================================================="
