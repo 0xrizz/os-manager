@@ -18,11 +18,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Common Development and Operational Commands
 
 ### Testing and Validation
-- Run master harness test suite (58 assertions): `./tests/test_harness.sh`
+- Run master harness test suite (59 assertions): `./tests/test_harness.sh`
 - Run individual test suites:
+  - Release packaging & checksum tests: `./tests/test_release_packaging.sh`
   - UX & DX enhancements tests: `./tests/test_ux_dx.sh`
   - CI/CD and release workflow tests: `./tests/test_ci_cd.sh`
   - Marketing assets & launch playbook tests: `./tests/test_marketing_assets.sh`
+  - Open-source governance tests: `./tests/test_governance.sh`
   - Inter-Agent Message Bus unit tests: `python3 -m unittest tests/test_agent_bus.py`
   - Disaster Recovery Provisioning tests: `./tests/test_bootstrap.sh`
   - Prometheus metrics exporter tests: `python3 -m unittest tests/test_metrics_exporter.py`
@@ -31,6 +33,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Agent workspace virtualization sandbox tests: `./tests/test_sandbox.sh`
   - Cross-distribution abstraction tests: `./tests/test_distro.sh`
   - Hook latency monotonic tracing tests: `./tests/test_hook_tracing.sh`
+  - CLI routing unit tests: `python3 -m unittest tests/test_cli.py`
 - Run full harness self-check and symlink validation: `./scripts/harness_check.sh`
 - Audit Markdown prose against writing rules: `agent-style review --audit-only <file.md>`
 - Sync multi-agent skills to Universal Agent and Antigravity: `./scripts/sync_agent_skills.sh`
