@@ -76,7 +76,7 @@ jobs:
           sha256sum * > checksums.sha256
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event_name == 'push' && github.ref_name || inputs.tag_name }}
           draft: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
