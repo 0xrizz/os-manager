@@ -59,8 +59,11 @@ assert_output_contains "Hard Veto Root Message" "strictly forbidden" "${OUT_ROOT
 
 # Auto-Sandbox: Risky Project Deletion (rm -rf ./temp_build)
 PAYLOAD_RISKY_RM='{"tool_name":"Bash","tool_input":{"command":"rm -rf ./temp_build"}}'
-echo "${PAYLOAD_RISKY_RM}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
+OUT_RISKY=$(echo "${PAYLOAD_RISKY_RM}" | "${HOOKS_DIR}/pre_tool_guard.sh" 2>&1)
 assert_exit_code "Auto-Sandbox: Project Deletion (rm -rf ./temp_build)" 0 $?
+if command -v podman >/dev/null 2>&1; then
+    assert_output_contains "Auto-Sandbox: Notice Emitted" "SANDBOXED EXECUTION" "${OUT_RISKY}"
+fi
 
 echo "--- 2. Testing Micro-Badges & Dashboard in sys_diag.sh ---"
 # Default Compact ASCII Card

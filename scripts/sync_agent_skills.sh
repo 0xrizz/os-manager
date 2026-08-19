@@ -12,9 +12,14 @@ mkdir -p "${ANTIGRAVITY_SKILLS}"
 
 echo "=== Synchronizing Multi-Agent Skills (SSOT: .claude/skills) ==="
 
-# 1. Clean broken symlinks in targets
-find "${UNIVERSAL_SKILLS}" -xtype l -delete
-find "${ANTIGRAVITY_SKILLS}" -xtype l -delete
+# 1. Clean broken symlinks in targets (portable across Linux and BSD/macOS find)
+if find . --version >/dev/null 2>&1; then
+    find "${UNIVERSAL_SKILLS}" -xtype l -delete 2>/dev/null || true
+    find "${ANTIGRAVITY_SKILLS}" -xtype l -delete 2>/dev/null || true
+else
+    find "${UNIVERSAL_SKILLS}" -type l ! -exec test -e {} \; -delete 2>/dev/null || true
+    find "${ANTIGRAVITY_SKILLS}" -type l ! -exec test -e {} \; -delete 2>/dev/null || true
+fi
 
 # 2. Propagate to Universal Agent standard (.agents/skills/) using relative symlinks
 for skill_path in "${CLAUDE_SKILLS}"/*; do

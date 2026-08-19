@@ -93,7 +93,12 @@ else
 fi
 
 # Step 2: Measure Guest Space Usage
-EXT4_USED_BYTES="$(df -B1 / | awk 'NR==2 {print $3}')"
+if df -B1 / >/dev/null 2>&1; then
+    EXT4_USED_BYTES="$(df -B1 / | awk 'NR==2 {print $3}')"
+else
+    # Fallback for non-GNU df (macOS / BSD)
+    EXT4_USED_BYTES="$(df -k / | awk 'NR==2 {print $3 * 1024}')"
+fi
 EXT4_USED_GB="$(awk "BEGIN {printf \"%.2f\", ${EXT4_USED_BYTES} / 1073741824}")"
 echo "==> [2/3] Guest filesystem (ext4) active data: ${EXT4_USED_GB} GB (${EXT4_USED_BYTES} bytes)"
 

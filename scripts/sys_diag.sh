@@ -43,7 +43,11 @@ BADGE_WARN="${C_YELLOW}[WARN]${C_RESET}"
 BADGE_SANDBOX="${C_CYAN}[SANDBOX]${C_RESET}"
 
 KERNEL_VER="$(uname -r)"
-RAM_SUMMARY="$(free -h | awk '/^Mem:/ {print $3 "/" $2}')"
+if command -v free >/dev/null 2>&1; then
+    RAM_SUMMARY="$(free -h | awk '/^Mem:/ {print $3 "/" $2}')"
+else
+    RAM_SUMMARY="N/A"
+fi
 DISK_SUMMARY="$(df -h / | awk 'NR==2 {print $3 "/" $2 " (" $5 ")"}')"
 
 if [ "${JSON_MODE}" = true ]; then
