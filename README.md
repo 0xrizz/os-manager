@@ -1,15 +1,15 @@
-# os-manager
+# os-manager — Autonomous Claude Code Harness, Security Matrix & WSL2 Automation Suite
 
 <p align="center">
   <a href="https://github.com/0xrizz/os-manager/actions"><img src="https://img.shields.io/github/actions/workflow/status/0xrizz/os-manager/ci.yml?branch=main&label=CI&logo=github" alt="CI Status"></a>
-  <a href="https://pypi.org/project/os-manager/"><img src="https://img.shields.io/pypi/v/os-manager?color=blue&logo=pypi" alt="PyPI Version"></a>
+  <a href="https://pypi.org/project/0xrizz-os-manager/"><img src="https://img.shields.io/pypi/v/0xrizz-os-manager?color=blue&logo=pypi" alt="PyPI Version"></a>
   <a href="https://github.com/0xrizz/os-manager/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
   <a href="https://github.com/0xrizz/os-manager"><img src="https://img.shields.io/badge/tests-59%2F59%20passing-brightgreen" alt="Tests"></a>
 </p>
 
 <p align="center">
   <strong>Run Claude Code autonomously without fear of host destruction.</strong><br>
-  Open-source governance harness, 4-tier security matrix, auto-sandbox fallback, and background telemetry engine across Linux, WSL2, and macOS.
+  Open-source governance harness, 4-tier security matrix, auto-sandbox fallback, and background telemetry engine across Linux, WSL2, and macOS by <a href="https://github.com/0xrizz">@0xrizz</a>.
 </p>
 
 ---
@@ -25,7 +25,7 @@ curl -fsSL https://raw.githubusercontent.com/0xrizz/os-manager/main/install.sh |
 Or install via Python toolchain:
 
 ```bash
-uv tool install os-manager
+uv tool install 0xrizz-os-manager
 osm check
 ```
 
@@ -82,6 +82,15 @@ osm check
 - `/upgrade`: Coordinated toolchain and runtime updates.
 - `/snapshot`: Disaster recovery point-in-time distro backups.
 - `/pair`: Spawns paired multi-agent Tmux workspace (Claude Code + Antigravity).
+
+---
+
+## 👤 Author & Maintainer
+
+Maintained and developed by **[0xrizz](https://github.com/0xrizz)**.
+
+- **Repository**: [https://github.com/0xrizz/os-manager](https://github.com/0xrizz/os-manager)
+- **Issues & Discussions**: [https://github.com/0xrizz/os-manager/issues](https://github.com/0xrizz/os-manager/issues)
 
 ---
 
