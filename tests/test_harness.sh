@@ -322,6 +322,16 @@ assert_exit_code "bus_send.sh fail-safe execution without daemon" 0 $?
 
 [ -f "${WORKSPACE_ROOT}/systemd/agent-bus.service" ] && BUS_SERVICE_EXISTS=0 || BUS_SERVICE_EXISTS=1
 assert_exit_code "agent-bus.service exists" 0 "${BUS_SERVICE_EXISTS}"
+
+echo "--- Testing Disaster Recovery Provisioning Suite ---"
+[ -f "${WORKSPACE_ROOT}/scripts/bootstrap_wsl.ps1" ] && BOOTSTRAP_PS_EXISTS=0 || BOOTSTRAP_PS_EXISTS=1
+assert_exit_code "bootstrap_wsl.ps1 file exists" 0 "${BOOTSTRAP_PS_EXISTS}"
+
+bash -n "${WORKSPACE_ROOT}/scripts/post_bootstrap.sh" > /dev/null 2>&1
+assert_exit_code "post_bootstrap.sh syntax verification (bash -n)" 0 $?
+
+"${WORKSPACE_ROOT}/tests/test_bootstrap.sh" > /dev/null 2>&1
+assert_exit_code "test_bootstrap.sh complete suite" 0 $?
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
