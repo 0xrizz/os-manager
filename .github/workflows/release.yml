@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-publish:
+    name: Build, Package & Publish Release
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt update && sudo apt install -y jq podman
+          pip install build
+
+      - name: Run Verification Test Suite
+        run: |
+          chmod +x tests/*.sh scripts/*.sh install.sh
+          ./tests/test_harness.sh
+
+      - name: Build Python Distributions
+        run: |
+          python3 -m build
+
+      - name: Publish to PyPI via OIDC Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          skip-existing: true
+
+      - name: Generate Cryptographic Checksums
+        run: |
+          mkdir -p release-assets
+          cp dist/* release-assets/
+          cp install.sh release-assets/
+          cd release-assets
+          sha256sum * > checksums.sha256
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/*
+          generate_release_notes: true
