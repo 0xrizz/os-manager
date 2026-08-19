@@ -117,9 +117,23 @@ scaffold_project() {
     echo "=== Scaffolding Claude Code governance in ${target} ==="
     execute_op "Create .claude directory" mkdir -p "${target}/.claude/rules" "${target}/.claude/commands" "${target}/.claude/skills"
 
-    if [ -f "${SOURCE_ROOT}/.claude/settings.json" ]; then
-        execute_op "Copy settings.json" cp -n "${SOURCE_ROOT}/.claude/settings.json" "${target}/.claude/settings.json" || true
+    local settings_file="${target}/.claude/settings.json"
+    mkdir -p "${target}/.claude"
+    if [ ! -f "${settings_file}" ]; then
+        echo '{}' > "${settings_file}"
     fi
+
+    # Idempotent jq merge for hooks and default permissions
+    local tmp_json
+    tmp_json=$(mktemp)
+    jq '.permissions.allow = ((.permissions.allow // []) + ["git status", "git diff", "free -h", "df -h"] | unique) |
+        .hooks.SessionStart = "scripts/hooks/session_preflight.sh" |
+        .hooks.PreToolUse = "scripts/hooks/pre_tool_guard.sh" |
+        .hooks.PostToolUse = "scripts/hooks/post_tool_lint.sh" |
+        .hooks.PostToolUseFailure = "scripts/hooks/post_tool_failure.sh" |
+        .hooks.PreCompact = "scripts/hooks/pre_compact_state.sh" |
+        .hooks.SessionEnd = "scripts/hooks/session_cleanup.sh"' "${settings_file}" > "${tmp_json}"
+    mv "${tmp_json}" "${settings_file}"
 
     if [ -d "${SOURCE_ROOT}/.claude/rules" ]; then
         execute_op "Copy rules" cp -rn "${SOURCE_ROOT}/.claude/rules/"* "${target}/.claude/rules/" || true
