@@ -35,7 +35,8 @@ jobs:
 
       - name: ShellCheck Lint
         run: |
-          shellcheck -S warning scripts/**/*.sh tests/**/*.sh install.sh
+          find scripts tests -type f -name "*.sh" -print0 | xargs -0 shellcheck -S warning
+          shellcheck -S warning install.sh
 
       - name: Python Lint & Format (Ruff)
         run: |

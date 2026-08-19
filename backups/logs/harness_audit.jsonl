@@ -2112,3 +2112,9 @@
 {"timestamp_iso":"2026-08-19T17:34:17Z","timestamp_epoch":1787160857,"hook_name":"PreToolUse","target_tool":"Edit","duration_ms":10.45,"duration_us":10459,"exit_code":0}
 {"timestamp_iso":"2026-08-19T17:34:22Z","timestamp_epoch":1787160862,"hook_name":"PostToolUse","target_tool":"Edit","duration_ms":7.94,"duration_us":7942,"exit_code":0}
 {"timestamp_iso":"2026-08-19T17:34:24Z","timestamp_epoch":1787160864,"hook_name":"PreToolUse","target_tool":"Bash","duration_ms":33.56,"duration_us":33561,"exit_code":0}
+{"timestamp_iso":"2026-08-19T17:40:38Z","timestamp_epoch":1787161238,"hook_name":"PreToolUse","target_tool":"Bash","duration_ms":30.56,"duration_us":30563,"exit_code":0}
+{"timestamp_iso":"2026-08-19T17:40:46Z","timestamp_epoch":1787161246,"hook_name":"PreToolUse","target_tool":"Bash","duration_ms":29.80,"duration_us":29801,"exit_code":0}
+{"timestamp_iso":"2026-08-19T17:40:56Z","timestamp_epoch":1787161256,"hook_name":"PreToolUse","target_tool":"Edit","duration_ms":9.60,"duration_us":9605,"exit_code":0}
+{"timestamp_iso":"2026-08-19T17:41:02Z","timestamp_epoch":1787161262,"hook_name":"PostToolUse","target_tool":"Edit","duration_ms":8.69,"duration_us":8691,"exit_code":0}
+{"timestamp_iso":"2026-08-19T17:41:05Z","timestamp_epoch":1787161265,"hook_name":"PreToolUse","target_tool":"Bash","duration_ms":33.39,"duration_us":33392,"exit_code":0}
+{"timestamp_iso":"2026-08-19T17:41:12Z","timestamp_epoch":1787161272,"hook_name":"PreToolUse","target_tool":"Bash","duration_ms":33.83,"duration_us":33837,"exit_code":0}
