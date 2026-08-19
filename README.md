@@ -1,16 +1,47 @@
-# OS-Manager
+# os-manager
 
-Autonomous governance harness, security control plane, and operational automation engine for Claude Code across Linux, WSL2, and macOS.
+<p align="center">
+  <a href="https://github.com/0xrizz/os-manager/actions"><img src="https://img.shields.io/github/actions/workflow/status/0xrizz/os-manager/ci.yml?branch=main&label=CI&logo=github" alt="CI Status"></a>
+  <a href="https://pypi.org/project/os-manager/"><img src="https://img.shields.io/pypi/v/os-manager?color=blue&logo=pypi" alt="PyPI Version"></a>
+  <a href="https://github.com/0xrizz/os-manager/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
+  <a href="https://github.com/0xrizz/os-manager"><img src="https://img.shields.io/badge/tests-55%2F55%20passing-brightgreen" alt="Tests"></a>
+</p>
 
-## Overview
-
-Modern software engineering combines polyglot toolchains with autonomous artificial intelligence coding agents. Operating high-throughput developer toolchains alongside autonomous coding agents introduces distinct operational challenges: unconstrained shell command execution, virtual disk bloat, filesystem virtualization latency, and workstation drift.
-
-`os-manager` provides a unified control plane uniting deterministic security guardrails, background telemetry, disaster recovery, and cross-platform runtime abstractions.
+<p align="center">
+  <strong>Run Claude Code autonomously without fear of host destruction.</strong><br>
+  Open-source governance harness, 4-tier security matrix, auto-sandbox fallback, and background telemetry engine across Linux, WSL2, and macOS.
+</p>
 
 ---
 
-## Architecture and Topology
+## ⚡ Quickstart (10 Seconds)
+
+Install and configure hooks, guardrails, and slash commands in a single command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/0xrizz/os-manager/main/install.sh | bash
+```
+
+Or install via Python toolchain:
+
+```bash
+uv tool install os-manager
+osm check
+```
+
+---
+
+## 🛡️ Core Features
+
+- **4-Tier Security Matrix**: Deterministically blocks host sabotage (`/mnt/c/Windows`, `/etc/shadow`) with hard zero-trust vetoes (Exit Code 2).
+- **Auto-Sandbox Fallback**: Seamlessly reroutes risky operations (`rm -rf`, heavy purges) into rootless Podman containers without aborting turns.
+- **Workstation Performance**: Automated VHDX compaction, zero 9P latency enforcement on ext4, and fast cache cleanup.
+- **Background Observability**: Built-in Prometheus metrics exporter (`127.0.0.1:9100`) and nanosecond hook latency tracing.
+- **Multi-Agent SSOT Bridge**: Zero-copy relative symlinks synchronizing skills across Claude Code, Universal Agent, and Google Antigravity.
+
+---
+
+## 🏛️ Harness Architecture
 
 ```text
  ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -44,46 +75,16 @@ Modern software engineering combines polyglot toolchains with autonomous artific
 
 ---
 
-## Core Features
+## 💻 Custom Slash Commands
 
-- **4-Tier Security Guardrails**: Intercepts tool calls deterministically with `PreToolUse` lifecycle hooks. Hard-blocks destructive operations with Exit Code 2.
-- **Cross-Platform Support**: Operates seamlessly across native Linux (Debian, Ubuntu, Arch, Fedora, openSUSE), WSL2 (with Windows host bridge), and macOS (Darwin).
-- **Zero-Dependency Observability**: Provides Prometheus metrics exporter daemon (`scripts/metrics_exporter.py`) and monotonic hook latency tracing.
-- **Desktop Alert Bridge**: Delivers notifications via Windows WinRT toast, macOS AppleScript, or Linux `notify-send`.
-- **Automated Workstation Compaction**: Compacts backing virtual disk containers (`.vhdx`) when slack space exceeds configurable thresholds.
-- **Dual Distribution Models**: Supports standalone Git clone installer (`./install.sh`) and Python package CLI (`osm` via `uv tool install os-manager`).
-
----
-
-## Quickstart
-
-### Option 1: Standalone Shell Installer
-
-```bash
-git clone https://github.com/0xrizz/os-manager.git ~/.os-manager
-cd ~/.os-manager
-./install.sh
-```
-
-### Option 2: Python Tool Installation
-
-```bash
-uv tool install os-manager
-osm check
-```
+- `/diag`: Compact Unicode health dashboard card and system status.
+- `/clean`: Safe space reclamation across APT, UV, PNPM, Bun, and `/tmp`.
+- `/upgrade`: Coordinated toolchain and runtime updates.
+- `/snapshot`: Disaster recovery point-in-time distro backups.
+- `/pair`: Spawns paired multi-agent Tmux workspace (Claude Code + Antigravity).
 
 ---
 
-## Common Commands
-
-- Run full test harness suite: `osm check` or `./tests/test_harness.sh`
-- Inspect system diagnostics: `osm diag` or `/diag`
-- Evict system and package caches: `osm clean --all` or `/clean`
-- Benchmark filesystem I/O: `osm perf` or `/perf`
-- Manage background timer units: `./scripts/manage_timers.sh status`
-
----
-
-## License
+## 📄 License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
