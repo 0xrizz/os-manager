@@ -67,9 +67,11 @@ done
 
 # Concurrency lockfile protection
 exec 200>"${LOCK_FILE}"
-if ! flock -n 200; then
-    echo "Notice: Disk compaction is already in progress by another process. Exiting cleanly."
-    exit 0
+if command -v flock >/dev/null 2>&1; then
+    if ! flock -n 200; then
+        echo "Notice: Disk compaction is already in progress by another process. Exiting cleanly."
+        exit 0
+    fi
 fi
 
 echo "=============================================================================="
