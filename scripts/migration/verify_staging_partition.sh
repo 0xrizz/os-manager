@@ -28,7 +28,7 @@ echo "Inspecting DEBIAN_SET Staging Volume Status..."
 echo "=================================================="
 
 "$PWSH_BIN" -NoProfile -NonInteractive -Command "
-    \$vol = Get-Volume | Where-Object { \$_.FileSystemLabel -eq 'DEBIAN_SET' -or (\$_.FileSystem -eq 'FAT32' -and \$_.Size -ge 7GB -and \$_.Size -le 9GB) }
+    \$vol = Get-Volume | Where-Object { \$_.FileSystemLabel -eq 'DEBIAN_SET' -or (\$_.FileSystem -eq 'FAT32' -and \$_.Size -ge 7GB -and \$_.Size -le 25GB) }
     if (\$vol) {
         \$drive = if (\$vol.DriveLetter) { \$vol.DriveLetter + ':' } else { '(No Drive Letter Assigned)' }
         \$sizeGb = [math]::Round(\$vol.Size / 1GB, 2)

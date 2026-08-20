@@ -25,7 +25,7 @@ if [[ -n "$MOCK_PAYLOAD" ]]; then
 else
     if command -v "$PWSH_BIN" >/dev/null 2>&1; then
         STAGING_INFO=$("$PWSH_BIN" -NoProfile -NonInteractive -Command "
-            \$v = Get-Volume | Where-Object { \$_.FileSystemLabel -eq 'DEBIAN_SET' -or (\$_.FileSystem -eq 'FAT32' -and \$_.Size -ge 7GB -and \$_.Size -le 9GB) } | Select-Object DriveLetter, FileSystemLabel, FileSystem, Size | ConvertTo-Json -Compress
+            \$v = Get-Volume | Where-Object { \$_.FileSystemLabel -eq 'DEBIAN_SET' -or (\$_.FileSystem -eq 'FAT32' -and \$_.Size -ge 7GB -and \$_.Size -le 25GB) } | Select-Object DriveLetter, FileSystemLabel, FileSystem, Size | ConvertTo-Json -Compress
             if (\$v) { Write-Output \$v }
         " < /dev/null 2>/dev/null || true)
     else
