@@ -63,7 +63,7 @@ Panduan operasional dan standar eksekusi agen AI (Antigravity `agy`, Claude Code
 
 ## 5. Quality Gate Pra & Pasca Migrasi
 
-Sebelum menghapus partisi sementara (`DEBIAN_SET` 8 GB) atau partisi lama:
+Sebelum menghapus partisi sementara (`DEBIAN_SET` 8–25 GB) atau partisi lama:
 1. Pastikan sistem bare-metal telah reboot sukses minimal 2–3 kali.
 2. Verifikasi Wi-Fi Intel AC 9560 (`iwlwifi`), Audio, Bluetooth, dan Suspend/Resume berjalan normal.
 3. Gunakan urutan ekspansi partisi online yang aman:
@@ -71,3 +71,19 @@ Sebelum menghapus partisi sementara (`DEBIAN_SET` 8 GB) atau partisi lama:
    sudo growpart /dev/nvme0n1 <nomor_partisi>
    sudo resize2fs /dev/nvme0n1p<nomor_partisi>
    ```
+
+---
+
+## 6. Manajemen Siklus Hidup Sesi & Context Hygiene (Anti-Bloat Rules)
+
+*Berdasarkan audit pemutusan stream pada sesi `4f7b4fa7-e919-4058-ade7-9d4da54f4391` (1.130+ steps)*:
+
+1. **Batas Langkah & Checkpoint Rutin:**
+   * Sesi percakapan yang mendekati **300+ langkah** memiliki risiko tinggi mengalami *stream interruption* dan latensi tinggi akibat context bloat.
+   * Setiap kali menyelesaikan fase besar (misal: seluruh rangkaian SDD selesai diuji dan di-*review*), agen wajib menyusun ringkasan status di `.agents/HANDOFF.md`.
+   * Sarankan kepada pengguna untuk memulai percakapan baru jika akan memulai topik atau fase implementasi baru yang besar.
+2. **Subagent Output Hygiene:**
+   * Subagent implementer dan reviewer wajib menulis seluruh log dan diff ke file laporan (`task-N-report.md` / `review-report.md`).
+   * Respons langsung ke parent controller dibatasi hanya ringkasan ringkas (status VERDICT, commit hash, ringkasan tes 1 baris).
+3. **Fleksibilitas Parameter Konfigurasi:**
+   * Hindari penulisan validasi ukuran yang *hardcoded* kaku jika arsitektur mengizinkan rentang yang fleksibel (contoh: partisi staging FAT32 `DEBIAN_SET` fleksibel antara 7 GB s/d 25 GB).
