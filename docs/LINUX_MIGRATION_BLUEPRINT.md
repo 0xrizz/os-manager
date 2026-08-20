@@ -1,27 +1,36 @@
-# Blueprint Migrasi Penuh ke Linux (Zero USB & Zero External Backup)
+# Blueprint Migrasi Penuh ke Debian Native (Zero USB & Zero External Backup)
 
-Dokumen ini berisi cetak biru (*blueprint*) arsitektur teknis dan prosedur komprehensif untuk memigrasikan sistem dari Windows ke Linux secara penuh pada perangkat ini tanpa menggunakan media USB eksternal dan tanpa memindahkan/mem-backup data Drive D ke cloud/media luar.
+Dokumen ini berisi cetak biru (*blueprint*) arsitektur teknis dan prosedur komprehensif untuk memigrasikan sistem dari Windows ke **Debian GNU/Linux (GNOME)** secara penuh pada perangkat Lenovo IdeaPad 3 (81WD) tanpa menggunakan media USB eksternal dan tanpa memindahkan/mem-backup data Drive D ke cloud/media luar.
 
 ---
 
-## 1. Profil Perangkat & Temuan Sistem
+## 1. Keputusan Desain Terverifikasi (Design Alignment)
 
-Berdasarkan hasil pemindaian langsung menggunakan utilitas sistem (Linux & Windows WMI/CIM/PowerShell):
-
-### A. Spesifikasi Perangkat Keras
-| Komponen | Spesifikasi Terdeteksi | Dukungan Kernel Linux |
+| Parameter | Keputusan Terpilih | Rationale / Justifikasi |
 | :--- | :--- | :--- |
-| **Model Laptop** | Lenovo IdeaPad 3 (Type `81WD`) | Native (Lenovo ACPI / ideapad-laptop) |
-| **Prosesor (CPU)** | Intel Core i5-1035G1 @ 1.00GHz (4 Core / 8 Thread) | Native `x86_64` (Intel Ice Lake) |
-| **Grafis (GPU)** | Intel UHD Graphics (Ice Lake G1) | Native kernel driver `i915` |
-| **Konektivitas Nirkabel** | Intel Wireless-AC 9560 (Wi-Fi 5 + Bluetooth 5.1) | Native module `iwlwifi` + `btintel` |
-| **Penyimpanan Utama** | NVMe SSD `SSSTC CL1-4D512` (512 GB) | Native module `nvme` |
-| **Tabel Partisi** | GPT (GUID Partition Table) | Native EFI / GPT support |
+| **Distro Target** | **Debian GNU/Linux** *(Official Live GNOME with non-free firmware)* | Sesuai lingkungan WSL saat ini (`Debian Trixie`), kestabilan jangka panjang, paket dependency teruji. |
+| **Desktop Environment** | **GNOME** (Wayland) | Integrasi touchpad/gesture laptop sangat mulus, modern, default Debian. |
+| **Root Filesystem** | **ext4** (dengan Swapfile) | Kompatibilitas dan reliabilitas maksimal, zero maintenance overhead. |
+| **Partisi Data (D:)** | **NTFS (244 GB)** $\rightarrow$ Mount ke `/mnt/data` | Tetap utuh (in-place), tidak diformat, data 201 GB aman. |
+| **Migrasi Konfigurasi WSL** | Backup `~/*` ke `D:\wsl_backup\` | Dotfiles, SSH keys, git config, dan project runtime langsung di-restore di bare-metal Debian. |
+
+---
+
+## 2. Profil Perangkat & Spesifikasi Hardware
+
+| Komponen | Spesifikasi Terdeteksi | Driver & Modul Kernel Debian |
+| :--- | :--- | :--- |
+| **Model Laptop** | Lenovo IdeaPad 3 (Type `81WD`) | Kernel ACPI / `ideapad-laptop` |
+| **Prosesor (CPU)** | Intel Core i5-1035G1 @ 1.00GHz (4 Core / 8 Thread) | `x86_64` (Intel Ice Lake) |
+| **Grafis (GPU)** | Intel UHD Graphics (Ice Lake G1) | Driver kernel `i915` (Mesa 3D) |
+| **Konektivitas Nirkabel** | Intel Wireless-AC 9560 (Wi-Fi 5 + BT 5.1) | `iwlwifi` (`firmware-iwlwifi`) |
+| **Penyimpanan Utama** | NVMe SSD `SSSTC CL1-4D512` (512 GB) | Driver kernel `nvme` |
+| **Tabel Partisi** | GPT (GUID Partition Table) | Native EFI |
 | **Memori (RAM)** | 8.00 GB DDR4 | Native |
 
 ---
 
-## 2. Analisis Struktur Partisi: Eksisting vs Target
+## 3. Struktur Partisi: Eksisting vs Target Akhir
 
 ### Kondisi Partisi Fisik Saat Ini (Disk 0)
 ```
@@ -36,38 +45,27 @@ Total Storage: 512 GB (NVMe SSD)
 
 ---
 
-### Kondisi Sementara (Staging Installer Lokal - Tahap 1)
+### Kondisi Sementara (Staging Installer Debian - Tahap 1)
 ```
 ┌─────────┬──────────────────────┬─────────────┬─────────────┬──────────────────────┐
 │ Part 1  │ Ruang Kosong (Baru)  │ Part Baru   │ Part 3      │ Part 4: Drive D:     │
 │ 100 MB  │ ~118 GB              │ 8.0 GB      │ 5.7 GB      │ 244.1 GB (NTFS)      │
-│ EFI ESP │ (Unallocated Space)  │ FAT32       │ Recovery    │ TETAP UTUH           │
-│         │ Calon Root Linux     │ "LINUX_SET" │             │ TIDAK TERSENTUH      │
+│ EFI ESP │ (Unallocated Space)  │ FAT32       │ Recovery    │ Label: "DATA_STORE"  │
+│         │ Calon Root Debian /  │ "DEBIAN_SET"│             │ TETAP UTUH (201GB)   │
 └─────────┴──────────────────────┴─────────────┴─────────────┴──────────────────────┘
 ```
 
 ---
 
-### Kondisi Target Akhir (Setelah Linux Terpasang Penuh)
+### Kondisi Target Akhir (Setelah Debian Native Terpasang)
 ```
 ┌─────────────────┬───────────────────────────────────────────┬──────────────────────┐
-│ Partisi 1       │ Partisi Linux Utama (Eks C: + Installer)  │ Partisi Data (Eks D:)│
-│ 100 MB (FAT32)  │ ~230 - 235 GB (ext4 / btrfs)              │ 244.1 GB (NTFS)      │
+│ Partisi 1       │ Partisi Debian Utama (Eks C: + Installer) │ Partisi Data (Eks D:)│
+│ 100 MB (FAT32)  │ ~230 - 235 GB (ext4)                      │ 244.1 GB (NTFS)      │
 │ Mount:          │ Mount:                                    │ Mount:               │
-│ /boot/efi       │ / (Root filesystem Linux)                 │ /mnt/data            │
+│ /boot/efi       │ / (Root Debian GNOME)                     │ /mnt/data            │
 └─────────────────┴───────────────────────────────────────────┴──────────────────────┘
 ```
-
----
-
-## 3. Matriks Risiko & Mitigasi
-
-| Potensi Risiko | Tingkat | Rencana Mitigasi |
-| :--- | :---: | :--- |
-| **Kesalahan format partisi Data** | Kritis | Partisi D diberi label tegas `DATA_STORE` di DiskGenius dan diverifikasi ulang kapasitasnya (244 GB) sebelum eksekusi di installer. |
-| **Filesystem NTFS Terkunci / Read-Only** | Tinggi | Matikan *Windows Fast Startup* & *Hibernation* sebelum migrasi. |
-| **Kerusakan Integritas NTFS D:** | Sedang | Menjalankan `chkdsk D: /f` sebelum partisi disentuh (karena terdeteksi status *Repair Needed* pada scan). |
-| **Kegagalan Boot Installer Lokal** | Sedang | Daftarkan file `.efi` installer langsung ke NVRAM UEFI menggunakan fitur *Set UEFI BIOS boot entries* di DiskGenius. |
 
 ---
 
@@ -75,112 +73,98 @@ Total Storage: 512 GB (NVMe SSD)
 
 ```mermaid
 flowchart TD
-    A[Fase 0: Pembersihan & Perbaikan Windows] --> B[Fase 1: Rekonfigurasi Partisi via DiskGenius]
-    B --> C[Fase 2: Staging ISO & Injeksi Boot Entry UEFI]
-    C --> D[Fase 3: Reboot & Eksekusi Installer Linux]
-    D --> E[Fase 4: Konfigurasi Mount & Pembersihan Partisi Sementara]
+    A[Fase 0: Export WSL Config & Perbaikan Windows] --> B[Fase 1: Rekonfigurasi Partisi via DiskGenius]
+    B --> C[Fase 2: Staging Debian Live ISO & Injeksi Boot Entry UEFI]
+    C --> D[Fase 3: Reboot & Eksekusi Calamares / Debian Installer]
+    D --> E[Fase 4: Auto-Mount Data & Restore Dotfiles WSL]
 ```
 
 ---
 
-### FASE 0: Persiapan Sistem di Windows
+### FASE 0: Persiapan Sistem di Windows (Admin Terminal)
 
-1. **Jalankan Perbaikan File System Drive D:**
+1. **Backup Konfigurasi WSL:**
+   Jalankan backup dotfiles, SSH, git config ke `D:\wsl_backup\`:
+   ```bash
+   mkdir -p /mnt/d/wsl_backup
+   tar -czvf /mnt/d/wsl_backup/wsl_home_backup.tar.gz -C /home/rizz .bashrc .profile .ssh .gitconfig .agents dev
+   ```
+2. **Jalankan Perbaikan File System Drive D:**
    Buka Command Prompt (Run as Administrator):
    ```cmd
    chkdsk D: /f /r
    ```
-2. **Nonaktifkan Fast Startup & Hibernation:**
+3. **Nonaktifkan Fast Startup & Hibernation:**
    ```cmd
    powercfg /h off
    ```
-3. **Pindahkan Berkas User:**
-   Pastikan seluruh file dari Desktop, Downloads, Documents di Drive C: sudah dipindahkan ke folder khusus di Drive D: (misalnya `D:\Backup_C\`).
+4. **Verifikasi BitLocker:**
+   ```cmd
+   manage-bde -status
+   ```
+   *(Pastikan status Protection Off dan Decrypted untuk C: dan D:)*
 
 ---
 
 ### FASE 1: Manajemen Partisi dengan DiskGenius
 
-1. **Beri Label Partisi:**
+1. **Beri Label Partisi Data:**
    * Klik kanan Partisi 4 (Drive D:) $\rightarrow$ **Set Volume Label** $\rightarrow$ Isi: `DATA_STORE`.
-2. **Backup Tabel Partisi:**
-   * Klik menu **Disk** $\rightarrow$ **Backup Partition Table** $\rightarrow$ Simpan file cadangan `.ptf` di `D:\ptf_backup.ptf`.
-3. **Resize / Split Partisi C:**
-   * Klik kanan Partisi 2 (Drive C:) $\rightarrow$ pilih **Resize Partition**.
-   * Perkecil Drive C: sebesar **120 GB** ke arah kanan (ruang sisa).
-   * Dari ruang kosong tersebut:
-     * Buat 1 Partisi baru ukuran **8.0 GB**, tipe: **Primary/Basic**, File System: **FAT32**, Label: `LINUX_SETUP`.
-     * Sisanya (~112 GB) biarkan berstatus **Unallocated Space**.
-4. Klik **Save All** di pojok kiri atas untuk menerapkan perubahan.
+2. **Backup Tabel Partisi GPT:**
+   * Klik menu **Disk** $\rightarrow$ **Backup Partition Table** $\rightarrow$ Simpan di `D:\ptf_backup.ptf`.
+3. **Resize Partisi C:**
+   * Klik kanan Partisi 2 (Drive C:) $\rightarrow$ **Resize Partition**.
+   * Perkecil Drive C: sebesar **120 GB**.
+   * Dari ruang bebas tersebut:
+     * Buat 1 Partisi baru ukuran **8.0 GB**, Tipe: **Primary**, Format: **FAT32**, Label: `DEBIAN_SET`.
+     * Sisanya (~112 GB) biarkan sebagai **Unallocated Space**.
+4. Klik **Save All** di pojok kiri atas untuk mengeksekusi.
 
 ---
 
-### FASE 2: Staging ISO & Pendaftaran Boot Entry UEFI
+### FASE 2: Staging Debian Live GNOME ISO & Injeksi Boot UEFI
 
-1. **Ekstraksi ISO Distro Linux:**
-   * Unduh file `.iso` distro pilihan (contoh: Ubuntu Desktop LTS / Linux Mint / Fedora).
-   * Buka file ISO menggunakan 7-Zip atau WinRAR, lalu ekstrak seluruh isi direktori ISO ke dalam root partisi `LINUX_SETUP` (FAT32 8 GB).
-2. **Daftarkan Boot Entry ke UEFI NVRAM via DiskGenius:**
+1. **Unduh & Ekstrak Debian Live GNOME ISO:**
+   * Unduh `debian-live-*-amd64-gnome+nonfree.iso`.
+   * Ekstrak seluruh isi file ISO ke dalam partisi `DEBIAN_SET` (FAT32 8 GB).
+2. **Daftarkan Boot Entry ke UEFI via DiskGenius:**
    * Buka menu **Tools** $\rightarrow$ **Set UEFI BIOS boot entries**.
    * Klik **Add**.
-   * Pilih Disk: `Disk 0`, Partisi: `LINUX_SETUP (FAT32)`.
-   * Arahkan file loader: `\EFI\BOOT\bootx64.efi` (atau `\EFI\BOOT\grubx64.efi`).
-   * Beri nama label: `Linux Local Installer`.
-   * Klik **Move Up** agar berada di urutan teratas $\rightarrow$ Klik **Save Current Boot Entry**.
+   * Pilih Partisi: `DEBIAN_SET (FAT32)`.
+   * File path loader: `\EFI\BOOT\BOOTX64.EFI`.
+   * Beri nama label: `Debian Live Installer`.
+   * Klik **Move Up** ke urutan teratas $\rightarrow$ Klik **Save Current Boot Entry**.
 
 ---
 
-### FASE 3: Proses Instalasi Linux (Manual Partitioning)
+### FASE 3: Proses Instalasi Debian Native (Manual Partitioning)
 
 1. **Restart Komputer:**
-   * Komputer akan otomatis masuk ke Live Environment Linux Installer.
-2. **Pilih Metode Partisi Manual:**
-   * Saat installer menanyakan tipe instalasi, pilih **"Something Else" / "Manual Partitioning" / "Custom"**.
-3. **Konfigurasi Mount Point:**
-   * **Partisi 1 (EFI 100 MB):** Set sebagai `EFI System Partition` (Mount: `/boot/efi`). **JANGAN FORMAT**.
-   * **Unallocated Space (~112 GB):** Klik tanda `+` / Create $\rightarrow$ Type: `ext4` atau `btrfs`, Mount point: `/` (Root).
-   * **Partisi `DATA_STORE` (244 GB NTFS):** **JANGAN CENTANG FORMAT!** Set mount point opsional ke `/mnt/data`.
-4. **Bootloader Installation Device:**
-   * Pilih `/dev/nvme0n1` (Disk utama).
-5. Klik **Install Now** dan selesaikan setup pengguna (Username, Hostname, Password).
+   * Laptop akan booting langsung ke Live Environment Debian GNOME.
+2. **Buka Installer (Calamares / Debian Installer):**
+   * Pilih opsi **Manual Partitioning / Something Else**.
+3. **Atur Mount Point:**
+   * **Partisi 1 (100 MB EFI):** Set Mount Point ke `/boot/efi` (**JANGAN FORMAT**).
+   * **Unallocated Space (~112 GB):** Klik Create $\rightarrow$ Filesystem: `ext4`, Mount Point: `/` (Root).
+   * **Partisi `DATA_STORE` (244 GB NTFS):** **JANGAN DI-FORMAT**. Mount point opsional: `/mnt/data`.
+4. **Pilih Bootloader Location:** `/dev/nvme0n1`.
+5. Selesaikan instalasi dan reboot ke sistem baru.
 
 ---
 
-### FASE 4: Konfigurasi Pasca-Instalasi di Linux
+### FASE 4: Konfigurasi Pasca-Instalasi di Debian Native
 
-1. **Konfigurasi Auto-Mount Partisi Data NTFS:**
-   Identifikasi UUID partisi data:
-   ```bash
-   sudo blkid -s UUID -o value /dev/nvme0n1p4
-   ```
-   Buat direktori mount point:
+1. **Konfigurasi Auto-Mount Partisi Data NTFS di `/etc/fstab`:**
    ```bash
    sudo mkdir -p /mnt/data
+   UUID_DATA=$(sudo blkid -s UUID -o value /dev/nvme0n1p4)
+   echo "UUID=${UUID_DATA}  /mnt/data  ntfs-3g  defaults,uid=1000,gid=1000,umask=022,nofail  0  0" | sudo tee -a /etc/fstab
+   sudo mount -a
    ```
-   Tambahkan ke `/etc/fstab` (menggunakan driver native `ntfs3` / `ntfs-3g`):
-   ```text
-   UUID=<UUID_PARTISI_D>  /mnt/data  ntfs-3g  defaults,uid=1000,gid=1000,umask=022,nofail  0  0
+2. **Restore Konfigurasi WSL:**
+   ```bash
+   tar -xzvf /mnt/data/wsl_backup/wsl_home_backup.tar.gz -C ~/
    ```
-2. **Pembersihan Partisi Installer:**
-   Setelah sistem Linux berjalan normal:
-   * Hapus partisi sementara 8 GB (`LINUX_SETUP`) menggunakan utilitas `cfdisk` atau GParted.
-   * Perluas (*extend*) partisi root `/` untuk memanfaatkan kembali kapasitas 8 GB tersebut.
-
----
-
-## 5. Ringkasan Parameter Teknis
-
-```yaml
-system_profile:
-  device: "Lenovo IdeaPad 3 14IIL05 / 15IIL05 (81WD)"
-  cpu: "Intel Core i5-1035G1 (Ice Lake)"
-  gpu: "Intel UHD Graphics G1 (i915)"
-  wifi_bt: "Intel Wireless-AC 9560 (iwlwifi)"
-  storage_controller: "NVMe SSSTC CL1-4D512"
-  partition_table: "GPT"
-partition_plan:
-  efi_partition: "/dev/nvme0n1p1 (100MB, FAT32) -> /boot/efi"
-  linux_root: "/dev/nvme0n1p2 (~115-230GB, ext4/btrfs) -> /"
-  data_store: "/dev/nvme0n1p4 (244GB, NTFS, UNTOUCHED) -> /mnt/data"
-  temp_installer: "8GB FAT32 (Auto-reclaimed post-install)"
-```
+3. **Pembersihan Partisi Installer:**
+   * Hapus partisi sementara 8 GB (`DEBIAN_SET`) menggunakan `sudo cfdisk /dev/nvme0n1`.
+   * Perluas partisi root `/` untuk memanfaatkan 8 GB tersebut kembali.
