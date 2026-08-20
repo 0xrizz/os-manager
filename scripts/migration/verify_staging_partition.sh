@@ -34,7 +34,7 @@ echo "=================================================="
         \$sizeGb = [math]::Round(\$vol.Size / 1GB, 2)
         Write-Host ('SUCCESS: DEBIAN_SET detected at Drive ' + \$drive + ' (' + \$vol.FileSystem + ', ' + \$sizeGb + ' GB, Label: ' + \$vol.FileSystemLabel + ')')
     } else {
-        Write-Host 'WARNING: DEBIAN_SET volume label not found. Please create the 8GB FAT32 partition labeled DEBIAN_SET via DiskGenius.'
+        Write-Host 'WARNING: DEBIAN_SET volume not found. Please create a FAT32 partition (flexible range: 7GB - 25GB, recommended 8GB - 15GB) labeled DEBIAN_SET via DiskGenius.'
     }
 " < /dev/null
 

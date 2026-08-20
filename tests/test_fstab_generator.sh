@@ -136,6 +136,7 @@ assert_contains "Help mentions --mock-uuid" "${POST_HELP}" "--mock-uuid"
 
 POST_INVALID=$(bash "${POST_INSTALL_SCRIPT}" --invalid-opt 2>&1)
 assert_exit_code "post_install_configure.sh invalid opt returns non-zero" 1 $?
+assert_contains "Error message mentions unknown option" "${POST_INVALID}" "Unknown option"
 set -e
 
 # 4. Fstab Line Formatting & Safety Flags Unit Test
@@ -232,6 +233,7 @@ fi
 set +e
 RESTORE_OUT=$(bash "${RESTORE_SCRIPT}" --archive "${TMP_TAR}" --target "${TMP_RESTORE_DIR}" 2>&1)
 assert_exit_code "restore_wsl_home.sh extraction exits 0" 0 $?
+assert_contains "Restore output indicates success" "${RESTORE_OUT}" "SUCCESS"
 set -e
 
 assert_file_exists "Restored .bashrc exists" "${TMP_RESTORE_DIR}/.bashrc"

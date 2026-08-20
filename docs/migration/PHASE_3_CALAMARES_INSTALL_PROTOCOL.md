@@ -6,15 +6,15 @@ Panduan operasional dan protokol teknis langkah-demi-langkah ini memandu proses 
 
 ## 1. Ringkasan Arsitektur & Prinsip Zero-Data-Loss
 
-Instalasi dilakukan langsung dari Live Environment Debian yang telah di-boot dari partisi staging `DEBIAN_SET` (8.0 GB FAT32) tanpa bantuan USB drive. Installer Calamares akan mengalokasikan sistem operasi Debian baru ke dalam **ruang unallocated (~112 GB)** yang telah disiapkan pada Fase 1.
+Instalasi dilakukan langsung dari Live Environment Debian yang telah di-boot dari partisi staging `DEBIAN_SET` (8.0 GB s/d 15.0 GB FAT32) tanpa bantuan USB drive. Installer Calamares akan mengalokasikan sistem operasi Debian baru ke dalam **ruang unallocated (~71 GB s/d ~112 GB)** yang telah disiapkan pada Fase 1.
 
 ```mermaid
 graph TD
     subgraph NVMe_SSD_512GB["SSD NVMe 512 GB (/dev/nvme0n1)"]
         P1["Partisi 1: ESP (100 MB FAT32)<br/>Mount: /boot/efi (TIDAK DIFORMAT)"]
-        P2["Partisi 2: Windows OS (~106 GB NTFS)<br/>Dipertahankan Sementara"]
-        FREE["Unallocated Space (~112 GB)<br/>DIFORMAT: ext4 -> Mount: / (Root)"]
-        P_STG["Partisi DEBIAN_SET (8.0 GB FAT32)<br/>Live Installer Staging"]
+        P2["Partisi 2: Windows OS (~106 GB / ~140 GB NTFS)<br/>Dipertahankan Sementara"]
+        FREE["Unallocated Space (~71 GB / ~112 GB)<br/>DIFORMAT: ext4 -> Mount: / (Root)"]
+        P_STG["Partisi DEBIAN_SET (8.0 GB / 15.0 GB FAT32)<br/>Live Installer Staging"]
         P3["Partisi Recovery (5.71 GB NTFS)<br/>WinRE"]
         P4["Partisi 4: DATA_STORE (244 GB NTFS)<br/>DILARANG SENTUH (201 GB DATA UTUH)"]
     end
@@ -43,9 +43,9 @@ Tabel berikut adalah acuan mutlak konfigurasi partisi pada layar *Manual Partiti
 | Target Partisi / Device | Tipe File System | Ukuran | Titik Kait (*Mount Point*) | Centang Format? | Catatan & Instruksi Kritis |
 | :--- | :---: | :---: | :---: | :---: | :--- |
 | **Partisi 1 (`/dev/nvme0n1p1`)** | `fat32` | `100 MB` | `/boot/efi` | **JANGAN (Keep)** | EFI System Partition eksisting. **DILARANG FORMAT** agar registrasi bootloader EFI aman. |
-| **Free Space (Unallocated)** | `ext4` | `~112 GB` | `/` (Root) | **YA (Format)** | Klik *Create* pada ruang kosong. Pilih ext4, mount ke root (`/`). *(Opsional: Centang Encrypt system LUKS2)*. |
-| **Partisi 2 (`/dev/nvme0n1p2`)** | `ntfs` | `~106 GB` | *(Kosongkan)* | **JANGAN (Keep)** | Partisi sistem Windows lama. Jangan disentuh (dihapus/di-expand pada Fase 5 setelah Quality Gate lolos). |
-| **Partisi Staging (`DEBIAN_SET`)** | `fat32` | `8.0 GB` | *(Kosongkan)* | **JANGAN (Keep)** | Media live installer aktif saat ini. Jangan diedit. |
+| **Free Space (Unallocated)** | `ext4` | `~71 GB s/d ~112 GB` | `/` (Root) | **YA (Format)** | Klik *Create* pada ruang kosong. Pilih ext4, mount ke root (`/`). *(Opsional: Centang Encrypt system LUKS2)*. |
+| **Partisi 2 (`/dev/nvme0n1p2`)** | `ntfs` | `~106 GB / ~140 GB` | *(Kosongkan)* | **JANGAN (Keep)** | Partisi sistem Windows lama. Jangan disentuh (dihapus/di-expand pada Fase 5 setelah Quality Gate lolos). |
+| **Partisi Staging (`DEBIAN_SET`)** | `fat32` | `8.0 GB / 15.0 GB` | *(Kosongkan)* | **JANGAN (Keep)** | Media live installer aktif saat ini. Jangan diedit. |
 | **Partisi 3 (`/dev/nvme0n1p3`)** | `ntfs` | `5.71 GB` | *(Kosongkan)* | **JANGAN (Keep)** | Partisi Windows Recovery (WinRE). |
 | **Partisi 4 (`/dev/nvme0n1p4`)** | `ntfs` | `244.1 GB` | *(Kosongkan)* | **JANGAN (DO NOT TOUCH)** | **ZONA DATA UTUH (201 GB)**. Berlabel `DATA_STORE` atau `New Volume`. Dilarang ubah! |
 | **Lokasi Boot Loader (*Install boot loader on:*)** | - | - | `/dev/nvme0n1` | - | Pilih Master Drive NVMe SSD (`/dev/nvme0n1 SSSTC CL1-4D512`). |
@@ -96,10 +96,10 @@ Tabel berikut adalah acuan mutlak konfigurasi partisi pada layar *Manual Partiti
      * **Flags**: Pastikan centang `boot` atau `esp` (jika tersedia).
      * Klik **OK**.
 5. **Konfigurasi Ruang Bebas (Root Debian Ext4):**
-   * Klik pada baris **Free Space / Unallocated Space** (berukuran ~112 GB atau ~114,000 MB).
+   * Klik pada baris **Free Space / Unallocated Space** (berukuran ~71 GB atau ~112 GB).
    * Klik tombol **Create**.
    * Di jendela dialog *Create Partition*:
-     * **Size**: Biarkan nilai default maksimal (~112 GB).
+     * **Size**: Biarkan nilai default maksimal (seluruh ruang unallocated).
      * **Partition Type**: Primary Partition.
      * **File System**: **`ext4`**.
      * **Mount Point**: Pilih **`/`** (Root).

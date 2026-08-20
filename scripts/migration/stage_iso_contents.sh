@@ -83,7 +83,7 @@ else
 
     if [[ -z "$STAGING_LETTER" ]]; then
         echo "ERROR: Staging volume 'DEBIAN_SET' could not be resolved from Windows."
-        echo "Please ensure the 8GB FAT32 staging partition has been created and assigned a drive letter."
+        echo "Please ensure the FAT32 staging partition (7GB - 25GB, labeled DEBIAN_SET) has been created and assigned a drive letter."
         echo "Refer to: docs/migration/PHASE_1_DISKGENIUS_GUIDE.md"
         exit 1
     fi
@@ -111,6 +111,7 @@ fi
 # Set up temporary loop mount directory in /var/tmp with safe trap cleanup
 STAGE_TMP="$(mktemp -d /var/tmp/debian_iso_stage.XXXXXX)"
 
+# shellcheck disable=SC2317
 cleanup() {
     local exit_code=$?
     if mountpoint -q "$STAGE_TMP" 2>/dev/null; then
@@ -142,7 +143,7 @@ CHECKS_PASSED=true
 # Verify EFI bootloader
 if find "${STAGING_MOUNT}" -maxdepth 3 -iname "bootx64.efi" 2>/dev/null | grep -q .; then
     LOADER_PATH=$(find "${STAGING_MOUNT}" -maxdepth 3 -iname "bootx64.efi" 2>/dev/null | head -n 1)
-    echo "  [OK] UEFI Bootloader: ${LOADER_PATH#${STAGING_MOUNT}/}"
+    echo "  [OK] UEFI Bootloader: ${LOADER_PATH#"${STAGING_MOUNT}"/}"
 else
     echo "  [ERROR] Missing EFI bootloader (bootx64.efi)!"
     CHECKS_PASSED=false

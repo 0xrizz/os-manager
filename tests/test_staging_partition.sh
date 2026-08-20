@@ -37,7 +37,7 @@ fi
 STAGING_INFO="$(echo "${STAGING_INFO:-}" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 
 if [[ -z "$STAGING_INFO" || "$STAGING_INFO" == "null" || "$STAGING_INFO" == "{}" ]]; then
-    echo "WAITING: Staging partition 'DEBIAN_SET' (8GB FAT32) has not been created yet."
+    echo "WAITING: Staging partition 'DEBIAN_SET' (7GB - 25GB FAT32) has not been created yet."
     echo "Please follow instructions in docs/migration/PHASE_1_DISKGENIUS_GUIDE.md to shrink C: and create DEBIAN_SET."
     exit 1
 fi

@@ -11,6 +11,7 @@ TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
 
+# shellcheck disable=SC2317
 assert_equals() {
     local test_name="$1"
     local expected="$2"
@@ -154,6 +155,7 @@ assert_contains "Help text mentions --strict" "${HELP_OUT}" "--strict"
 
 INVALID_OUT=$(bash "${AUDIT_SCRIPT}" --invalid-flag-xyz 2>&1)
 assert_exit_code "quality_gate_audit.sh invalid flag returns non-zero" 1 $?
+assert_contains "Error message mentions unknown option" "${INVALID_OUT}" "Error: Unknown option"
 set -e
 
 # 4. Mock execution & scoring

@@ -204,7 +204,7 @@ echo ""
 # -----------------------------------------------------------------------------
 echo "4. Staging Volume & UEFI Bootloader Readiness:"
 if [[ "$MOCK_MODE" == "true" ]]; then
-    pass_check "Staging volume 'DEBIAN_SET' (8.0 GB FAT32) verified"
+    pass_check "Staging volume 'DEBIAN_SET' (FAT32, 7GB - 25GB) verified"
     pass_check "Debian UEFI bootloader \\EFI\\BOOT\\BOOTX64.EFI verified on staging drive"
     pass_check "Debian Live filesystem.squashfs verified on staging drive"
 else

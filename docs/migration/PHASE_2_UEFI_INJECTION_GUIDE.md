@@ -1,6 +1,6 @@
 # Panduan Fase 2: Pementasan ISO & Injeksi Entri Boot UEFI NVRAM via DiskGenius
 
-Panduan langkah-demi-langkah ini memandu proses pementasan (*staging*) isi ISO Debian Live ke partisi FAT32 `DEBIAN_SET` (8.0 GB) serta registrasi entri bootloader EFI (`\EFI\BOOT\BOOTX64.EFI`) langsung ke NVRAM motherboard melalui **DiskGenius** untuk booting bare-metal tanpa media USB eksternal.
+Panduan langkah-demi-langkah ini memandu proses pementasan (*staging*) isi ISO Debian Live ke partisi FAT32 `DEBIAN_SET` (8.0 GB – 15.0 GB) serta registrasi entri bootloader EFI (`\EFI\BOOT\BOOTX64.EFI`) langsung ke NVRAM motherboard melalui **DiskGenius** untuk booting bare-metal tanpa media USB eksternal.
 
 ---
 
@@ -25,7 +25,7 @@ Dengan mendaftarkan partisi `DEBIAN_SET` sebagai prioritas boot pertama (#1), ko
 
 Sebelum melakukan injeksi boot entry di DiskGenius:
 1. **Partisi Staging Siap (Fase 1):**
-   Partisi 8.0 GB FAT32 dengan label `DEBIAN_SET` telah dibuat dan memiliki *Drive Letter* di Windows (misalnya `E:`).
+   Partisi FAT32 (8.0 GB s/d 15.0 GB) dengan label `DEBIAN_SET` telah dibuat dan memiliki *Drive Letter* di Windows (misalnya `E:`).
 2. **Ekstraksi ISO Selesai (Fase 2):**
    Seluruh isi ISO Debian Live (`EFI/`, `live/filesystem.squashfs`, `vmlinuz`, `initrd`) telah diekstrak ke dalam partisi `DEBIAN_SET`.
 
@@ -81,7 +81,7 @@ PASS: UEFI bootloader \EFI\BOOT\BOOTX64.EFI verified on DEBIAN_SET.
 1. Pada jendela dialog *Set UEFI BIOS boot entries*, klik tombol **Add** (atau tombol `+`).
 2. Konfigurasikan properti entri boot sebagai berikut:
    * **Disk**: Pilih **Disk 0** (SSD NVMe internal: `SSSTC CL1-4D512` atau sejenisnya).
-   * **Partition**: Pilih partisi **`DEBIAN_SET` (FAT32, ~8.0 GB)**.
+   * **Partition**: Pilih partisi **`DEBIAN_SET` (FAT32, ~8.0 GB s/d 15.0 GB)**.
    * **Boot File Path**: Ketik atau browse ke path:
      ```
      \EFI\BOOT\BOOTX64.EFI
@@ -144,6 +144,6 @@ Setelah pementasan ISO dan registrasi entri boot selesai:
 2. Restart komputer (*Start Menu -> Restart*).
 3. Komputer akan boot langsung ke desktop **Debian 12 Live GNOME**.
 4. Di dalam lingkungan Live, buka panduan Fase 3 untuk memandu instalasi Calamares:
-   - Target Partisi Root: Ruang kosong **~112 GB Unallocated Space**.
+   - Target Partisi Root: Ruang kosong **Unallocated Space (~71 GB s/d ~112 GB)**.
    - Target EFI System Partition: Partisi 1 ESP 100 MB (`/dev/nvme0n1p1`), mount ke `/boot/efi` **TANPA FORMAT**.
    - Partisi Data: `/dev/nvme0n1p4` (`DATA_STORE`) **JANGAN DIUBAH/DIFORMAT**.

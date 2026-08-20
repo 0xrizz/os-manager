@@ -52,7 +52,7 @@ Dokumen ini berisi cetak biru (*blueprint*) arsitektur teknis dan prosedur kompr
 | Nomor Partisi | Offset Sektor (Bytes) | Ukuran Fisik | File System | Label / Type | Status Aksi Migrasi |
 | :---: | :---: | :---: | :---: | :---: | :--- |
 | **Partisi 1** | `1,048,576` (1 MB) | `100 MB` | FAT32 | System (EFI ESP) | **PERTAHANKAN** (Mount ke `/boot/efi`, JANGAN FORMAT) |
-| **Partisi 2 (C:)** | `105,906,176` (~100 MB) | `226.01 GB` | NTFS | Basic Data (`OS`) | **SHRINK 120 GB** $\rightarrow$ Buat 8 GB FAT32 Installer & ~112 GB Unallocated |
+| **Partisi 2 (C:)** | `105,906,176` (~100 MB) | `226.01 GB` | NTFS | Basic Data (`OS`) | **SHRINK 86–120 GB** $\rightarrow$ Buat Staging FAT32 (8–15 GB) & Unallocated (~71–112 GB) |
 | **Partisi 3** | `242,786,385,920` (~226.1 GB) | `5.71 GB` | NTFS | Recovery (WinRE) | **PERTAHANKAN / Biarkan** (Tidak disentuh) |
 | **Partisi 4 (D:)** | `248,917,262,336` (~231.8 GB) | `244.14 GB` | NTFS | Basic Data (`DATA_STORE`) | **ZONA AMAN: JANGAN FORMAT / JANGAN HAPUS (201 GB Data)** |
 
@@ -77,7 +77,7 @@ Total Storage: 512 GB (NVMe SSD: SSSTC CL1-4D512)
 ```
 ┌─────────┬──────────────────────┬─────────────┬─────────────┬──────────────────────┐
 │ Part 1  │ Ruang Kosong (Baru)  │ Part Baru   │ Part 3      │ Part 4: Drive D:     │
-│ 100 MB  │ ~112 - 118 GB        │ 8.0 GB      │ 5.71 GB     │ 244.14 GB (NTFS)     │
+│ 100 MB  │ ~71 - 112 GB         │ 8 - 15 GB   │ 5.71 GB     │ 244.14 GB (NTFS)     │
 │ EFI ESP │ (Unallocated Space)  │ FAT32       │ Recovery    │ Label: "DATA_STORE"  │
 │         │ Calon Root Debian /  │ "DEBIAN_SET"│             │ TETAP UTUH (201GB)   │
 └─────────┴──────────────────────┴─────────────┴─────────────┴──────────────────────┘
@@ -134,12 +134,11 @@ flowchart TD
 2. **Backup Tabel Partisi GPT (Dual Format: DiskGenius & Open Standard):**
    * Di DiskGenius: Klik menu **Disk** $\rightarrow$ **Backup Partition Table** $\rightarrow$ Simpan file di `D:\ptf_backup.ptf`.
    * Di Windows PowerShell / Live Linux: Ekspor raw GPT backup ke `D:\gpt_backup.bin`.
-3. **Resize Partisi C:**
+3. **Resize Partisi C (Pilih Opsi A atau Opsi B):**
    * Klik kanan Partisi 2 (Drive C:) $\rightarrow$ **Resize Partition**.
-   * Perkecil Drive C: sebesar **120 GB**.
-   * Dari ruang bebas hasil shrink:
-     * Alokasikan 1 partisi baru ukuran **8.0 GB**, Tipe: **Primary**, Format: **FAT32**, Volume Label: `DEBIAN_SET`.
-     * Sisakan ruang sisanya (~112 GB) sebagai **Unallocated Space** (ruang kosong tanpa partisi).
+   * **Opsi B (Pilihan User - Rekomendasi):** Shrink **86 GB** (C: sisa ~140 GB) $\rightarrow$ Buat Partisi FAT32 **15.0 GB** label `DEBIAN_SET`, sisakan **~71 GB** Unallocated Space.
+   * **Opsi A (Default Minimal Layout):** Shrink **120 GB** (C: sisa ~106 GB) $\rightarrow$ Buat Partisi FAT32 **8.0 GB** label `DEBIAN_SET`, sisakan **~112 GB** Unallocated Space.
+   * *(Detail langkah-demi-langkah tersedia pada [`docs/migration/PHASE_1_DISKGENIUS_GUIDE.md`](file:///home/rizz/dev/os-manager/docs/migration/PHASE_1_DISKGENIUS_GUIDE.md))*.
 4. Klik **Save All** di pojok kiri atas untuk mengeksekusi operasi.
 
 ---
