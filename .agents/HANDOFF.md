@@ -1,39 +1,52 @@
-# SESSION HANDOFF: Debian Native Migration & Admin Execution
+# CHECKPOINT HANDOFF: Debian Native Bare-Metal Migration (Zero-USB)
 
-Dokumen serah terima (*handoff*) untuk sesi Antigravity di Terminal **Administrator** Windows (`D:\dev\os-manager` atau elevated WSL `/home/rizz/dev/os-manager`).
-
----
-
-## 1. Ringkasan Keputusan Hasil Interview (/grill-me)
-* **Distro Target:** **Debian GNU/Linux (GNOME Live with non-free firmware)**.
-* **Tampilan Desktop:** **GNOME (Wayland)**.
-* **Root Filesystem:** **ext4** (dengan dynamic Swapfile).
-* **Partisi Data Drive D: (244 GB NTFS):** **100% UNTOUCHED (Dilarang format)**, di-mount ke `/mnt/data`.
-* **Migrasi Environment WSL:** Menjalankan ekspor konfigurasi `~/*` (dotfiles, .ssh, git config, dev) ke `D:\wsl_backup\wsl_home_backup.tar.gz` sebelum partisi Windows dihapus.
+**Timestamp:** 2026-08-20 17:02 WIB  
+**Working Directory:** `/home/rizz/dev/os-manager`  
+**Active Plan:** `docs/superpowers/plans/2026-08-20-zero-usb-debian-bare-metal-migration.md`  
+**SDD Workspace:** `.superpowers/sdd/2026-08-20-zero-usb-debian-bare-metal-migration/`  
+**Git HEAD:** `bdc1f95`
 
 ---
 
-## 2. Status Hardware & Disk Fisik (Disk 0 - NVMe 512 GB)
-* **Partisi 1:** EFI System Partition (100 MB, FAT32) $\rightarrow$ Mount ke `/boot/efi`
-* **Partisi 2:** Windows C: (226 GB, NTFS) $\rightarrow$ Di-shrink untuk installer (8 GB FAT32) & Debian Root (~112 GB)
-* **Partisi 3:** Windows Recovery (5.7 GB)
-* **Partisi 4:** Data D: (244 GB, NTFS, 201 GB used) $\rightarrow$ Diberi label `DATA_STORE` di DiskGenius
+## 1. System Health & Critical Artifacts
+
+| Item / Resource | Path / Identifier | Verified Status |
+| :--- | :--- | :--- |
+| **WSL Home Backup** | `/mnt/d/wsl_backup/wsl_home_backup.tar.gz` | `753 MB` (`TAR_INTEGRITY_OK`) |
+| **WSL Backup SHA256** | `/mnt/d/wsl_backup/wsl_home_backup.sha256` | `0c36b038b3f469b75c7594cab025618399c186d6923274bed3beff23cc8c4daf` |
+| **Debian Live ISO** | `/mnt/d/download/debian-live-12.8.0-amd64-gnome.iso` | `3.22 GiB` (SHA512 Verified OK) |
+| **Squashfs Size** | `live/filesystem.squashfs` inside ISO | `2.72 GiB` (< 4 GiB FAT32 limit verified) |
+| **GPT Disk Layout** | `D:\disk_layout.json` & `D:\partition_layout.json` | Exported & verified |
+| **BCD Backup** | `D:\bcd_backup.bcd` | Exported & verified |
+| **Drive D: Guardrail** | Partition 4 (`/dev/nvme0n1p4`, 244.14 GB NTFS) | **100% UNTOUCHED** (201 GB data safe) |
+| **BitLocker** | Volumes C: & D: | Protection Off / Fully Decrypted |
+| **Fast Startup** | Windows OS | Disabled (`powercfg /h off`) |
 
 ---
 
-## 3. Tugas Prioritas yang Harus Dieksekusi di Terminal Admin
-1. **Verifikasi Hak Admin:** Uji hak akses administratif.
-2. **Cek BitLocker:** Jalankan `manage-bde.exe -status` untuk memastikan proteksi C: dan D: adalah OFF (Decrypted).
-3. **Nonaktifkan Fast Startup:** Jalankan `powercfg.exe /h off`.
-4. **Perbaiki File System Drive D:** Jalankan `chkdsk.exe D: /f /r` untuk menyelesaikan status *repair needed*.
-5. **Ekspor Data & Dotfiles WSL:**
-   ```bash
-   mkdir -p /mnt/d/wsl_backup
-   tar -czvf /mnt/d/wsl_backup/wsl_home_backup.tar.gz -C /home/rizz .bashrc .profile .ssh .gitconfig .agents dev
-   ```
-6. **Perbarui Blueprint:** Perbarui `docs/LINUX_MIGRATION_BLUEPRINT.md` dengan konfirmasi hasil eksekusi admin.
+## 2. SDD Task Progression Status
+
+- [x] **Task 1: Debian Live GNOME ISO Acquisition & Squashfs Size Verification**
+  - Scripts: `scripts/migration/verify_iso_squashfs.sh` & `tests/test_migration_prerequisites.sh`
+  - Commit: `bdc1f95` (Spec: YES, Quality: APPROVED)
+- [ ] **Task 2: GPT Partition Table & BCD Redundancy Backup** (Ready to resume)
+- [ ] **Task 3: Phase 1 DiskGenius Partition Resizing & FAT32 Staging Creation**
+- [ ] **Task 4: Phase 2 ISO Staging & UEFI NVRAM Boot Entry Injection**
+- [ ] **Task 5: Phase 3 Calamares Installation & Manual Partitioning Protocol**
+- [ ] **Task 6: Post-Installation Quality Gate Diagnostics Checkpoint**
+- [ ] **Task 7: Phase 4 Auto-Mount Data Store, WSL Restore, & Swapfile Setup**
+- [ ] **Task 8: Safe Online Root Partition Expansion & Staging Cleanup**
 
 ---
 
-## 4. Referensi Dokumen
-* Blueprint Lengkap: [docs/LINUX_MIGRATION_BLUEPRINT.md](file:///home/rizz/dev/os-manager/docs/LINUX_MIGRATION_BLUEPRINT.md)
+## 3. Cara Melanjutkan di Sesi Berikutnya
+
+Cukup berikan perintah:
+```text
+/subagent-driven-development
+```
+atau
+```text
+Lanjutkan eksekusi migrasi Debian bare-metal dari checkpoint Task 2
+```
+Semua state, ledger, commit, ISO, dan backup data telah tersimpan secara persisten di Drive D: dan Git repository.
