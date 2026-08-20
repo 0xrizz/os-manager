@@ -77,7 +77,7 @@ else
 
     echo "Querying Windows for DEBIAN_SET staging volume..."
     STAGING_LETTER=$("$PWSH_BIN" -NoProfile -NonInteractive -Command "
-        \$vol = Get-Volume | Where-Object { \$_.FileSystemLabel -eq 'DEBIAN_SET' -or (\$_.FileSystem -eq 'FAT32' -and \$_.Size -ge 7GB -and \$_.Size -le 9GB) }
+        \$vol = Get-Volume | Where-Object { \$_.FileSystemLabel -eq 'DEBIAN_SET' -or (\$_.FileSystem -eq 'FAT32' -and \$_.Size -ge 7GB -and \$_.Size -le 25GB) }
         if (\$vol -and \$vol.DriveLetter) { Write-Output \$vol.DriveLetter }
     " < /dev/null 2>/dev/null | tr -d '\r\n')
 

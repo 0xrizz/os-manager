@@ -210,7 +210,7 @@ if [[ "$MOCK_MODE" == "true" ]]; then
 else
     if command -v "$PWSH_BIN" >/dev/null 2>&1; then
         STAGING_VOL=$("$PWSH_BIN" -NoProfile -NonInteractive -Command "
-            \$vol = Get-Volume | Where-Object { \$_.FileSystemLabel -eq 'DEBIAN_SET' -or (\$_.FileSystem -eq 'FAT32' -and \$_.Size -ge 7GB -and \$_.Size -le 9GB) }
+            \$vol = Get-Volume | Where-Object { \$_.FileSystemLabel -eq 'DEBIAN_SET' -or (\$_.FileSystem -eq 'FAT32' -and \$_.Size -ge 7GB -and \$_.Size -le 25GB) }
             if (\$vol) { Write-Output (\$vol.DriveLetter + ':' + \$vol.FileSystem + ':' + \$vol.FileSystemLabel) }
         " < /dev/null 2>/dev/null | tr -d '\r\n' || echo "")
 
@@ -218,7 +218,7 @@ else
             pass_check "Staging partition detected: ${STAGING_VOL}"
 
             LOADER_OK=$("$PWSH_BIN" -NoProfile -NonInteractive -Command "
-                \$vol = Get-Volume | Where-Object { \$_.FileSystemLabel -eq 'DEBIAN_SET' -or (\$_.FileSystem -eq 'FAT32' -and \$_.Size -ge 7GB -and \$_.Size -le 9GB) }
+                \$vol = Get-Volume | Where-Object { \$_.FileSystemLabel -eq 'DEBIAN_SET' -or (\$_.FileSystem -eq 'FAT32' -and \$_.Size -ge 7GB -and \$_.Size -le 25GB) }
                 if (\$vol -and \$vol.DriveLetter) {
                     Test-Path (\$vol.DriveLetter + ':\EFI\BOOT\BOOTX64.EFI')
                 } else { Write-Output 'False' }
