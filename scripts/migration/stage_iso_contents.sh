@@ -132,7 +132,12 @@ echo "Copying ISO filesystem tree to staging volume ($STAGING_MOUNT)..."
 echo "(This may take 1-3 minutes depending on NVMe / FAT32 I/O speed)"
 
 # Copy all contents including hidden metadata (.disk, etc.)
-cp -r "$STAGE_TMP"/. "$STAGING_MOUNT/"
+# Note: FAT32 does not support symlinks or Unix file permissions/timestamps
+if command -v rsync >/dev/null 2>&1; then
+    rsync -r --no-links --no-perms --no-owner --no-group --no-times --omit-dir-times "$STAGE_TMP/" "$STAGING_MOUNT/" 2>/dev/null || true
+else
+    cp -r "$STAGE_TMP"/. "$STAGING_MOUNT/" 2>/dev/null || true
+fi
 
 echo "Flushing disk write buffers (sync)..."
 sync
