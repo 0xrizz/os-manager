@@ -10,7 +10,7 @@ Dokumen ini berisi cetak biru (*blueprint*) arsitektur teknis dan prosedur kompr
 | :--- | :--- | :--- |
 | **Distro Target** | **Debian GNU/Linux** *(Official Live GNOME with non-free firmware)* | Sesuai lingkungan WSL saat ini (`Debian Trixie`), kestabilan jangka panjang, paket dependency teruji. |
 | **Desktop Environment** | **GNOME** (Wayland) | Integrasi touchpad/gesture laptop sangat mulus, modern, default Debian. |
-| **Root Filesystem** | **ext4** (dengan dynamic Swapfile) | Kompatibilitas dan reliabilitas maksimal, zero maintenance overhead. |
+| **Root Filesystem** | **ext4** (dengan dynamic Swapfile + opsi LUKS2) | Kompatibilitas dan reliabilitas maksimal, proteksi kredensial developer. |
 | **Partisi Data (D:)** | **NTFS (244 GB)** $\rightarrow$ Mount ke `/mnt/data` | Tetap utuh (*in-place*), tidak diformat, data 201 GB aman. |
 | **Migrasi Konfigurasi WSL** | Backup `~/*` ke `D:\wsl_backup\` | Dotfiles, SSH keys, git config, dan project runtime langsung di-restore di bare-metal Debian. |
 
@@ -51,9 +51,9 @@ Dokumen ini berisi cetak biru (*blueprint*) arsitektur teknis dan prosedur kompr
 
 | Nomor Partisi | Offset Sektor (Bytes) | Ukuran Fisik | File System | Label / Type | Status Aksi Migrasi |
 | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Partisi 1** | `1,048,576` (1 MB) | `100 MB` | FAT32 | System (EFI ESP) | **PERTahankan** (Mount ke `/boot/efi`, JANGAN FORMAT) |
+| **Partisi 1** | `1,048,576` (1 MB) | `100 MB` | FAT32 | System (EFI ESP) | **PERTAHANKAN** (Mount ke `/boot/efi`, JANGAN FORMAT) |
 | **Partisi 2 (C:)** | `105,906,176` (~100 MB) | `226.01 GB` | NTFS | Basic Data (`OS`) | **SHRINK 120 GB** $\rightarrow$ Buat 8 GB FAT32 Installer & ~112 GB Unallocated |
-| **Partisi 3** | `242,786,385,920` (~226.1 GB) | `5.71 GB` | NTFS | Recovery (WinRE) | **PERTahankan / Biarkan** (Tidak disentuh) |
+| **Partisi 3** | `242,786,385,920` (~226.1 GB) | `5.71 GB` | NTFS | Recovery (WinRE) | **PERTAHANKAN / Biarkan** (Tidak disentuh) |
 | **Partisi 4 (D:)** | `248,917,262,336` (~231.8 GB) | `244.14 GB` | NTFS | Basic Data (`DATA_STORE`) | **ZONA AMAN: JANGAN FORMAT / JANGAN HAPUS (201 GB Data)** |
 
 ---
@@ -102,9 +102,10 @@ Total Storage: 512 GB (NVMe SSD: SSSTC CL1-4D512)
 ```mermaid
 flowchart TD
     A[Fase 0: Diagnostik & Backup WSL - SELESAI] --> B[Fase 1: Rekonfigurasi Partisi via DiskGenius]
-    B --> C[Fase 2: Staging Debian Live ISO & Injeksi Boot Entry UEFI]
-    C --> D[Fase 3: Reboot & Eksekusi Calamares / Debian Installer]
-    D --> E[Fase 4: Auto-Mount Data & Restore Dotfiles WSL]
+    B --> C[Fase 2: Validasi Squashfs, Staging ISO & Injeksi Boot UEFI]
+    C --> D[Fase 3: Reboot & Eksekusi Calamares Installer]
+    D --> E[Checkpoint: Stabilitas Driver & GNOME]
+    E --> F[Fase 4: Auto-Mount Data, Restore WSL & Safe Root Expand]
 ```
 
 ---
@@ -130,8 +131,9 @@ flowchart TD
 1. **Beri Label Partisi Data (Keamanan Visual):**
    * Buka DiskGenius (WinPE / Windows).
    * Klik kanan Partisi 4 (Drive D:) $\rightarrow$ **Set Volume Label** $\rightarrow$ Isi: `DATA_STORE`.
-2. **Backup Tabel Partisi GPT:**
-   * Klik menu **Disk** $\rightarrow$ **Backup Partition Table** $\rightarrow$ Simpan file di `D:\ptf_backup.ptf`.
+2. **Backup Tabel Partisi GPT (Dual Format: DiskGenius & Open Standard):**
+   * Di DiskGenius: Klik menu **Disk** $\rightarrow$ **Backup Partition Table** $\rightarrow$ Simpan file di `D:\ptf_backup.ptf`.
+   * Di Windows PowerShell / Live Linux: Ekspor raw GPT backup ke `D:\gpt_backup.bin`.
 3. **Resize Partisi C:**
    * Klik kanan Partisi 2 (Drive C:) $\rightarrow$ **Resize Partition**.
    * Perkecil Drive C: sebesar **120 GB**.
@@ -142,11 +144,18 @@ flowchart TD
 
 ---
 
-### FASE 2: Staging Debian Live GNOME ISO & Injeksi Boot UEFI
+### FASE 2: Validasi Squashfs, Staging ISO & Injeksi Boot UEFI
+
+> [!IMPORTANT]
+> **Pemeriksaan Batas Ukuran File FAT32 (4 GiB Limit):**
+> Partisi FAT32 memiliki batasan maksimal ukuran 1 file sebesar 4 GiB (4.294.967.295 bytes).
+> * Debian 12 Live GNOME resmi (`debian-live-12.8.0-amd64-gnome.iso`) berukuran total ~3.1 GB dengan file `live/filesystem.squashfs` berukuran **~2.7 GB** (jauh di bawah batas 4 GiB), sehingga **aman 100% diekstrak ke FAT32**.
+> * Jika menggunakan custom image / DVD installer penuh yang memiliki file >4 GB, gunakan partisi staging berbasis **exFAT / NTFS** dengan chainloading GRUB EFI.
 
 1. **Ekstrak Debian Live GNOME ISO:**
-   * Buka file ISO Debian Live GNOME (`debian-live-*-amd64-gnome+nonfree.iso`) via File Explorer / DiskGenius.
-   * Salin / ekstrak seluruh folder dan file di dalam ISO (`.disk`, `boot`, `d-i`, `dists`, `efi`, `install`, `isolinux`, `live`, `pool`) langsung ke root partisi `DEBIAN_SET` (FAT32 8 GB).
+   * Buka file ISO Debian Live GNOME via File Explorer / DiskGenius.
+   * Salin seluruh isi direktori ISO (`.disk`, `boot`, `d-i`, `dists`, `efi`, `install`, `isolinux`, `live`, `pool`) langsung ke root partisi `DEBIAN_SET` (FAT32 8 GB).
+   * Verifikasi bahwa file `DEBIAN_SET:\live\filesystem.squashfs` tersalin utuh.
 2. **Daftarkan Boot Entry ke UEFI NVRAM via DiskGenius:**
    * Di DiskGenius, buka menu **Tools** $\rightarrow$ **Set UEFI BIOS boot entries**.
    * Klik tombol **Add**.
@@ -165,18 +174,31 @@ flowchart TD
    * Laptop akan booting langsung ke Live Environment Debian GNOME dari partisi `DEBIAN_SET`.
 2. **Buka Installer (Calamares / Debian Installer):**
    * Buka icon **Install Debian** di desktop GNOME Live.
-   * Pilih bahasa, zona waktu (mis. `Asia/Jakarta`), dan keyboard layout.
+   * Pilih bahasa, zona waktu (`Asia/Jakarta`), dan keyboard layout.
 3. **Atur Partisi Manual (Manual Partitioning):**
    * Pilih opsi **Manual Partitioning**.
    * **Partisi 1 (100 MB EFI ESP):**
      * Edit $\rightarrow$ Mount point: `/boot/efi` $\rightarrow$ **JANGAN CENTANG FORMAT**.
    * **Ruang Kosong (Unallocated Space ~112 GB):**
      * Klik Create $\rightarrow$ Filesystem: `ext4` $\rightarrow$ Mount point: `/` (Root) $\rightarrow$ Format: `Yes`.
+     * *(Opsional Keamanan Kredensial Developer)*: Anda dapat mencentang opsi **Encrypt system (LUKS2)** untuk mengenkripsi partisi root agar SSH keys, API keys, dan file penting terlindungi saat laptop mati/hilang.
    * **Partisi 4 (`DATA_STORE` 244 GB NTFS):**
      * **JANGAN DISENTUH / JANGAN FORMAT**.
    * **Lokasi Bootloader:** Pilih `/dev/nvme0n1`.
-4. Selesaikan instalasi akun pengguna (`rizz`), password, lalu jalankan instalasi hingga selesai (100%).
+4. Selesaikan pembuatan akun pengguna (`rizz`), password, lalu jalankan instalasi hingga selesai (100%).
 5. Reboot sistem ke Debian Bare-Metal.
+
+---
+
+### CHECKPOINT: Verifikasi Stabilitas Sistem (Quality Gate)
+
+> [!WARNING]
+> **JANGAN HAPUS partisi installer atau partisi eks-Windows sebelum memenuhi kriteria Quality Gate ini:**
+> 1. Sistem telah berhasil reboot normal minimal 2–3 kali tanpa kernel panic.
+> 2. Wi-Fi Intel AC 9560 (`iwlwifi`) terhubung stabil dan internet berfungsi lancar.
+> 3. Audio, Bluetooth, dan Touchpad gesture berfungsi normal.
+> 4. Fitur **Suspend & Resume** (tutup-buka layar laptop) berjalan normal tanpa freeze.
+> 5. Sesi GNOME Wayland berjalan mulus dengan akselerasi grafis Intel Iris Plus/UHD (`i915`).
 
 ---
 
@@ -195,7 +217,7 @@ flowchart TD
    ```bash
    tar -xzvf /mnt/data/wsl_backup/wsl_home_backup.tar.gz -C ~/
    ```
-3. **Setup Swapfile Dinamis (Opsional / Rekomendasi 8 GB):**
+3. **Setup Swapfile Dinamis (Rekomendasi 8 GB):**
    ```bash
    sudo fallocate -l 8G /swapfile
    sudo chmod 600 /swapfile
@@ -203,7 +225,18 @@ flowchart TD
    sudo swapon /swapfile
    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
    ```
-4. **Pembersihan Partisi Installer Sementara:**
-   * Buka GNOME Disks (`gnome-disks`) atau `sudo gdisk /dev/nvme0n1`.
-   * Hapus partisi sementara 8 GB (`DEBIAN_SET`) dan partisi eks-C / WinRE yang sudah tidak terpakai.
-   * Perluas (*expand*) partisi root `/` (ext4) hingga mengisi seluruh ruang sisa SSD.
+4. **Pembersihan & Ekspansi Partisi Root yang Aman (*Safe Online Resize*):**
+   *Setelah Quality Gate terpenuhi*, hapus partisi sementara `DEBIAN_SET` via `gnome-disks` atau `gdisk`, lalu perluas partisi root secara aman dengan urutan perintah berikut:
+   ```bash
+   # 1. Pastikan paket cloud-guest-utils terpasang (berisi growpart)
+   sudo apt update && sudo apt install -y cloud-guest-utils
+   
+   # 2. Perluas batas tabel partisi ke ruang kosong (ganti angka 2 sesuai nomor partisi root)
+   sudo growpart /dev/nvme0n1 2
+   
+   # 3. Perluas filesystem ext4 secara online tanpa unmount
+   sudo resize2fs /dev/nvme0n1p2
+   
+   # 4. Verifikasi kapasitas akhir
+   df -hT /
+   ```

@@ -1,25 +1,14 @@
 You are an expert Linux Systems Engineer and Windows Infrastructure Architect. We are executing a zero-USB, zero-external-backup full migration from Windows to bare-metal Debian GNU/Linux (GNOME, ext4) on this Lenovo IdeaPad 3 (81WD) with a 512GB NVMe SSD.
 
-This session is running in an elevated Administrator terminal. Your task is to perform deep administrative diagnostics, execute the pre-migration maintenance, export the current WSL environment, and verify the final migration plan.
+Phase 0 (Diagnostic & WSL Backup) has been completed successfully. The blueprint in `docs/LINUX_MIGRATION_BLUEPRINT.md` has been upgraded with critical mitigations:
+1. FAT32 4GB limit verification for `live/filesystem.squashfs` (~2.7 GB on official Debian 12 Live GNOME).
+2. Open-standard GPT backup redundancy alongside DiskGenius PTF format.
+3. LUKS2 encryption option for Developer Credential protection during Calamares install.
+4. Strict Quality Gate checkpoint before deleting staging or legacy partitions.
+5. Concrete, safe online partition expansion sequence using `growpart` and `resize2fs`.
 
-First, inspect the handoff and finalized blueprint files:
-- .agents/HANDOFF.md
-- docs/LINUX_MIGRATION_BLUEPRINT.md
-
-Execute the following administrative tasks using Windows and Linux tools:
-1. Verify elevated privileges to ensure full administrative execution.
-2. Query BitLocker status on all volumes using `manage-bde.exe -status` to confirm partitions C: and D: are fully decrypted and protection is disabled.
-3. Disable Windows Fast Startup and Hibernation to prevent NTFS partition locking using `powercfg.exe /h off`.
-4. Run a file system repair and bad-sector check on Drive D: using `chkdsk.exe D: /f /r` to resolve the detected "Full Repair Needed" status.
-5. Export the current WSL development environment (dotfiles, .ssh, git configs, dev directory) to Drive D: by creating an archive at `/mnt/d/wsl_backup/wsl_home_backup.tar.gz`.
-6. Inspect the current UEFI boot entries and BCD store using `bcdedit.exe /enum all` and PowerShell `Get-SecureBootUEFI` to verify NVRAM entry registration capability.
-7. Confirm the exact partition boundaries, sector offsets, and free space of Disk 0 using `powershell.exe -NoProfile -Command "Get-Partition -DiskNumber 0 | Format-Table -AutoSize"`.
-
-Strict guardrails:
-- Do not run any format or deletion commands on Partition 4 (Drive D: / DATA_STORE). Data on Drive D: (~201 GB) must remain completely untouched.
-- Do not execute irreversible disk operations without explaining the exact parameters first.
-
-Output deliverables:
-- Summarize the status of BitLocker, Fast Startup, Drive D file system integrity, and WSL backup creation.
-- Confirm the staging steps for DiskGenius (shrinking Drive C by 120 GB, creating 8 GB FAT32 DEBIAN_SET installer partition, and registering \EFI\BOOT\BOOTX64.EFI into UEFI NVRAM).
-- Update docs/LINUX_MIGRATION_BLUEPRINT.md with the latest verified administrative data.
+Your task in this session:
+1. Verify the integrity and size of the downloaded Debian Live GNOME ISO or files staged in the system.
+2. Confirm the open-standard GPT partition table backup.
+3. Assist the user in executing Phase 1 (DiskGenius partition shrink and DEBIAN_SET FAT32 creation) and Phase 2 (staging ISO contents and registering UEFI NVRAM boot entry).
+4. Maintain strict guardrail: Partition 4 (Drive D: / DATA_STORE, 244 GB NTFS) MUST REMAIN 100% UNTOUCHED.
