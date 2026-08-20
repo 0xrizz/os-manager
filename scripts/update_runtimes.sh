@@ -41,9 +41,11 @@ if command -v uv &>/dev/null; then
 fi
 
 echo "==> [5/5] Updating AI Coding and Cloudflare CLIs..."
+if command -v claude &>/dev/null || [ -f "${HOME}/.local/bin/claude" ]; then
+    curl -fsSL https://claude.ai/install.sh | bash 2>/dev/null || true
+fi
 if command -v npm &>/dev/null; then
-    npm install -g @anthropic-ai/claude-code --allow-scripts 2>/dev/null || true
-    npm install -g wrangler --allow-scripts 2>/dev/null || true
+    npm install -g --allow-scripts=wrangler wrangler 2>/dev/null || true
 fi
 if command -v agy &>/dev/null; then
     curl -fsSL https://antigravity.google/cli/install.sh | bash 2>/dev/null || true
