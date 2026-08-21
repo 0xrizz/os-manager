@@ -390,6 +390,16 @@ assert_exit_code "Migration & Partition Reclamation Test Suite" 0 $?
 echo "--- Testing GitHub CLI Installer Suite ---"
 "${WORKSPACE_ROOT}/tests/test_install_github_cli.sh" > /dev/null 2>&1
 assert_exit_code "GitHub CLI Installer Unit Tests" 0 $?
+
+echo "--- Testing Debian 13 Upgrade Engine & CLI Suite ---"
+"${WORKSPACE_ROOT}/tests/test_upgrade_preflight.sh" > /dev/null 2>&1
+assert_exit_code "test_upgrade_preflight.sh complete suite" 0 $?
+
+"${WORKSPACE_ROOT}/tests/test_upgrade_pipeline.sh" > /dev/null 2>&1
+assert_exit_code "test_upgrade_pipeline.sh complete suite" 0 $?
+
+python3 -m unittest "${WORKSPACE_ROOT}/tests/test_upgrade_command.py" > /dev/null 2>&1
+assert_exit_code "test_upgrade_command.py unit suite" 0 $?
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"

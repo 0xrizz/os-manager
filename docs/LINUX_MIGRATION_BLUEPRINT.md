@@ -172,3 +172,37 @@ flowchart TD
      sudo reboot
      ```
    * Seluruh partisi eks-Windows C: (~140 GB), staging installer (`DEBIAN_SET` ~15 GB), dan recovery (~5.7 GB) otomatis direklamasi menjadi satu partisi root `ext4` **~235 GB** utuh tanpa membutuhkan media USB eksternal. Sesuai dengan [`docs/migration/ZERO_USB_ROOT_EXPANSION_PROTOCOL.md`](migration/ZERO_USB_ROOT_EXPANSION_PROTOCOL.md).
+
+---
+
+## 5. Siklus Hidup & Prosedur Upgrade Debian 13 (Trixie)
+
+Setelah sistem bare-metal berjalan stabil di Debian 12 (Bookworm), migrasi *in-place* ke Debian 13 (Trixie) dapat dilakukan menggunakan modul `osm upgrade` atau skrip engine `scripts/upgrade_debian_trixie.sh`.
+
+### Proteksi Keandalan & SRE Invariants:
+1. **Sleep & Lid-Switch Inhibition:** Dibungkus `systemd-inhibit` untuk mencegah ACPI sleep/suspend saat lid laptop ditutup atau idle.
+2. **AC Power Gate:** Verifikasi mandatory adaptor daya terhubung (`on_ac_power`) untuk mencegah kegagalan thermal cut-off saat baterai habis.
+3. **Isolasi Memori & OOM:** Skrip upgrade dilindungi dengan `oom_score_adj=-1000` dan verifikasi virtual memory $\ge 2.0\text{ GB}$ sebelum kompresi initramfs zstd berjalan.
+4. **Multiplexer Protection:** Wajib dijalankan di dalam sesi `tmux` atau `screen` agar tidak terputus saat GNOME Display Manager (`gdm3`) di-restart.
+5. **Kapasitas Penyimpanan:** Membutuhkan $\ge 15.0\text{ GB}$ ruang kosong di `/` dan $\ge 1.0\text{ GB}$ di `/boot`, dengan pembersihan cache `.deb` bertahap (`APT::Keep-Downloaded-Packages=false` dan intermediate `apt-get clean`).
+6. **Format deb822 & Firmware:** Repositori ditransisikan ke `/etc/apt/sources.list.d/debian.sources` dengan retensi `non-free-firmware` dan instalasi wajib `firmware-sof-signed`, `firmware-misc-nonfree`, dan `alsa-ucm-conf`.
+7. **Integritas NetworkManager:** Normalisasi perizinan `chmod 0600` pada keyfile `/etc/NetworkManager/system-connections/*` agar koneksi Wi-Fi tidak terputus pasca-reboot.
+8. **Dual Backup Redundancy:** Snapshot disimpan di `/var/backups/osm/` dan dicadangkan ke `/mnt/data/osm_backups/` dalam bentuk tarball terkompresi dengan skrip rescue mandiri yang memuat opsi recovery GPU (`nouveau.modeset=0`).
+
+### Alur Eksekusi CLI:
+```bash
+# 1. Pre-flight health check
+osm upgrade check
+
+# 2. Simulasi dry-run
+osm upgrade dry-run
+
+# 3. Eksekusi upgrade (otomatis membuka sesi tmux bila belum di dalam tmux)
+sudo osm upgrade start
+
+# 4. Verifikasi hardware, DRM & jaringan pasca-reboot
+osm upgrade verify
+
+# 5. Rebuild python venv bila dependensi runtime berubah
+osm upgrade rebuild-venv
+```
