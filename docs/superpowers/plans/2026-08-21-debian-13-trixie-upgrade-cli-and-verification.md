@@ -55,7 +55,7 @@
   - `osm upgrade rebuild-venv [--target-dir DIR]`
   - Function: `run_upgrade(args: list[str]) -> int`
 
-- [ ] **Step 1: Write the failing test for Task 1 in `tests/test_upgrade_command.py`**
+- [x] **Step 1: Write the failing test for Task 1 in `tests/test_upgrade_command.py`**
 
 Create `tests/test_upgrade_command.py`:
 
@@ -157,12 +157,12 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python3 -m unittest tests/test_upgrade_command.py`
 Expected output: FAIL with "upgrade command unrecognized".
 
-- [ ] **Step 3: Implement `os_manager/commands/upgrade.py` and register in `os_manager/cli.py`**
+- [x] **Step 3: Implement `os_manager/commands/upgrade.py` and register in `os_manager/cli.py`**
 
 Create `os_manager/commands/upgrade.py`:
 
@@ -309,12 +309,12 @@ def run_upgrade(args: list[str]) -> int:
 
 Update `os_manager/cli.py` to import and register `upgrade` parser.
 
-- [ ] **Step 4: Run tests to verify Task 1 passes**
+- [x] **Step 4: Run tests to verify Task 1 passes**
 
 Run: `python3 -m unittest tests/test_upgrade_command.py`
 Expected output: PASS: all tests pass with code 0.
 
-- [ ] **Step 5: Commit Task 1 deliverables**
+- [x] **Step 5: Commit Task 1 deliverables**
 
 ```bash
 git add os_manager/commands/upgrade.py os_manager/cli.py tests/test_upgrade_command.py
@@ -343,7 +343,7 @@ git commit -m "feat(cli): implement osm upgrade command router with tmux bootstr
     - UEFI Secure Boot & Kernel Lockdown status (`/sys/kernel/security/lockdown`).
     - Failed Systemd Services (`systemctl --failed`).
 
-- [ ] **Step 1: Write failing verification tests in `tests/test_upgrade_pipeline.sh`**
+- [x] **Step 1: Write failing verification tests in `tests/test_upgrade_pipeline.sh`**
 
 Add to `tests/test_upgrade_pipeline.sh`:
 
@@ -377,12 +377,12 @@ assert_exit_code "Failed systemd units return exit code 2" 2 "${SYS_FAIL_RC}"
 assert_contains "Logs systemd failure error" "${SYS_FAIL_OUT}" "Degraded or failed systemd units detected"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bash tests/test_upgrade_pipeline.sh`
 Expected output: FAIL with "Unknown option: --verify".
 
-- [ ] **Step 3: Implement `verify_system_and_hardware` in `scripts/upgrade_debian_trixie.sh`**
+- [x] **Step 3: Implement `verify_system_and_hardware` in `scripts/upgrade_debian_trixie.sh`**
 
 Add subroutine:
 
@@ -496,12 +496,12 @@ verify_system_and_hardware() {
 
 Update `parse_args` and `main` to handle `--verify`.
 
-- [ ] **Step 4: Run test to verify Task 2 passes**
+- [x] **Step 4: Run test to verify Task 2 passes**
 
 Run: `bash tests/test_upgrade_pipeline.sh`
 Expected output: PASS: all tests pass with code 0.
 
-- [ ] **Step 5: Commit Task 2 deliverables**
+- [x] **Step 5: Commit Task 2 deliverables**
 
 ```bash
 git add scripts/upgrade_debian_trixie.sh tests/test_upgrade_pipeline.sh
@@ -518,7 +518,7 @@ git commit -m "feat(upgrade): implement Phase 5 verification with DRM nodes, loc
 - Modify: `docs/LINUX_MIGRATION_BLUEPRINT.md`
 - Test: Full execution of `scripts/harness_check.sh` and `python3 -m unittest discover tests/`.
 
-- [ ] **Step 1: Register upgrade test suites in `tests/test_harness.sh` and `scripts/harness_check.sh`**
+- [x] **Step 1: Register upgrade test suites in `tests/test_harness.sh` and `scripts/harness_check.sh`**
 
 In `tests/test_harness.sh`:
 
@@ -534,7 +534,7 @@ python3 -m unittest "${WORKSPACE_ROOT}/tests/test_upgrade_command.py" > /dev/nul
 assert_exit_code "test_upgrade_command.py unit suite" 0 $?
 ```
 
-- [ ] **Step 2: Update `docs/LINUX_MIGRATION_BLUEPRINT.md` with Debian 13 Lifecycle & SRE Hardened Protocol**
+- [x] **Step 2: Update `docs/LINUX_MIGRATION_BLUEPRINT.md` with Debian 13 Lifecycle & SRE Hardened Protocol**
 
 Append Section 5 to `docs/LINUX_MIGRATION_BLUEPRINT.md`:
 
@@ -574,7 +574,7 @@ osm upgrade rebuild-venv
 ```
 ```
 
-- [ ] **Step 3: Run master harness check and unittest suite**
+- [x] **Step 3: Run master harness check and unittest suite**
 
 Run:
 ```bash
@@ -583,7 +583,7 @@ python3 -m unittest discover tests/
 ```
 Expected output: "✓ ALL HARNESS COMPONENT CHECKS PASSED" and 0 failures.
 
-- [ ] **Step 4: Commit Task 3 deliverables**
+- [x] **Step 4: Commit Task 3 deliverables**
 
 ```bash
 git add tests/test_harness.sh scripts/harness_check.sh docs/LINUX_MIGRATION_BLUEPRINT.md
