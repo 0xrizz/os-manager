@@ -1,0 +1,20 @@
+PROBLEM:
+[The full, complex problem to solve]
+
+SOURCE MATERIAL:
+[Optional — paste the source material this problem depends on here (the dataset, figures, code, or document the subproblems must reason over). Delete this line and the one below it if the problem above is self-contained.]
+Every subproblem below must be answered against the material above, not from assumption.
+
+DECOMPOSE:
+Break this problem into ordered subproblems, from simplest prerequisite to most complex.
+Each later subproblem should build on the answer to the previous.
+
+Subproblem 1: [Simplest prerequisite — must be answered first]
+Subproblem 2: [Builds on #1]
+Subproblem 3: [Builds on #1-2]
+[Add subproblems as needed]
+Final: [The original problem, now solvable using all prior answers]
+
+SOLVE SEQUENTIALLY:
+Solve each subproblem in order. Use prior answers explicitly as context
+for each subsequent subproblem. Show each solution before moving to the next.
