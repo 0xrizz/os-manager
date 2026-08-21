@@ -80,8 +80,48 @@ assert_exit_code "Legacy sources.list has zero active lines" 0 $([ -z "${LEGACY_
 # Verify third-party repo is disabled
 assert_exit_code "External list renamed to disabled" 0 $([ -f "${SANDBOX_DIR}/sources.list.d/external.list.disabled_for_upgrade" ] && echo 0 || echo 1)
 
+# --- Task 2: Staged Upgrade & Emergency Repair Tests ---
 echo "=================================================="
-echo "Task 1 Tests: ${PASSED_TESTS}/${TOTAL_TESTS} passed, ${FAILED_TESTS} failed"
+echo "Running Staged Upgrade & Emergency Repair Tests"
+echo "=================================================="
+
+# 1. Test Mocked Full Pipeline Execution
+set +e
+APPLY_OUT="$(OSM_MOCK_ROOT=1 OSM_MOCK_TMUX=1 OSM_MOCK_APT=1 OSM_APT_DIR="${SANDBOX_DIR}" OSM_BACKUP_DIR="${SANDBOX_BACKUP}" "${UPGRADE_SCRIPT}" --apply --non-interactive 2>&1)"
+APPLY_RC=$?
+set -e
+
+assert_exit_code "Mocked full upgrade pipeline exits 0" 0 "${APPLY_RC}"
+assert_contains "Executes Phase 0 Preflight" "${APPLY_OUT}" "Phase 0: Pre-Flight Verification Gate"
+assert_contains "Executes Phase 1 Backup" "${APPLY_OUT}" "Phase 1: State Backup"
+assert_contains "Executes Phase 2 Transition" "${APPLY_OUT}" "Phase 2: APT deb822 Repository Matrix Transition"
+assert_contains "Point of No Return acknowledged" "${APPLY_OUT}" "POINT OF NO RETURN"
+assert_contains "Executes Phase 3 Minimal Upgrade" "${APPLY_OUT}" "Phase 3: Minimal Safe Upgrade"
+assert_contains "Executes intermediate cache purge" "${APPLY_OUT}" "apt-get clean"
+assert_contains "Queues SOF audio firmware" "${APPLY_OUT}" "firmware-sof-signed"
+assert_contains "Executes Phase 4 Full Upgrade" "${APPLY_OUT}" "Phase 4: Full Distribution Upgrade"
+
+# 2. Test Emergency DPKG Repair Trigger on APT Failure
+SANDBOX_FAIL_DIR="$(mktemp -d /tmp/osm_sandbox_fail_XXXXXX)"
+SANDBOX_FAIL_BACKUP="$(mktemp -d /tmp/osm_sandbox_fail_bak_XXXXXX)"
+trap 'rm -rf "${SANDBOX_DIR}" "${SANDBOX_BACKUP}" "${SANDBOX_FAIL_DIR}" "${SANDBOX_FAIL_BACKUP}"' EXIT
+
+mkdir -p "${SANDBOX_FAIL_DIR}/sources.list.d"
+echo "deb http://deb.debian.org/debian bookworm main" > "${SANDBOX_FAIL_DIR}/sources.list"
+
+set +e
+FAIL_APPLY_OUT="$(OSM_MOCK_ROOT=1 OSM_MOCK_TMUX=1 OSM_MOCK_APT=1 OSM_MOCK_APT_FAIL=1 OSM_APT_DIR="${SANDBOX_FAIL_DIR}" OSM_BACKUP_DIR="${SANDBOX_FAIL_BACKUP}" "${UPGRADE_SCRIPT}" --apply --non-interactive 2>&1)"
+FAIL_APPLY_RC=$?
+set -e
+
+assert_exit_code "Failed upgrade exits with code 3" 3 "${FAIL_APPLY_RC}"
+assert_contains "Emergency repair triggered" "${FAIL_APPLY_OUT}" "Triggering Emergency DPKG Repair Protocol"
+assert_contains "Runs dpkg configure" "${FAIL_APPLY_OUT}" "dpkg --configure -a"
+assert_contains "Runs apt install -f" "${FAIL_APPLY_OUT}" "apt-get install -f"
+assert_contains "Outputs efivars bind in rescue guidance" "${FAIL_APPLY_OUT}" "/sys/firmware/efi/efivars"
+
+echo "=================================================="
+echo "Pipeline Test Suite Complete: ${PASSED_TESTS}/${TOTAL_TESTS} passed, ${FAILED_TESTS} failed"
 echo "=================================================="
 
 if [ "${FAILED_TESTS}" -gt 0 ]; then

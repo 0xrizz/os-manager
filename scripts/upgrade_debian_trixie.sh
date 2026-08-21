@@ -17,6 +17,8 @@ DRY_RUN=0
 CHECK_ONLY=0
 BACKUP_ONLY=0
 TRANSITION_ONLY=0
+APPLY=0
+NON_INTERACTIVE=0
 ALLOW_UNATTACHED=0
 TEMP_DIR=""
 
@@ -47,13 +49,15 @@ show_help() {
     cat << 'EOF'
 Usage: upgrade_debian_trixie.sh [OPTIONS]
 
-Debian 13 (Trixie) Upgrade Automation Engine (Phases 0-2)
+Debian 13 (Trixie) Upgrade Automation Engine (Phases 0-4)
 
 Options:
+  --apply              Execute the full Debian 13 (Trixie) staged upgrade pipeline
   --check              Run Phase 0 pre-flight readiness checks only and exit
   --dry-run            Simulate execution without modifying system state
   --backup-only        Execute Phase 1 state backup & dual-snapshot archiving only
   --transition-only    Execute Phase 2 deb822 repository transition only
+  --non-interactive    Run non-interactively (auto-confirm Point of No Return)
   --allow-unattached   Bypass mandatory tmux/screen session check (not recommended)
   --help               Display this help message and exit
 
@@ -72,6 +76,8 @@ Environment Overrides:
   OSM_MOCK_EFI_FREE_KB       Override detected /boot/efi free KB for testing
   OSM_MOCK_NETWORK_FAIL      Set to 1 to simulate network failure
   OSM_MOCK_DPKG_AUDIT_FAIL   Set to 1 to simulate broken dpkg packages
+  OSM_MOCK_APT               Set to 1 to simulate APT execution
+  OSM_MOCK_APT_FAIL          Set to 1 to simulate APT failure during upgrade
 EOF
 }
 
@@ -658,9 +664,198 @@ EOF
     return 0
 }
 
+run_apt_cmd() {
+    local cmd=("$@")
+    if [[ "${OSM_MOCK_APT:-0}" == "1" ]]; then
+        log_info "[MOCK APT] Executing: ${cmd[*]}"
+        if [[ "${OSM_MOCK_APT_FAIL:-0}" == "1" && "${cmd[0]}" == "apt-get" && "${cmd[1]}" == "upgrade" ]]; then
+            log_error "[MOCK APT] Simulated package upgrade failure."
+            return 100
+        fi
+        return 0
+    fi
+
+    export DEBIAN_FRONTEND=noninteractive
+    export DEBIAN_PRIORITY=critical
+    export NEEDRESTART_MODE=a
+    export NEEDRESTART_SUSPEND=1
+    export UCF_FORCE_CONFFOLD=1
+
+    "${cmd[@]}"
+}
+
+emergency_repair_dpkg() {
+    log_error "============================================================"
+    log_error "CRITICAL: Upgrade failed mid-process!"
+    log_error "Triggering Emergency DPKG Repair Protocol (Zero-Downgrade Invariant)..."
+    log_error "============================================================"
+
+    log_info "1. Resolving unconfigured packages: dpkg --configure -a..."
+    run_apt_cmd dpkg --configure -a || true
+
+    log_info "2. Repairing broken dependencies: apt-get install -f -y..."
+    run_apt_cmd apt-get install -f -y || true
+
+    log_warn "If the system cannot boot or packages remain broken, follow the Emergency Recovery Protocol:"
+    log_warn "  Option A (Offline Host Repair - survives dynamic linker crash):"
+    log_warn "    sudo mount /dev/nvme0n1p2 /mnt && sudo mount /dev/nvme0n1p1 /mnt/boot/efi"
+    log_warn "    sudo dpkg --root=/mnt --configure -a"
+    log_warn "    sudo apt-get -o RootDir=/mnt update && sudo apt-get -o RootDir=/mnt install -f -y"
+    log_warn "  Option B (Chroot Recovery with EFI Variables):"
+    log_warn "    for i in /dev /dev/pts /proc /sys /run; do sudo mount --bind \$i /mnt\$i; done"
+    log_warn "    sudo mount --bind /sys/firmware/efi/efivars /mnt/sys/firmware/efi/efivars"
+    log_warn "    sudo chroot /mnt"
+    log_warn "    dpkg --configure -a && apt-get install -f -y && update-initramfs -u -k all && update-grub"
+}
+
+confirm_point_of_no_return() {
+    echo "============================================================"
+    log_warn "               *** POINT OF NO RETURN ***"
+    log_warn "Debian distribution upgrade is about to unpack Trixie packages."
+    log_warn "Once package unpacking begins, downgrading to Bookworm is UNSUPPORTED."
+    echo "============================================================"
+
+    if [[ "${NON_INTERACTIVE:-0}" == "1" ]]; then
+        log_info "Non-interactive flag set. Proceeding past Point of No Return."
+        return 0
+    fi
+
+    read -r -p "Type 'YES' to begin package installation: " confirmation
+    if [[ "${confirmation}" != "YES" ]]; then
+        log_error "Upgrade cancelled by user at Point of No Return."
+        return 1
+    fi
+    return 0
+}
+
+run_minimal_upgrade() {
+    log_info "Executing Phase 3: Minimal Safe Upgrade (--without-new-pkgs)..."
+
+    log_info "Synchronizing Debian 13 package lists..."
+    if ! run_apt_cmd apt-get update; then
+        log_error "Failed to synchronize Debian 13 package lists."
+        return 1
+    fi
+
+    log_info "Running staged minimal upgrade with needrestart suppression and package cache streaming..."
+    if ! run_apt_cmd apt-get upgrade --without-new-pkgs -y \
+        -o Dpkg::Options::="--force-confdef" \
+        -o Dpkg::Options::="--force-confold" \
+        -o APT::Keep-Downloaded-Packages="false"; then
+        log_error "Minimal safe upgrade encountered an error."
+        return 1
+    fi
+
+    log_info "Intermediate package cache purge to free disk headroom before full upgrade..."
+    run_apt_cmd apt-get clean || true
+
+    log_pass "Phase 3 Minimal Safe Upgrade completed successfully."
+    return 0
+}
+
+install_core_firmware() {
+    log_info "Installing mandatory Intel Ice Lake firmware & sound architecture (SOF + iwlwifi + misc)..."
+    if ! run_apt_cmd apt-get install --no-install-recommends -y \
+        firmware-sof-signed \
+        firmware-iwlwifi \
+        firmware-misc-nonfree \
+        alsa-ucm-conf \
+        -o Dpkg::Options::="--force-confdef" \
+        -o Dpkg::Options::="--force-confold" \
+        -o APT::Keep-Downloaded-Packages="false"; then
+        log_warn "Firmware installation returned a warning; proceeding to full distribution upgrade."
+    else
+        log_pass "Core hardware firmware (SOF + iwlwifi + UCM + misc) installed successfully."
+    fi
+    return 0
+}
+
+run_full_upgrade() {
+    log_info "Executing Phase 4: Full Distribution Upgrade (full-upgrade)..."
+
+    # Ensure audio and wifi firmware are explicitly queued
+    install_core_firmware
+
+    log_info "Running apt-get full-upgrade..."
+    if ! run_apt_cmd apt-get full-upgrade -y \
+        -o Dpkg::Options::="--force-confdef" \
+        -o Dpkg::Options::="--force-confold" \
+        -o APT::Keep-Downloaded-Packages="false"; then
+        log_error "Full distribution upgrade encountered an error."
+        return 1
+    fi
+
+    log_info "Cleaning obsolete orphaned packages and downloaded caches..."
+    run_apt_cmd apt-get autoremove --purge -y || true
+    run_apt_cmd apt-get clean || true
+
+    # Re-normalize NetworkManager keyfiles post-upgrade
+    if [[ -d /etc/NetworkManager/system-connections && "${EUID}" -eq 0 ]]; then
+        chmod 0600 /etc/NetworkManager/system-connections/* 2>/dev/null || true
+        chown root:root /etc/NetworkManager/system-connections/* 2>/dev/null || true
+    fi
+
+    log_pass "Phase 4 Full Distribution Upgrade completed successfully."
+    return 0
+}
+
+run_pipeline() {
+    log_info "Starting Automated Debian 13 (Trixie) Upgrade Pipeline..."
+
+    # Phase 0
+    if ! check_preflight; then
+        log_error "Aborting upgrade: Pre-Flight checks failed."
+        return 2
+    fi
+
+    # Phase 1
+    local timestamp current_backup_dir
+    timestamp="$(date -u +"%Y%m%d_%H%M%SZ")"
+    current_backup_dir="${OSM_BACKUP_DIR:-${DEFAULT_BACKUP_BASE}/apt_pre_trixie_${timestamp}}"
+    export OSM_BACKUP_DIR="${current_backup_dir}"
+
+    if ! create_backup; then
+        log_error "Aborting upgrade: State backup failed."
+        return 2
+    fi
+
+    # Phase 2
+    if ! transition_sources; then
+        log_error "Phase 2 deb822 source transition failed."
+        return 2
+    fi
+
+    # Point of No Return
+    if ! confirm_point_of_no_return; then
+        return 1
+    fi
+
+    # Phase 3
+    if ! run_minimal_upgrade; then
+        emergency_repair_dpkg
+        return 3
+    fi
+
+    # Phase 4
+    if ! run_full_upgrade; then
+        emergency_repair_dpkg
+        return 3
+    fi
+
+    log_pass "============================================================"
+    log_pass "Debian 13 (Trixie) Upgrade Pipeline COMPLETED SUCCESSFULLY!"
+    log_pass "Please reboot the system ('sudo reboot') to initialize the new kernel."
+    log_pass "============================================================"
+    return 0
+}
+
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --apply)
+                APPLY=1
+                shift
+                ;;
             --check)
                 CHECK_ONLY=1
                 shift
@@ -675,6 +870,10 @@ parse_args() {
                 ;;
             --transition-only)
                 TRANSITION_ONLY=1
+                shift
+                ;;
+            --non-interactive)
+                NON_INTERACTIVE=1
                 shift
                 ;;
             --allow-unattached)
@@ -720,6 +919,11 @@ main() {
         check_preflight
         log_pass "Dry-run pre-flight check completed successfully."
         exit 0
+    fi
+
+    if [[ "${APPLY}" -eq 1 ]]; then
+        run_pipeline
+        exit $?
     fi
 
     check_preflight
