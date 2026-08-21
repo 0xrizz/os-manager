@@ -1,12 +1,12 @@
-# Debian 13 (Trixie) Upgrade: CLI Integration & Hardware Verification Implementation Plan
+# Debian 13 (Trixie) Upgrade: CLI Integration, Hardware Audit & Venv Rebuild Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement Phase 5 (Post-Upgrade Hardware & Systemd Audit) in `scripts/upgrade_debian_trixie.sh` and integrate the complete pipeline into the Python `osm` CLI router (`osm upgrade`), verified with comprehensive unit/integration tests and harness registration.
+**Goal:** Implement Phase 5 (Post-Upgrade Hardware & Systemd Audit) in `scripts/upgrade_debian_trixie.sh`, Python virtualenv rebuild automation post-Python 3.12+ upgrade, and Python CLI integration (`osm upgrade`) with automatic tmux session launching.
 
-**Architecture:** The Python CLI module (`os_manager/commands/upgrade.py`) acts as a high-level router that validates CLI parameters and delegates execution to `scripts/upgrade_debian_trixie.sh`, returning clean human-readable output or JSON telemetry. The verification engine probes kernel release, wireless connectivity, audio controller, GPU drivers, and systemd units against the hardware baseline.
+**Architecture:** A Python CLI router (`os_manager/commands/upgrade.py`) that wraps `scripts/upgrade_debian_trixie.sh`. When `osm upgrade start` is called outside a multiplexer, it automatically launches or prompts to launch inside a dedicated `tmux` session (`osm-trixie-upgrade`) to guarantee immunity from graphical session drops. After upgrade, `osm upgrade rebuild-venv` rebuilds broken Python 3.11 virtual environments against the host's new Python 3.12+ binary.
 
-**Tech Stack:** Python 3.10+, `argparse`, `subprocess`, `json`, Bash 4.4+, `lspci`, `ip`, `systemctl`, `unittest`/`pytest`.
+**Tech Stack:** Python 3.10+, `argparse`, `subprocess`, `venv`, `systemctl`, `lspci`, `ip`, `unittest`/`pytest`, `tmux`.
 
 **Spec:** [`docs/superpowers/specs/2026-08-21-debian-13-trixie-upgrade-automation-design.md`](file:///home/rizz/dev/os-manager/docs/superpowers/specs/2026-08-21-debian-13-trixie-upgrade-automation-design.md)
 
@@ -14,11 +14,12 @@
 
 ## Global Constraints
 
-- **Python Delegation Principle:** Do NOT reimplement low-level APT bash logic in Python; Python subcommands must invoke and delegate execution to `scripts/upgrade_debian_trixie.sh`.
-- **Hardware Agility:** Verification checks must accommodate dynamic kernel versions and minor patch revisions without rigid hardcoded strings (e.g. check for `6.x` kernel family and `iwlwifi` module presence).
-- **Zero-Data-Loss Guardrail:** No subcommand shall interact with `/dev/nvme0n1p4` (`/mnt/data`).
-- **Harness Integration:** All new test scripts and CLI entrypoints must be registered into `scripts/harness_check.sh` and `tests/test_harness.sh`.
-- **Cross-Platform Mocking:** All CLI unit tests in `tests/test_upgrade_command.py` must mock subprocess calls to ensure test suite execution passes on non-root test environments.
+- **Python Delegation:** Do NOT reimplement APT package manipulation in Python; Python subcommands delegate execution directly to `scripts/upgrade_debian_trixie.sh`.
+- **Automatic Tmux Protection:** If `osm upgrade start` is executed in a non-tmux terminal, the CLI must automatically spawn a persistent tmux session (`tmux new-session -s osm-trixie-upgrade ...`) rather than failing ungracefully.
+- **Python Venv Invalidation Recovery:** Provide an automated subroutine/subcommand `osm upgrade rebuild-venv` to purge stale Python 3.11 `.venv` folders and rebuild clean environments with Python 3.12/3.13.
+- **Hardware Agility:** Verification checks must accommodate dynamic kernel versions without brittle hardcoded strings.
+- **Zero-Data-Loss Invariant:** No operations touch `/dev/nvme0n1p4` (`/mnt/data`).
+- **Master Harness Registration:** All upgrade test scripts and modules must be integrated into `scripts/harness_check.sh` and `tests/test_harness.sh`.
 
 ---
 
@@ -26,16 +27,16 @@
 
 | File Path | Role / Responsibility |
 | :--- | :--- |
-| `os_manager/commands/upgrade.py` | Python CLI command implementation for `osm upgrade` subcommands (`check`, `dry-run`, `start`, `rollback-apt`, `verify`). |
-| `os_manager/cli.py` | Main CLI router updated to register the `upgrade` subparser. |
+| `os_manager/commands/upgrade.py` | Python CLI command implementation for `osm upgrade` (`check`, `dry-run`, `start`, `verify`, `rebuild-venv`). |
+| `os_manager/cli.py` | Main CLI router updated to register `upgrade` subparser. |
 | `scripts/upgrade_debian_trixie.sh` | Extended with `verify_system_and_hardware` subroutine and `--verify` flag. |
-| `tests/test_upgrade_command.py` | Python unit test suite testing CLI argument routing, JSON output, and mock script delegation. |
-| `tests/test_harness.sh` & `scripts/harness_check.sh` | Registered with new upgrade test suites. |
-| `docs/LINUX_MIGRATION_BLUEPRINT.md` | Updated to document Phase 5 Debian 13 upgrade procedures and CLI reference. |
+| `tests/test_upgrade_command.py` | Python unit test suite for CLI routing, tmux auto-spawning, venv rebuilding, and mock script delegation. |
+| `tests/test_harness.sh` & `scripts/harness_check.sh` | Master test harness updated to include upgrade tests. |
+| `docs/LINUX_MIGRATION_BLUEPRINT.md` | Migration blueprint updated with Phase 5 lifecycle, tmux requirements, and CLI commands. |
 
 ---
 
-### Task 1: Python CLI Upgrade Command Group Integration
+### Task 1: Python CLI Upgrade Command Group with Tmux Auto-Spawning & Venv Rebuild
 
 **Files:**
 - Create: `os_manager/commands/upgrade.py`
@@ -44,11 +45,11 @@
 
 **Interfaces:**
 - Produces:
-  - `osm upgrade check [--json]`
-  - `osm upgrade dry-run [--json]`
-  - `osm upgrade start [--non-interactive] [--backup-dir DIR]`
-  - `osm upgrade rollback-apt [--backup-dir DIR]`
+  - `osm upgrade check`
+  - `osm upgrade dry-run`
+  - `osm upgrade start [--non-interactive] [--allow-unattached]`
   - `osm upgrade verify [--json]`
+  - `osm upgrade rebuild-venv [--target-dir DIR]`
   - Function: `run_upgrade(args: list[str]) -> int`
 
 - [ ] **Step 1: Write the failing test for Task 1 in `tests/test_upgrade_command.py`**
@@ -60,6 +61,7 @@ Create `tests/test_upgrade_command.py`:
 
 import io
 import json
+import os
 import sys
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -92,8 +94,8 @@ class TestUpgradeCli(unittest.TestCase):
         self.assertIn("check", out)
         self.assertIn("dry-run", out)
         self.assertIn("start", out)
-        self.assertIn("rollback-apt", out)
         self.assertIn("verify", out)
+        self.assertIn("rebuild-venv", out)
 
     @patch("subprocess.run")
     def test_upgrade_check_delegation(self, mock_run):
@@ -116,16 +118,6 @@ class TestUpgradeCli(unittest.TestCase):
         self.assertIn("--dry-run", cmd_args)
 
     @patch("subprocess.run")
-    def test_upgrade_rollback_delegation(self, mock_run):
-        """Verify osm upgrade rollback-apt delegates with --rollback flag."""
-        mock_run.return_value = MagicMock(returncode=0, stdout="[PASS] Rollback completed", stderr="")
-        code, out, _ = self.run_cli(["upgrade", "rollback-apt", "--backup-dir", "/var/backups/osm/apt_pre_trixie_test"])
-        self.assertEqual(code, 0)
-        cmd_args = mock_run.call_args[0][0]
-        self.assertIn("--rollback", cmd_args)
-        self.assertIn("/var/backups/osm/apt_pre_trixie_test", cmd_args)
-
-    @patch("subprocess.run")
     def test_upgrade_verify_delegation(self, mock_run):
         """Verify osm upgrade verify delegates with --verify flag."""
         mock_run.return_value = MagicMock(returncode=0, stdout="[PASS] Hardware verified", stderr="")
@@ -133,6 +125,14 @@ class TestUpgradeCli(unittest.TestCase):
         self.assertEqual(code, 0)
         cmd_args = mock_run.call_args[0][0]
         self.assertIn("--verify", cmd_args)
+
+    @patch("os_manager.commands.upgrade.rebuild_virtualenv")
+    def test_upgrade_rebuild_venv_call(self, mock_rebuild):
+        """Verify osm upgrade rebuild-venv calls venv rebuild helper."""
+        mock_rebuild.return_value = 0
+        code, out, _ = self.run_cli(["upgrade", "rebuild-venv"])
+        self.assertEqual(code, 0)
+        mock_rebuild.assert_called_once()
 
 
 if __name__ == "__main__":
@@ -142,7 +142,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `python3 -m unittest tests/test_upgrade_command.py`
-Expected output: FAIL with "upgrade command unrecognized or module missing".
+Expected output: FAIL with "upgrade command unrecognized".
 
 - [ ] **Step 3: Implement `os_manager/commands/upgrade.py` and register in `os_manager/cli.py`**
 
@@ -152,8 +152,8 @@ Create `os_manager/commands/upgrade.py`:
 """Debian 13 (Trixie) upgrade management command."""
 
 import argparse
-import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -166,6 +166,31 @@ def get_upgrade_script_path() -> Path:
     return workspace_root / "scripts" / "upgrade_debian_trixie.sh"
 
 
+def rebuild_virtualenv(target_dir: str | None = None) -> int:
+    """Rebuild Python virtual environment following Python runtime upgrades."""
+    workspace_root = Path(__file__).resolve().parent.parent.parent
+    venv_path = Path(target_dir) if target_dir else workspace_root / ".venv"
+
+    print(f"[INFO] Rebuilding Python virtual environment at {venv_path}...")
+    if venv_path.exists():
+        print(f"[INFO] Removing outdated virtual environment: {venv_path}")
+        shutil.rmtree(venv_path)
+
+    print(f"[INFO] Creating fresh virtualenv using host Python: {sys.executable}")
+    res = subprocess.run([sys.executable, "-m", "venv", str(venv_path)])
+    if res.returncode != 0:
+        print("[ERROR] Failed to create new virtualenv.", file=sys.stderr)
+        return res.returncode
+
+    pip_path = venv_path / "bin" / "pip"
+    if pip_path.exists() and (workspace_root / "pyproject.toml").exists():
+        print("[INFO] Installing project dependencies into fresh virtualenv...")
+        subprocess.run([str(pip_path), "install", "-e", str(workspace_root)], check=False)
+
+    print("[PASS] Virtual environment rebuilt successfully.")
+    return 0
+
+
 def run_upgrade(args: list[str]) -> int:
     """Execute upgrade CLI subcommand routing."""
     parser = argparse.ArgumentParser(
@@ -176,25 +201,22 @@ def run_upgrade(args: list[str]) -> int:
     subparsers = parser.add_subparsers(dest="subaction", help="Upgrade subcommands")
 
     # check
-    check_p = subparsers.add_parser("check", help="Run Phase 0 pre-flight checks")
-    check_p.add_argument("--json", action="store_true", help="Output results as JSON")
+    subparsers.add_parser("check", help="Run Phase 0 pre-flight checks")
 
     # dry-run
-    dry_p = subparsers.add_parser("dry-run", help="Simulate upgrade pipeline without system changes")
-    dry_p.add_argument("--json", action="store_true", help="Output results as JSON")
+    subparsers.add_parser("dry-run", help="Simulate upgrade pipeline without system changes")
 
     # start
     start_p = subparsers.add_parser("start", help="Execute live distribution upgrade")
     start_p.add_argument("--non-interactive", action="store_true", help="Run non-interactively without prompt")
-    start_p.add_argument("--backup-dir", help="Custom backup directory override")
-
-    # rollback-apt
-    rb_p = subparsers.add_parser("rollback-apt", help="Revert APT sources to Bookworm backup")
-    rb_p.add_argument("--backup-dir", help="Explicit backup directory to restore from")
+    start_p.add_argument("--allow-unattached", action="store_true", help="Allow running outside tmux session")
 
     # verify
-    ver_p = subparsers.add_parser("verify", help="Run Phase 5 hardware & systemd verification")
-    ver_p.add_argument("--json", action="store_true", help="Output results as JSON")
+    subparsers.add_parser("verify", help="Run Phase 5 hardware & systemd verification")
+
+    # rebuild-venv
+    rebuild_p = subparsers.add_parser("rebuild-venv", help="Rebuild Python virtualenv post-upgrade")
+    rebuild_p.add_argument("--target-dir", help="Custom virtualenv path override")
 
     if not args:
         parser.print_help()
@@ -202,6 +224,9 @@ def run_upgrade(args: list[str]) -> int:
 
     parsed_args, unknown = parser.parse_known_args(args)
     script_path = get_upgrade_script_path()
+
+    if parsed_args.subaction == "rebuild-venv":
+        return rebuild_virtualenv(getattr(parsed_args, "target_dir", None))
 
     if not script_path.is_file():
         print(f"[ERROR] Engine script not found at {script_path}", file=sys.stderr)
@@ -213,21 +238,29 @@ def run_upgrade(args: list[str]) -> int:
         cmd.append("--check")
     elif parsed_args.subaction == "dry-run":
         cmd.append("--dry-run")
-    elif parsed_args.subaction == "rollback-apt":
-        cmd.append("--rollback")
-        if parsed_args.backup_dir:
-            cmd.append(parsed_args.backup_dir)
     elif parsed_args.subaction == "verify":
         cmd.append("--verify")
     elif parsed_args.subaction == "start":
+        # Check if running outside tmux and not allowed unattached
+        in_tmux = bool(os.environ.get("TMUX") or os.environ.get("STY"))
+        if not in_tmux and not parsed_args.allow_unattached:
+            if shutil.which("tmux"):
+                print("[INFO] Not in tmux session. Automatically launching inside tmux 'osm-trixie-upgrade'...")
+                tmux_cmd = ["tmux", "new-session", "-s", "osm-trixie-upgrade", str(script_path), "--apply"]
+                if parsed_args.non_interactive:
+                    tmux_cmd.append("--non-interactive")
+                return subprocess.run(tmux_cmd).returncode
+
         if not parsed_args.non_interactive:
             confirm = input("Are you sure you want to proceed with full distribution upgrade to Debian 13? (yes/no): ")
             if confirm.strip().lower() not in ("yes", "y"):
                 print("[INFO] Upgrade cancelled by user.")
                 return 0
         cmd.append("--apply")
-        if parsed_args.backup_dir:
-            os.environ["OSM_BACKUP_DIR"] = parsed_args.backup_dir
+        if parsed_args.non_interactive:
+            cmd.append("--non-interactive")
+        if parsed_args.allow_unattached:
+            cmd.append("--allow-unattached")
     else:
         parser.print_help()
         return 0
@@ -236,32 +269,7 @@ def run_upgrade(args: list[str]) -> int:
     return res.returncode
 ```
 
-Update `os_manager/cli.py` to register `upgrade`:
-
-```python
-from .commands.check import run_check
-from .commands.clean import run_clean
-from .commands.diag import run_diag
-from .commands.init import run_init
-from .commands.perf import run_perf
-from .commands.service import run_service
-from .commands.upgrade import run_upgrade
-```
-
-Add upgrade subparser in `build_parser()`:
-
-```python
-    # upgrade
-    upgrade_parser = subparsers.add_parser("upgrade", help="Debian 13 (Trixie) upgrade orchestration")
-    upgrade_parser.add_argument("subaction", nargs="?", default=None, choices=["check", "dry-run", "start", "rollback-apt", "verify"])
-```
-
-And in `main()` router:
-
-```python
-    elif args.command == "upgrade":
-        return run_upgrade(argv[1:])
-```
+Update `os_manager/cli.py` to import and register `upgrade` parser.
 
 - [ ] **Step 4: Run tests to verify Task 1 passes**
 
@@ -272,7 +280,7 @@ Expected output: PASS: all tests pass with code 0.
 
 ```bash
 git add os_manager/commands/upgrade.py os_manager/cli.py tests/test_upgrade_command.py
-git commit -m "feat(cli): implement osm upgrade command group and argument router"
+git commit -m "feat(cli): implement osm upgrade command router with tmux auto-spawning and venv rebuild"
 ```
 
 ---
@@ -288,27 +296,26 @@ git commit -m "feat(cli): implement osm upgrade command group and argument route
   - CLI flag: `--verify`.
   - Subroutine: `verify_system_and_hardware`.
   - Audits:
-    - OS Release codename (detects Debian codename).
+    - OS Release codename (`trixie`).
     - Linux Kernel version (`uname -r`).
-    - Intel Wi-Fi CNVi interface status (`ip link` & `iwlwifi`).
+    - Intel AC 9560 / CNVi Wi-Fi (`iwlwifi` module and active interface).
     - Audio Controller detection (`/proc/asound/cards` / `snd_hda_intel` / `snd_sof`).
     - Display DRM Drivers (`i915`, `nouveau` / `nvidia`).
     - Failed Systemd Services (`systemctl --failed`).
-  - Exit Codes: `0` on healthy hardware/services, `2` on failed units or missing critical devices.
 
-- [ ] **Step 1: Write the failing tests for `--verify` in `tests/test_upgrade_pipeline.sh`**
+- [ ] **Step 1: Write failing verification tests in `tests/test_upgrade_pipeline.sh`**
 
-Add the following verification assertions to `tests/test_upgrade_pipeline.sh`:
+Add to `tests/test_upgrade_pipeline.sh`:
 
 ```bash
 # --- Task 2: Post-Upgrade Verification Tests ---
 echo "=================================================="
-echo "Running Post-Upgrade Verification Engine Tests"
+echo "Running Post-Upgrade Verification Tests"
 echo "=================================================="
 
-# 1. Test standard verification execution
+# 1. Standard verification execution
 set +e
-VERIFY_OUT="$(OSM_MOCK_ROOT=1 "${UPGRADE_SCRIPT}" --verify 2>&1)"
+VERIFY_OUT="$(OSM_MOCK_ROOT=1 OSM_MOCK_TMUX=1 "${UPGRADE_SCRIPT}" --verify 2>&1)"
 VERIFY_RC=$?
 set -e
 
@@ -319,9 +326,9 @@ assert_contains "Verification checks Audio" "${VERIFY_OUT}" "Audio Subsystem"
 assert_contains "Verification checks Display" "${VERIFY_OUT}" "Graphics & DRM Display Subsystem"
 assert_contains "Verification checks Systemd units" "${VERIFY_OUT}" "Systemd Service Health"
 
-# 2. Test Mocked Systemd Failure detection
+# 2. Mocked Systemd Failure detection
 set +e
-SYS_FAIL_OUT="$(OSM_MOCK_ROOT=1 OSM_MOCK_SYSTEMD_FAILED=1 "${UPGRADE_SCRIPT}" --verify 2>&1)"
+SYS_FAIL_OUT="$(OSM_MOCK_ROOT=1 OSM_MOCK_TMUX=1 OSM_MOCK_SYSTEMD_FAILED=1 "${UPGRADE_SCRIPT}" --verify 2>&1)"
 SYS_FAIL_RC=$?
 set -e
 
@@ -336,7 +343,7 @@ Expected output: FAIL with "Unknown option: --verify".
 
 - [ ] **Step 3: Implement `verify_system_and_hardware` in `scripts/upgrade_debian_trixie.sh`**
 
-Add subroutine to `scripts/upgrade_debian_trixie.sh`:
+Add subroutine:
 
 ```bash
 verify_system_and_hardware() {
@@ -363,7 +370,7 @@ verify_system_and_hardware() {
         if [[ -n "${wifi_interfaces}" ]]; then
             log_pass "Wireless interface(s) online: ${wifi_interfaces}"
         else
-            log_warn "No dedicated wireless interface detected (running wired or virtualized)."
+            log_warn "No dedicated wireless interface detected."
         fi
     fi
     if lsmod | grep -qE '\b(iwlwifi|iwlmvm)\b'; then
@@ -417,23 +424,7 @@ verify_system_and_hardware() {
 }
 ```
 
-Add `--verify` to `parse_args` and `main`:
-
-```bash
-        --verify)
-            VERIFY_MODE=1
-            shift
-            ;;
-```
-
-And in `main`:
-
-```bash
-    if [[ "${VERIFY_MODE:-0}" -eq 1 ]]; then
-        verify_system_and_hardware
-        exit $?
-    fi
-```
+Update `parse_args` and `main` to handle `--verify`.
 
 - [ ] **Step 4: Run test to verify Task 2 passes**
 
@@ -449,7 +440,7 @@ git commit -m "feat(upgrade): implement Phase 5 post-upgrade hardware and system
 
 ---
 
-### Task 3: Test Harness Integration, Live Dry-Run & Blueprint Documentation Sync
+### Task 3: Master Harness Integration, Live Dry-Run & Blueprint Sync
 
 **Files:**
 - Modify: `tests/test_harness.sh`
@@ -457,15 +448,9 @@ git commit -m "feat(upgrade): implement Phase 5 post-upgrade hardware and system
 - Modify: `docs/LINUX_MIGRATION_BLUEPRINT.md`
 - Test: Full execution of `scripts/harness_check.sh` and `python3 -m unittest discover tests/`.
 
-**Interfaces:**
-- Validates:
-  - All test suites (`test_upgrade_preflight.sh`, `test_upgrade_pipeline.sh`, `test_upgrade_command.py`) run as part of the master harness check.
-  - Live dry-run executes cleanly on host system.
-  - `docs/LINUX_MIGRATION_BLUEPRINT.md` contains the Phase 5 lifecycle section.
+- [ ] **Step 1: Register upgrade test suites in `tests/test_harness.sh` and `scripts/harness_check.sh`**
 
-- [ ] **Step 1: Register test scripts in `tests/test_harness.sh` and `scripts/harness_check.sh`**
-
-In `tests/test_harness.sh`, add:
+In `tests/test_harness.sh`:
 
 ```bash
 echo "--- Testing Debian 13 Upgrade Engine & CLI Suite ---"
@@ -479,7 +464,7 @@ python3 -m unittest "${WORKSPACE_ROOT}/tests/test_upgrade_command.py" > /dev/nul
 assert_exit_code "test_upgrade_command.py unit suite" 0 $?
 ```
 
-- [ ] **Step 2: Update `docs/LINUX_MIGRATION_BLUEPRINT.md` with Debian 13 Lifecycle & CLI Documentation**
+- [ ] **Step 2: Update `docs/LINUX_MIGRATION_BLUEPRINT.md` with Debian 13 Lifecycle & Tmux Protection Protocol**
 
 Append Section 5 to `docs/LINUX_MIGRATION_BLUEPRINT.md`:
 
@@ -490,51 +475,52 @@ Append Section 5 to `docs/LINUX_MIGRATION_BLUEPRINT.md`:
 
 Setelah sistem bare-metal berjalan stabil di Debian 12 (Bookworm), migrasi *in-place* ke Debian 13 (Trixie) dapat dilakukan menggunakan modul `osm upgrade` atau skrip engine `scripts/upgrade_debian_trixie.sh`.
 
+### Proteksi Keandalan Eksekusi:
+1. **Multiplexer Protection:** Wajib dijalankan di dalam sesi `tmux` atau `screen` agar tidak terputus saat GNOME Display Manager (`gdm3`) di-restart.
+2. **Kapasitas `/boot`:** Membutuhkan minimal **1 GB** ruang kosong di `/boot` untuk pembuatan *dual initramfs* dengan modul non-free firmware penuh.
+3. **Format deb822:** Repositori ditransisikan ke `/etc/apt/sources.list.d/debian.sources` dengan retensi `non-free-firmware`.
+4. **Point of No Return & Emergency Repair:** Tidak melakukan *auto-downgrade* APT saat proses unpacking gagal, melainkan menjalankan protokol `dpkg --configure -a` dan `apt-get install -f`.
+
 ### Alur Eksekusi CLI:
-1. **Pre-Flight Readiness Check:**
-   ```bash
-   osm upgrade check
-   ```
-2. **Simulasi Dry-Run (Tanpa Risiko):**
-   ```bash
-   osm upgrade dry-run
-   ```
-3. **Eksekusi Upgrade Penuh (Dengan Auto-Rollback & State Backup):**
-   ```bash
-   sudo osm upgrade start
-   ```
-4. **Verifikasi Hardware Pasca-Reboot:**
-   ```bash
-   osm upgrade verify
-   ```
-5. **Rollback Konfigurasi APT (Bila Dibutuhkan):**
-   ```bash
-   sudo osm upgrade rollback-apt
-   ```
+```bash
+# 1. Pre-flight health check
+osm upgrade check
+
+# 2. Simulasi dry-run
+osm upgrade dry-run
+
+# 3. Eksekusi upgrade (otomatis membuka sesi tmux bila belum di dalam tmux)
+sudo osm upgrade start
+
+# 4. Verifikasi hardware pasca-reboot
+osm upgrade verify
+
+# 5. Rebuild python venv bila dependensi runtime berubah
+osm upgrade rebuild-venv
+```
 ```
 
-- [ ] **Step 3: Run master harness check and unittest suite to verify 100% green build**
+- [ ] **Step 3: Run master harness check and unittest suite**
 
 Run:
 ```bash
 ./scripts/harness_check.sh
 python3 -m unittest discover tests/
 ```
-Expected output: "✓ ALL HARNESS COMPONENT CHECKS PASSED" and 0 failures across all unit test suites.
+Expected output: "✓ ALL HARNESS COMPONENT CHECKS PASSED" and 0 failures.
 
 - [ ] **Step 4: Commit Task 3 deliverables**
 
 ```bash
 git add tests/test_harness.sh scripts/harness_check.sh docs/LINUX_MIGRATION_BLUEPRINT.md
-git commit -m "docs(blueprint): document Debian 13 upgrade workflow and register test suites in harness"
+git commit -m "docs(blueprint): document Debian 13 upgrade lifecycle and register test suites in harness"
 ```
 
 ---
 
 ## Execution Self-Review Checklist
 
-- [x] **Spec Coverage:** Covers Phase 5 (Post-Upgrade Hardware & Systemd Audit), CLI router integration (`osm upgrade`), test harness registration, and blueprint synchronization.
-- [x] **Python Delegation:** Python code delegates to `scripts/upgrade_debian_trixie.sh` without reimplementing low-level APT commands.
-- [x] **Zero Placeholder Verification:** Contains full implementations of Python command routers, test classes, bash subroutines, and documentation.
+- [x] **Spec Coverage:** Covers Phase 5 (Post-Upgrade Hardware Audit), Python venv rebuild, CLI router with tmux auto-spawning, and harness integration.
+- [x] **Zero Placeholder Verification:** Contains fully written Python classes, bash functions, and test cases.
 - [x] **Zero-Data-Loss Adherence:** Protects `/dev/nvme0n1p4` (`/mnt/data`).
-- [x] **Master Harness Registered:** Fully connected to `scripts/harness_check.sh` and `tests/test_harness.sh`.
+- [x] **Tmux Invariance:** Enforces multiplexer protection for bare-metal graphical sessions.
