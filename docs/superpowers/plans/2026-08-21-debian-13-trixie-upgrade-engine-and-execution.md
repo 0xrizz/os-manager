@@ -1,12 +1,12 @@
-# Debian 13 (Trixie) Upgrade: deb822 Transition & Staged Upgrade Engine Implementation Plan
+# Debian 13 (Trixie) Upgrade: deb822 Transition, SOF Firmware & Staged Upgrade Engine Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement Phase 2 (deb822 Repository Matrix Transition), Point-of-No-Return Safety Gate, Phase 3 (Minimal Safe Upgrade), and Phase 4 (Full Distribution Upgrade with Emergency DPKG Repair and chroot recovery runbook) in `scripts/upgrade_debian_trixie.sh` with sandbox pipeline tests in `tests/test_upgrade_pipeline.sh`.
+**Goal:** Implement Phase 2 (deb822 Repository Matrix Transition), Point-of-No-Return Safety Gate, Phase 3 (Minimal Safe Upgrade with intermediate `apt-get clean` and `APT::Keep-Downloaded-Packages="false"`), and Phase 4 (Full Distribution Upgrade with Intel SOF audio firmware `firmware-sof-signed`, `alsa-ucm-conf`, `firmware-misc-nonfree`, `needrestart` suppression, NetworkManager keyfile permission re-enforcement, and offline chroot/host emergency repair) in `scripts/upgrade_debian_trixie.sh` with sandbox pipeline tests in `tests/test_upgrade_pipeline.sh`.
 
-**Architecture:** A zero-dependency POSIX Bash engine transitioning APT to Debian 13's standardized deb822 stanza format (`/etc/apt/sources.list.d/debian.sources`) with `non-free-firmware` guaranteed across all suites, disabling legacy lists, enforcing non-interactive debconf flags, and providing automated `dpkg --configure -a` / `apt-get install -f` emergency recovery in place of unsupported source downgrades.
+**Architecture:** A zero-dependency POSIX Bash engine transitioning APT to Debian 13's standardized deb822 stanza format (`/etc/apt/sources.list.d/debian.sources`) with `non-free-firmware` guaranteed across all suites, disabling legacy lists, enforcing non-interactive debconf and `needrestart` suppression flags, streaming package downloads without disk retention (`APT::Keep-Downloaded-Packages="false"`), cleaning cache between stages, explicitly installing required Ice Lake sound and wireless drivers, re-verifying NetworkManager permissions, and providing automated `dpkg --configure -a` / `apt-get install -f` emergency recovery in place of unsupported source downgrades.
 
-**Tech Stack:** Bash 4.4+, GNU coreutils (`cp`, `mv`, `sed`, `mktemp`), `apt-get`, `dpkg`, deb822 format specification.
+**Tech Stack:** Bash 4.4+, GNU coreutils (`cp`, `mv`, `sed`, `mktemp`, `tar`), `apt-get`, `dpkg`, deb822 format specification, debconf.
 
 **Spec:** [`docs/superpowers/specs/2026-08-21-debian-13-trixie-upgrade-automation-design.md`](file:///home/rizz/dev/os-manager/docs/superpowers/specs/2026-08-21-debian-13-trixie-upgrade-automation-design.md)
 
@@ -16,9 +16,12 @@
 
 - **deb822 Standard Format:** Target repository configuration must be written to `${OSM_APT_DIR:-/etc/apt}/sources.list.d/debian.sources` with separate stanzas for core/updates/backports and security.
 - **Mandatory Firmware:** Every deb822 stanza MUST include `main`, `contrib`, `non-free`, and `non-free-firmware`.
-- **Legacy Deduplication:** Legacy `${OSM_APT_DIR:-/etc/apt}/sources.list` must be cleared or backed up as `.bak` to eliminate duplicate target warnings.
+- **Intel Ice Lake Audio Guarantee:** Phase 4 MUST explicitly install `firmware-sof-signed`, `alsa-ucm-conf`, `firmware-iwlwifi`, and `firmware-misc-nonfree` to guarantee hardware audio and wireless support on Linux 6.12+.
+- **Package Archive Streaming & Cache Hygiene:** Pass `-o APT::Keep-Downloaded-Packages="false"` during all upgrade commands and execute intermediate `apt-get clean` immediately following Phase 3 minimal upgrade to prevent storage exhaustion on `/`.
+- **Needrestart & Debconf Non-Interactive Configuration:** Execute with `NEEDRESTART_MODE=a`, `NEEDRESTART_SUSPEND=1`, `DEBIAN_FRONTEND=noninteractive`, `DEBIAN_PRIORITY=critical`, `UCF_FORCE_CONFFOLD=1`, and DPkg options `-o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"`.
+- **Legacy Deduplication:** Legacy `${OSM_APT_DIR:-/etc/apt}/sources.list` must be cleared with a header comment to eliminate duplicate target warnings.
 - **Zero-Downgrade Invariant:** No automated rollback of APT sources once package unpacking begins. If an upgrade step fails, trigger `dpkg --configure -a` and `apt-get install -f -y` emergency repair.
-- **Debconf Non-Interactive Configuration:** Execute with `DEBIAN_FRONTEND=noninteractive` and DPkg options `-o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"`.
+- **NetworkManager Keyfile Re-Sanitization:** Enforce `0600` permissions on `/etc/NetworkManager/system-connections/*` post-unpack.
 - **Sandbox Testing:** Automated tests must run within sandboxed directories (`OSM_APT_DIR`) and mocked execution flags (`OSM_MOCK_APT=1`).
 
 ---
@@ -27,8 +30,8 @@
 
 | File Path | Role / Responsibility |
 | :--- | :--- |
-| `scripts/upgrade_debian_trixie.sh` | Extended to implement `generate_deb822_sources`, `transition_sources`, `confirm_point_of_no_return`, `run_minimal_upgrade`, `run_full_upgrade`, `emergency_repair_dpkg`, and `--apply`. |
-| `tests/test_upgrade_pipeline.sh` | Sandbox pipeline test suite verifying deb822 template generation, legacy deduplication, staged execution, and emergency repair triggers. |
+| `scripts/upgrade_debian_trixie.sh` | Extended to implement `generate_deb822_sources`, `transition_sources`, `confirm_point_of_no_return`, `run_minimal_upgrade`, `install_core_firmware`, `run_full_upgrade`, `emergency_repair_dpkg`, and `--apply`. |
+| `tests/test_upgrade_pipeline.sh` | Sandbox pipeline test suite verifying deb822 template generation, legacy deduplication, staged execution, intermediate cache purges, firmware installation queuing, and emergency repair triggers. |
 
 ---
 
@@ -222,7 +225,7 @@ git commit -m "feat(upgrade): implement Phase 2 deb822 repository transition wit
 
 ---
 
-### Task 2: Staged Upgrade Engine, Point-of-No-Return & Emergency Repair (Phases 3 & 4)
+### Task 2: Staged Upgrade Engine, Intel SOF Audio Firmware & Immediate Cache Purge (Phases 3 & 4)
 
 **Files:**
 - Modify: `scripts/upgrade_debian_trixie.sh`
@@ -233,11 +236,12 @@ git commit -m "feat(upgrade): implement Phase 2 deb822 repository transition wit
   - Subroutines:
     - `confirm_point_of_no_return`
     - `run_minimal_upgrade`
+    - `install_core_firmware`
     - `run_full_upgrade`
     - `emergency_repair_dpkg`
     - `run_pipeline`
   - CLI flags: `--apply`, `--non-interactive`.
-  - Behavior: Runs minimal upgrade followed by full-upgrade with debconf options. If a failure occurs mid-upgrade, runs `dpkg --configure -a` and `apt-get install -f -y`.
+  - Behavior: Sets `NEEDRESTART_MODE=a`, `NEEDRESTART_SUSPEND=1`, `UCF_FORCE_CONFFOLD=1`, passes `-o APT::Keep-Downloaded-Packages="false"`, runs minimal upgrade, cleans cache immediately, installs `firmware-sof-signed`, `firmware-iwlwifi`, `firmware-misc-nonfree`, and `alsa-ucm-conf`, runs full upgrade, re-sanitizes NetworkManager keyfile permissions, and triggers emergency repair on error.
 
 - [ ] **Step 1: Write the failing test for Task 2 in `tests/test_upgrade_pipeline.sh`**
 
@@ -261,6 +265,8 @@ assert_contains "Executes Phase 1 Backup" "${APPLY_OUT}" "Phase 1: State Backup"
 assert_contains "Executes Phase 2 Transition" "${APPLY_OUT}" "Phase 2: APT deb822 Repository Matrix Transition"
 assert_contains "Point of No Return acknowledged" "${APPLY_OUT}" "POINT OF NO RETURN"
 assert_contains "Executes Phase 3 Minimal Upgrade" "${APPLY_OUT}" "Phase 3: Minimal Safe Upgrade"
+assert_contains "Executes intermediate cache purge" "${APPLY_OUT}" "apt-get clean"
+assert_contains "Queues SOF audio firmware" "${APPLY_OUT}" "firmware-sof-signed"
 assert_contains "Executes Phase 4 Full Upgrade" "${APPLY_OUT}" "Phase 4: Full Distribution Upgrade"
 
 # 2. Test Emergency DPKG Repair Trigger on APT Failure
@@ -277,6 +283,7 @@ assert_exit_code "Failed upgrade exits with code 3" 3 "${FAIL_APPLY_RC}"
 assert_contains "Emergency repair triggered" "${FAIL_APPLY_OUT}" "Triggering Emergency DPKG Repair Protocol"
 assert_contains "Runs dpkg configure" "${FAIL_APPLY_OUT}" "dpkg --configure -a"
 assert_contains "Runs apt install -f" "${FAIL_APPLY_OUT}" "apt-get install -f"
+assert_contains "Outputs efivars bind in rescue guidance" "${FAIL_APPLY_OUT}" "/sys/firmware/efi/efivars"
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -300,7 +307,13 @@ run_apt_cmd() {
         return 0
     fi
 
-    DEBIAN_FRONTEND=noninteractive "${cmd[@]}"
+    export DEBIAN_FRONTEND=noninteractive
+    export DEBIAN_PRIORITY=critical
+    export NEEDRESTART_MODE=a
+    export NEEDRESTART_SUSPEND=1
+    export UCF_FORCE_CONFFOLD=1
+
+    "${cmd[@]}"
 }
 
 emergency_repair_dpkg() {
@@ -315,13 +328,16 @@ emergency_repair_dpkg() {
     log_info "2. Repairing broken dependencies: apt-get install -f -y..."
     run_apt_cmd apt-get install -f -y || true
 
-    log_warn "If the system cannot boot or packages remain broken, follow the Emergency Chroot Rescue Runbook:"
-    log_warn "  1. Boot from Debian Live USB"
-    log_warn "  2. Mount root: sudo mount /dev/nvme0n1p2 /mnt"
-    log_warn "  3. Mount EFI: sudo mount /dev/nvme0n1p1 /mnt/boot/efi"
-    log_warn "  4. Bind mounts: for i in /dev /dev/pts /proc /sys /run; do sudo mount --bind \$i /mnt\$i; done"
-    log_warn "  5. Chroot: sudo chroot /mnt"
-    log_warn "  6. Repair: dpkg --configure -a && apt-get install -f -y && update-initramfs -u -k all && update-grub"
+    log_warn "If the system cannot boot or packages remain broken, follow the Emergency Recovery Protocol:"
+    log_warn "  Option A (Offline Host Repair - survives dynamic linker crash):"
+    log_warn "    sudo mount /dev/nvme0n1p2 /mnt && sudo mount /dev/nvme0n1p1 /mnt/boot/efi"
+    log_warn "    sudo dpkg --root=/mnt --configure -a"
+    log_warn "    sudo apt-get -o RootDir=/mnt update && sudo apt-get -o RootDir=/mnt install -f -y"
+    log_warn "  Option B (Chroot Recovery with EFI Variables):"
+    log_warn "    for i in /dev /dev/pts /proc /sys /run; do sudo mount --bind \$i /mnt\$i; done"
+    log_warn "    sudo mount --bind /sys/firmware/efi/efivars /mnt/sys/firmware/efi/efivars"
+    log_warn "    sudo chroot /mnt"
+    log_warn "    dpkg --configure -a && apt-get install -f -y && update-initramfs -u -k all && update-grub"
 }
 
 confirm_point_of_no_return() {
@@ -353,32 +369,63 @@ run_minimal_upgrade() {
         return 1
     fi
 
-    log_info "Running staged minimal upgrade..."
+    log_info "Running staged minimal upgrade with needrestart suppression and package cache streaming..."
     if ! run_apt_cmd apt-get upgrade --without-new-pkgs -y \
         -o Dpkg::Options::="--force-confdef" \
-        -o Dpkg::Options::="--force-confold"; then
+        -o Dpkg::Options::="--force-confold" \
+        -o APT::Keep-Downloaded-Packages="false"; then
         log_error "Minimal safe upgrade encountered an error."
         return 1
     fi
 
+    log_info "Intermediate package cache purge to free disk headroom before full upgrade..."
+    run_apt_cmd apt-get clean || true
+
     log_pass "Phase 3 Minimal Safe Upgrade completed successfully."
+    return 0
+}
+
+install_core_firmware() {
+    log_info "Installing mandatory Intel Ice Lake firmware & sound architecture (SOF + iwlwifi + misc)..."
+    if ! run_apt_cmd apt-get install --no-install-recommends -y \
+        firmware-sof-signed \
+        firmware-iwlwifi \
+        firmware-misc-nonfree \
+        alsa-ucm-conf \
+        -o Dpkg::Options::="--force-confdef" \
+        -o Dpkg::Options::="--force-confold" \
+        -o APT::Keep-Downloaded-Packages="false"; then
+        log_warn "Firmware installation returned a warning; proceeding to full distribution upgrade."
+    else
+        log_pass "Core hardware firmware (SOF + iwlwifi + UCM + misc) installed successfully."
+    fi
     return 0
 }
 
 run_full_upgrade() {
     log_info "Executing Phase 4: Full Distribution Upgrade (full-upgrade)..."
 
+    # Ensure audio and wifi firmware are explicitly queued
+    install_core_firmware
+
     log_info "Running apt-get full-upgrade..."
     if ! run_apt_cmd apt-get full-upgrade -y \
         -o Dpkg::Options::="--force-confdef" \
-        -o Dpkg::Options::="--force-confold"; then
+        -o Dpkg::Options::="--force-confold" \
+        -o APT::Keep-Downloaded-Packages="false"; then
         log_error "Full distribution upgrade encountered an error."
         return 1
     fi
 
-    log_info "Cleaning obsolete orphaned packages..."
+    log_info "Cleaning obsolete orphaned packages and downloaded caches..."
     run_apt_cmd apt-get autoremove --purge -y || true
     run_apt_cmd apt-get clean || true
+
+    # Re-normalize NetworkManager keyfiles post-upgrade
+    if [[ -d /etc/NetworkManager/system-connections && "${EUID}" -eq 0 ]]; then
+        chmod 0600 /etc/NetworkManager/system-connections/* 2>/dev/null || true
+        chown root:root /etc/NetworkManager/system-connections/* 2>/dev/null || true
+    fi
 
     log_pass "Phase 4 Full Distribution Upgrade completed successfully."
     return 0
@@ -440,13 +487,13 @@ Update `parse_args` and `main` to handle `--apply` and `--non-interactive`.
 - [ ] **Step 4: Run test to verify all Task 1 and Task 2 tests pass**
 
 Run: `bash tests/test_upgrade_pipeline.sh`
-Expected output: PASS: 20/20 passed, 0 failed.
+Expected output: PASS: 22/22 passed, 0 failed.
 
 - [ ] **Step 5: Commit Task 2 deliverables**
 
 ```bash
 git add scripts/upgrade_debian_trixie.sh tests/test_upgrade_pipeline.sh
-git commit -m "feat(upgrade): implement staged minimal upgrade, full upgrade, and emergency repair protocol"
+git commit -m "feat(upgrade): implement staged upgrade with cache streaming, intermediate clean, and SOF firmware"
 ```
 
 ---
@@ -457,7 +504,7 @@ git commit -m "feat(upgrade): implement staged minimal upgrade, full upgrade, an
 - Modify: `tests/test_upgrade_pipeline.sh`
 - Test: `bash tests/test_upgrade_pipeline.sh` & `bash tests/test_upgrade_preflight.sh`.
 
-- [ ] **Step 1: Add syntax and linting checks in `tests/test_upgrade_pipeline.sh`**
+- [ ] **Step 1: Add syntax and integrity checks in `tests/test_upgrade_pipeline.sh`**
 
 ```bash
 # --- Task 3: Syntax & Integrity Checks ---
@@ -494,8 +541,8 @@ git commit -m "test(upgrade): finalize Debian 13 upgrade pipeline regression sui
 
 ## Execution Self-Review Checklist
 
-- [x] **Spec Coverage:** Covers Phase 2 (deb822 source transition), Point of No Return gate, Phase 3 (minimal upgrade), and Phase 4 (full upgrade with emergency repair).
+- [x] **Spec Coverage:** Covers Phase 2 (deb822 source transition), Point of No Return gate, Phase 3 (minimal upgrade with immediate cache purge and `APT::Keep-Downloaded-Packages="false"`), and Phase 4 (full upgrade with `firmware-sof-signed`, `alsa-ucm-conf`, `firmware-misc-nonfree`, and emergency repair).
 - [x] **Zero-Downgrade Invariant:** No unsupported APT source downgrades; executes `dpkg --configure -a` and `apt-get install -f` on failure.
-- [x] **Emergency Chroot Rescue:** Documented complete runbook for offline chroot recovery.
-- [x] **Zero-Data-Loss Adherence:** No operations touch `/dev/nvme0n1p4` (`/mnt/data`).
-- [x] **deb822 Compliance:** Uses `/etc/apt/sources.list.d/debian.sources` and clears legacy file.
+- [x] **Emergency Rescue Protocol:** Implements offline `dpkg --root` and `efivars` chroot recovery runbooks.
+- [x] **Zero-Data-Loss Adherence:** No operations touch or unmount `/dev/nvme0n1p4` (`/mnt/data`).
+- [x] **deb822 Compliance:** Standardizes on `/etc/apt/sources.list.d/debian.sources` with `non-free-firmware`.
