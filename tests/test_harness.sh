@@ -382,6 +382,14 @@ assert_exit_code "Marketing Assets & GTM Unit Tests" 0 $?
 echo "--- Testing Release Packaging Suite ---"
 "${WORKSPACE_ROOT}/tests/test_release_packaging.sh" > /dev/null 2>&1
 assert_exit_code "Release Packaging & Checksum Unit Tests" 0 $?
+
+echo "--- Testing Migration & Partition Reclamation Suite ---"
+"${WORKSPACE_ROOT}/tests/test_partition_reclamation.sh" > /dev/null 2>&1
+assert_exit_code "Migration & Partition Reclamation Test Suite" 0 $?
+
+echo "--- Testing GitHub CLI Installer Suite ---"
+"${WORKSPACE_ROOT}/tests/test_install_github_cli.sh" > /dev/null 2>&1
+assert_exit_code "GitHub CLI Installer Unit Tests" 0 $?
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"

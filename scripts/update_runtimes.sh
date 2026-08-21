@@ -40,7 +40,7 @@ if command -v uv &>/dev/null; then
     uv self update 2>/dev/null || true
 fi
 
-echo "==> [5/5] Updating AI Coding and Cloudflare CLIs..."
+echo "==> [5/5] Updating AI Coding and Developer CLIs..."
 if command -v claude &>/dev/null || [ -f "${HOME}/.local/bin/claude" ]; then
     curl -fsSL https://claude.ai/install.sh | bash 2>/dev/null || true
 fi
@@ -49,6 +49,11 @@ if command -v npm &>/dev/null; then
 fi
 if command -v agy &>/dev/null; then
     curl -fsSL https://antigravity.google/cli/install.sh | bash 2>/dev/null || true
+fi
+if command -v gh &>/dev/null; then
+    if command -v apt &>/dev/null; then
+        sudo apt update && sudo apt install -y --only-upgrade gh 2>/dev/null || true
+    fi
 fi
 
 echo "All runtimes updated."
