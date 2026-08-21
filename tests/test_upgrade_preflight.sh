@@ -136,8 +136,59 @@ set -e
 assert_exit_code "Broken dpkg audit fails with code 2" 2 "${DPKG_FAIL_RC}"
 assert_contains "Broken dpkg outputs audit error" "${DPKG_FAIL_OUT}" "Broken or inconsistent packages detected"
 
+# --- Task 2: Backup & Manifest Tests ---
 echo "=================================================="
-echo "Task 1 Pre-Flight Tests: ${PASSED_TESTS}/${TOTAL_TESTS} passed, ${FAILED_TESTS} failed"
+echo "Running Debian 13 State Backup & Dual-Target Tests"
+echo "=================================================="
+
+TEST_BACKUP_DIR="$(mktemp -d /tmp/osm_test_backup_XXXXXX)"
+TEST_SECONDARY_DIR="$(mktemp -d /tmp/osm_test_secondary_XXXXXX)"
+trap 'rm -rf "${TEST_BACKUP_DIR}" "${TEST_SECONDARY_DIR}"' EXIT
+
+set +e
+BACKUP_OUT="$(OSM_MOCK_ROOT=1 OSM_MOCK_TMUX=1 OSM_BACKUP_DIR="${TEST_BACKUP_DIR}" OSM_SECONDARY_BACKUP_DIR="${TEST_SECONDARY_DIR}" "${UPGRADE_SCRIPT}" --backup-only 2>&1)"
+BACKUP_RC=$?
+set -e
+
+assert_exit_code "--backup-only exits 0" 0 "${BACKUP_RC}"
+assert_contains "Logs backup initiation" "${BACKUP_OUT}" "Phase 1: State Backup & Manifest Snapshot"
+assert_contains "Logs backup completion" "${BACKUP_OUT}" "Phase 1 Backup completed successfully"
+
+# Check created primary artifacts
+assert_exit_code "APT backup directory exists" 0 $([ -d "${TEST_BACKUP_DIR}/apt" ] && echo 0 || echo 1)
+assert_exit_code "etc_config_snapshot.tar.gz exists" 0 $([ -s "${TEST_BACKUP_DIR}/etc_config_snapshot.tar.gz" ] && echo 0 || echo 1)
+assert_exit_code "dpkg_selections.txt exists" 0 $([ -s "${TEST_BACKUP_DIR}/dpkg_selections.txt" ] && echo 0 || echo 1)
+assert_exit_code "apt_manual_pkgs.txt exists" 0 $([ -s "${TEST_BACKUP_DIR}/apt_manual_pkgs.txt" ] && echo 0 || echo 1)
+assert_exit_code "upgrade_manifest.json exists" 0 $([ -s "${TEST_BACKUP_DIR}/upgrade_manifest.json" ] && echo 0 || echo 1)
+
+# Check secondary NTFS tarball mirror
+assert_exit_code "Secondary tarball mirror created" 0 $(ls "${TEST_SECONDARY_DIR}"/apt_pre_trixie_*.tar.gz >/dev/null 2>&1 && echo 0 || echo 1)
+assert_exit_code "Emergency rescue script created" 0 $([ -x "${TEST_SECONDARY_DIR}/emergency_rescue.sh" ] && echo 0 || echo 1)
+
+# Validate emergency_rescue.sh content
+RESCUE_CONTENT="$(cat "${TEST_SECONDARY_DIR}/emergency_rescue.sh")"
+assert_contains "Rescue script contains efivars bind mount" "${RESCUE_CONTENT}" "/sys/firmware/efi/efivars"
+assert_contains "Rescue script contains offline dpkg --root" "${RESCUE_CONTENT}" "dpkg --root=/mnt --configure -a"
+assert_contains "Rescue script contains GPU recovery flags" "${RESCUE_CONTENT}" "nouveau.modeset=0"
+
+# Validate upgrade_manifest.json schema using python
+set +e
+python3 -c "
+import json
+with open('${TEST_BACKUP_DIR}/upgrade_manifest.json') as f:
+    data = json.load(f)
+assert 'timestamp' in data
+assert 'kernel' in data
+assert 'architecture' in data
+assert 'source_version' in data
+assert data['target_suite'] == 'trixie'
+" 2>&1
+JSON_VALID_RC=$?
+set -e
+assert_exit_code "upgrade_manifest.json contains required telemetry keys" 0 "${JSON_VALID_RC}"
+
+echo "=================================================="
+echo "Debian 13 Upgrade Tests: ${PASSED_TESTS}/${TOTAL_TESTS} passed, ${FAILED_TESTS} failed"
 echo "=================================================="
 
 if [ "${FAILED_TESTS}" -gt 0 ]; then
