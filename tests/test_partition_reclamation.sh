@@ -12,6 +12,7 @@ echo "=================================================="
 # 1. Run Unit Tests
 bash "${WORKSPACE_ROOT}/tests/test_reclaim_partitions.sh"
 bash "${WORKSPACE_ROOT}/tests/test_zero_usb_relocation.sh"
+bash "${WORKSPACE_ROOT}/tests/test_switch_boot.sh"
 
 # 2. Run Geometry Tests
 bash "${WORKSPACE_ROOT}/tests/test_geometry_validator.sh"
