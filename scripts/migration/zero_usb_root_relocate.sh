@@ -293,12 +293,27 @@ EOF
 
 $SUDO_CMD ln -sf /etc/systemd/system/zero-usb-finalize-expansion.service "${NEW_ROOT_MOUNT}/etc/systemd/system/multi-user.target.wants/zero-usb-finalize-expansion.service"
 
-# 12. Update GRUB on Running System
-echo "--- Step 7: Updating GRUB Bootloader Configuration ---"
-$SUDO_CMD update-grub
+# 12. Install & Update GRUB from New Root
+echo "--- Step 7: Configuring GRUB Bootloader from New Root ---"
+$SUDO_CMD sed -i 's/^#GRUB_DISABLE_OS_PROBER=false/GRUB_DISABLE_OS_PROBER=false/' /etc/default/grub || true
+$SUDO_CMD sed -i 's/^#GRUB_DISABLE_OS_PROBER=false/GRUB_DISABLE_OS_PROBER=false/' "${NEW_ROOT_MOUNT}/etc/default/grub" || true
 
-# 13. Cleanup Mount
+$SUDO_CMD mkdir -p "${NEW_ROOT_MOUNT}/boot/efi" "${NEW_ROOT_MOUNT}/dev" "${NEW_ROOT_MOUNT}/proc" "${NEW_ROOT_MOUNT}/sys"
+$SUDO_CMD mount --bind /dev "${NEW_ROOT_MOUNT}/dev"
+$SUDO_CMD mount --bind /proc "${NEW_ROOT_MOUNT}/proc"
+$SUDO_CMD mount --bind /sys "${NEW_ROOT_MOUNT}/sys"
+$SUDO_CMD mount /dev/nvme0n1p1 "${NEW_ROOT_MOUNT}/boot/efi"
+
+echo "Running chroot grub-install and update-grub..."
+$SUDO_CMD chroot "${NEW_ROOT_MOUNT}" grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=debian --recheck /dev/nvme0n1
+$SUDO_CMD chroot "${NEW_ROOT_MOUNT}" update-grub
+
+# 13. Cleanup Mounts
 echo "--- Step 8: Finalizing and Unmounting ---"
+$SUDO_CMD umount "${NEW_ROOT_MOUNT}/boot/efi" || true
+$SUDO_CMD umount "${NEW_ROOT_MOUNT}/dev" || true
+$SUDO_CMD umount "${NEW_ROOT_MOUNT}/proc" || true
+$SUDO_CMD umount "${NEW_ROOT_MOUNT}/sys" || true
 $SUDO_CMD umount "${NEW_ROOT_MOUNT}"
 $SUDO_CMD rmdir "${NEW_ROOT_MOUNT}" 2>/dev/null || true
 
