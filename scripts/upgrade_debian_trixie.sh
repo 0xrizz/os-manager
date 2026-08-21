@@ -20,6 +20,7 @@ TRANSITION_ONLY=0
 APPLY=0
 NON_INTERACTIVE=0
 ALLOW_UNATTACHED=0
+VERIFY_ONLY=0
 TEMP_DIR=""
 
 log_info() {
@@ -49,7 +50,7 @@ show_help() {
     cat << 'EOF'
 Usage: upgrade_debian_trixie.sh [OPTIONS]
 
-Debian 13 (Trixie) Upgrade Automation Engine (Phases 0-4)
+Debian 13 (Trixie) Upgrade Automation Engine (Phases 0-5)
 
 Options:
   --apply              Execute the full Debian 13 (Trixie) staged upgrade pipeline
@@ -57,6 +58,7 @@ Options:
   --dry-run            Simulate execution without modifying system state
   --backup-only        Execute Phase 1 state backup & dual-snapshot archiving only
   --transition-only    Execute Phase 2 deb822 repository transition only
+  --verify             Execute Phase 5 post-upgrade hardware, DRM & systemd verification only
   --non-interactive    Run non-interactively (auto-confirm Point of No Return)
   --allow-unattached   Bypass mandatory tmux/screen session check (not recommended)
   --help               Display this help message and exit
@@ -849,6 +851,112 @@ run_pipeline() {
     return 0
 }
 
+verify_system_and_hardware() {
+    log_info "Executing Phase 5: Post-Upgrade Hardware, DRM & Systemd Audit..."
+    local failures=0
+
+    echo "=================================================="
+    echo "       Debian 13 Upgrade Verification Report      "
+    echo "=================================================="
+
+    # 1. OS Release & Kernel
+    log_info "1. Auditing OS Release & Kernel Baseline..."
+    local pretty_name kernel_ver
+    pretty_name="$(grep -E '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"' || echo "Debian GNU/Linux")"
+    kernel_ver="$(uname -r 2>/dev/null || echo "unknown")"
+    log_pass "Detected OS: ${pretty_name}"
+    log_pass "Active Kernel: ${kernel_ver}"
+
+    # 2. Wireless & Network Subsystem
+    log_info "2. Auditing Wireless & Network Subsystem..."
+    if ip link show >/dev/null 2>&1; then
+        local wifi_interfaces
+        wifi_interfaces="$(ip -o link show | awk -F': ' '$2 ~ /^(wl|wlan)/ {print $2}' || true)"
+        if [[ -n "${wifi_interfaces}" ]]; then
+            log_pass "Wireless interface(s) online: ${wifi_interfaces}"
+        else
+            log_warn "No dedicated wireless interface detected via ip link."
+        fi
+    fi
+    if lsmod 2>/dev/null | grep -qE '\b(iwlwifi|iwlmvm)\b'; then
+        log_pass "Intel iwlwifi kernel module is active."
+    fi
+    if command -v nmcli >/dev/null 2>&1; then
+        local nm_status
+        nm_status="$(nmcli general status 2>/dev/null || echo "unknown")"
+        log_pass "NetworkManager status:\n${nm_status}"
+    fi
+
+    # 3. Audio Subsystem & SOF DSP
+    log_info "3. Auditing Audio Subsystem & SOF DSP Firmware..."
+    if [[ -f "/proc/asound/cards" ]]; then
+        local sound_cards
+        sound_cards="$(grep -E '^[0-9]' /proc/asound/cards || true)"
+        if [[ -n "${sound_cards}" ]]; then
+            log_pass "Audio sound cards detected:\n${sound_cards}"
+        else
+            log_warn "No ALSA sound cards registered in /proc/asound/cards."
+        fi
+    fi
+
+    if dmesg 2>/dev/null | grep -iE 'sof-audio.*error|sof.*failed' | grep -v 'Direct firmware load' >/dev/null 2>&1; then
+        log_error "Sound Open Firmware (SOF) initialization errors detected in dmesg."
+        failures=$((failures + 1))
+    else
+        log_pass "Sound Open Firmware (SOF) DSP driver initialized cleanly."
+    fi
+
+    # 4. Graphics & DRM Display Subsystem
+    log_info "4. Auditing Graphics & DRM Display Subsystem..."
+    if [[ -e "/dev/dri/card0" ]]; then
+        log_pass "Primary DRM display card device node present (/dev/dri/card0)."
+    else
+        log_warn "Primary DRM display node /dev/dri/card0 not detected."
+    fi
+    if [[ -e "/dev/dri/renderD128" ]]; then
+        log_pass "Direct rendering 3D acceleration node present (/dev/dri/renderD128)."
+    fi
+
+    if command -v lspci >/dev/null 2>&1; then
+        local vga_devices
+        vga_devices="$(lspci | grep -iE 'vga|3d|display' || true)"
+        log_pass "Graphics hardware:\n${vga_devices}"
+    fi
+
+    # 5. Kernel Lockdown & Secure Boot State
+    log_info "5. Auditing Kernel Lockdown & Secure Boot Status..."
+    if [[ -f "/sys/kernel/security/lockdown" ]]; then
+        local lockdown_mode
+        lockdown_mode="$(cat /sys/kernel/security/lockdown 2>/dev/null || echo "none")"
+        log_pass "Kernel Lockdown mode: ${lockdown_mode}"
+    fi
+
+    # 6. Systemd Service Health
+    log_info "6. Auditing Systemd Service Health..."
+    if [[ "${OSM_MOCK_SYSTEMD_FAILED:-0}" == "1" ]]; then
+        log_error "Degraded or failed systemd units detected (mocked failure)."
+        failures=$((failures + 1))
+    elif command -v systemctl >/dev/null 2>&1; then
+        local failed_units
+        failed_units="$(systemctl --failed --no-legend --no-pager 2>/dev/null || true)"
+        if [[ -n "${failed_units}" ]]; then
+            log_error "Degraded or failed systemd units detected:\n${failed_units}"
+            failures=$((failures + 1))
+        else
+            log_pass "Zero failed systemd units reported (100% healthy)."
+        fi
+    fi
+
+    echo "=================================================="
+    if [[ "${failures}" -gt 0 ]]; then
+        log_error "Phase 5 Verification finished with ${failures} failure(s)."
+        return 2
+    fi
+
+    log_pass "Phase 5 Verification COMPLETED SUCCESSFULLY - System is fully operational."
+    return 0
+}
+
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -870,6 +978,10 @@ parse_args() {
                 ;;
             --transition-only)
                 TRANSITION_ONLY=1
+                shift
+                ;;
+            --verify)
+                VERIFY_ONLY=1
                 shift
                 ;;
             --non-interactive)
@@ -911,6 +1023,11 @@ main() {
     if [[ "${TRANSITION_ONLY}" -eq 1 ]]; then
         check_preflight
         transition_sources "${OSM_APT_DIR:-/etc/apt}"
+        exit $?
+    fi
+
+    if [[ "${VERIFY_ONLY}" -eq 1 ]]; then
+        verify_system_and_hardware
         exit $?
     fi
 

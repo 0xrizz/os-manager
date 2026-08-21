@@ -120,6 +120,34 @@ assert_contains "Runs dpkg configure" "${FAIL_APPLY_OUT}" "dpkg --configure -a"
 assert_contains "Runs apt install -f" "${FAIL_APPLY_OUT}" "apt-get install -f"
 assert_contains "Outputs efivars bind in rescue guidance" "${FAIL_APPLY_OUT}" "/sys/firmware/efi/efivars"
 
+# --- Task 2: Post-Upgrade Verification Tests ---
+echo "=================================================="
+echo "Running Post-Upgrade Verification Tests"
+echo "=================================================="
+
+# 1. Standard verification execution
+set +e
+VERIFY_OUT="$(OSM_MOCK_ROOT=1 OSM_MOCK_TMUX=1 "${UPGRADE_SCRIPT}" --verify 2>&1)"
+VERIFY_RC=$?
+set -e
+
+assert_exit_code "--verify executes cleanly with exit code 0" 0 "${VERIFY_RC}"
+assert_contains "Verification checks OS release" "${VERIFY_OUT}" "OS Release & Kernel Baseline"
+assert_contains "Verification checks Network" "${VERIFY_OUT}" "Wireless & Network Subsystem"
+assert_contains "Verification checks Audio & SOF DSP" "${VERIFY_OUT}" "Audio Subsystem & SOF DSP"
+assert_contains "Verification checks Display DRM" "${VERIFY_OUT}" "Graphics & DRM Display Subsystem"
+assert_contains "Verification checks Kernel Lockdown" "${VERIFY_OUT}" "Kernel Lockdown & Secure Boot"
+assert_contains "Verification checks Systemd units" "${VERIFY_OUT}" "Systemd Service Health"
+
+# 2. Mocked Systemd Failure detection
+set +e
+SYS_FAIL_OUT="$(OSM_MOCK_ROOT=1 OSM_MOCK_TMUX=1 OSM_MOCK_SYSTEMD_FAILED=1 "${UPGRADE_SCRIPT}" --verify 2>&1)"
+SYS_FAIL_RC=$?
+set -e
+
+assert_exit_code "Failed systemd units return exit code 2" 2 "${SYS_FAIL_RC}"
+assert_contains "Logs systemd failure error" "${SYS_FAIL_OUT}" "Degraded or failed systemd units detected"
+
 # --- Task 3: Syntax & Integrity Checks ---
 assert_exit_code "Upgrade script syntax valid" 0 $(bash -n "${UPGRADE_SCRIPT}" && echo 0 || echo 1)
 assert_exit_code "Pipeline test syntax valid" 0 $(bash -n "${WORKSPACE_ROOT}/tests/test_upgrade_pipeline.sh" && echo 0 || echo 1)
