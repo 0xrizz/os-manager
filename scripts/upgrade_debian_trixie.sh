@@ -466,7 +466,7 @@ fi
 
 echo "3. Attempting Option A: Offline Host-Level DPKG & APT Repair..."
 echo "   (Survives broken internal libc6 dynamic linker crashes)"
-dpkg --root=/mnt --configure -a || true
+dpkg --root="${TARGET_MOUNT}" --configure -a || true
 apt-get -o RootDir="${TARGET_MOUNT}" update || true
 apt-get -o RootDir="${TARGET_MOUNT}" install -f -y || true
 

@@ -168,7 +168,7 @@ assert_exit_code "Emergency rescue script created" 0 $([ -x "${TEST_SECONDARY_DI
 # Validate emergency_rescue.sh content
 RESCUE_CONTENT="$(cat "${TEST_SECONDARY_DIR}/emergency_rescue.sh")"
 assert_contains "Rescue script contains efivars bind mount" "${RESCUE_CONTENT}" "/sys/firmware/efi/efivars"
-assert_contains "Rescue script contains offline dpkg --root" "${RESCUE_CONTENT}" "dpkg --root=/mnt --configure -a"
+assert_contains "Rescue script contains offline dpkg --root" "${RESCUE_CONTENT}" 'dpkg --root="${TARGET_MOUNT}" --configure -a'
 assert_contains "Rescue script contains GPU recovery flags" "${RESCUE_CONTENT}" "nouveau.modeset=0"
 
 # Validate upgrade_manifest.json schema using python
@@ -187,8 +187,36 @@ JSON_VALID_RC=$?
 set -e
 assert_exit_code "upgrade_manifest.json contains required telemetry keys" 0 "${JSON_VALID_RC}"
 
+# --- Task 3: Edge Cases & Non-Mutation Tests ---
 echo "=================================================="
-echo "Debian 13 Upgrade Tests: ${PASSED_TESTS}/${TOTAL_TESTS} passed, ${FAILED_TESTS} failed"
+echo "Running Edge Cases & Non-Mutation Tests"
+echo "=================================================="
+
+# 1. Invalid argument rejection
+set +e
+INVALID_OUT="$("${UPGRADE_SCRIPT}" --invalid-flag 2>&1)"
+INVALID_RC=$?
+set -e
+assert_exit_code "Invalid option exits with code 1" 1 "${INVALID_RC}"
+assert_contains "Invalid option outputs error" "${INVALID_OUT}" "Unknown option: --invalid-flag"
+
+# 2. Non-mutation verification in dry-run
+SOURCES_HASH_BEFORE="$(sha256sum /etc/apt/sources.list 2>/dev/null || echo "none")"
+set +e
+DRY_RUN_OUT="$(OSM_MOCK_ROOT=1 OSM_MOCK_TMUX=1 "${UPGRADE_SCRIPT}" --dry-run 2>&1)"
+DRY_RUN_RC=$?
+set -e
+SOURCES_HASH_AFTER="$(sha256sum /etc/apt/sources.list 2>/dev/null || echo "none")"
+
+assert_exit_code "--dry-run exits with code 0" 0 "${DRY_RUN_RC}"
+assert_contains "--dry-run indicates simulation" "${DRY_RUN_OUT}" "simulation mode"
+assert_exit_code "/etc/apt/sources.list unchanged during dry-run" 0 $([ "${SOURCES_HASH_BEFORE}" == "${SOURCES_HASH_AFTER}" ] && echo 0 || echo 1)
+
+# Syntax check
+assert_exit_code "Script passes bash syntax check" 0 $(bash -n "${UPGRADE_SCRIPT}" && echo 0 || echo 1)
+
+echo "=================================================="
+echo "Preflight Test Suite Complete: ${PASSED_TESTS}/${TOTAL_TESTS} passed, ${FAILED_TESTS} failed"
 echo "=================================================="
 
 if [ "${FAILED_TESTS}" -gt 0 ]; then
