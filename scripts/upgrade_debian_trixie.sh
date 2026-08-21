@@ -16,6 +16,7 @@ readonly SECONDARY_BACKUP_BASE="/mnt/data/osm_backups"
 DRY_RUN=0
 CHECK_ONLY=0
 BACKUP_ONLY=0
+TRANSITION_ONLY=0
 ALLOW_UNATTACHED=0
 TEMP_DIR=""
 
@@ -46,16 +47,18 @@ show_help() {
     cat << 'EOF'
 Usage: upgrade_debian_trixie.sh [OPTIONS]
 
-Debian 13 (Trixie) Upgrade Automation Engine (Phases 0 & 1)
+Debian 13 (Trixie) Upgrade Automation Engine (Phases 0-2)
 
 Options:
   --check              Run Phase 0 pre-flight readiness checks only and exit
   --dry-run            Simulate execution without modifying system state
   --backup-only        Execute Phase 1 state backup & dual-snapshot archiving only
+  --transition-only    Execute Phase 2 deb822 repository transition only
   --allow-unattached   Bypass mandatory tmux/screen session check (not recommended)
   --help               Display this help message and exit
 
 Environment Overrides:
+  OSM_APT_DIR                Target directory for apt configuration (default: /etc/apt)
   OSM_BACKUP_DIR             Target directory for primary backup snapshot
   OSM_MOCK_ROOT              Set to 1 to simulate root privileges in test environments
   OSM_MOCK_TMUX              Set to 1 to simulate active tmux session (0 to simulate unattached)
@@ -601,6 +604,60 @@ EOF
     return 0
 }
 
+generate_deb822_sources() {
+    local target_file="$1"
+    log_info "Writing Debian 13 (Trixie) deb822 repository matrix to ${target_file}..."
+
+    cat > "${target_file}" << 'EOF'
+Types: deb deb-src
+URIs: http://deb.debian.org/debian
+Suites: trixie trixie-updates trixie-backports
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+Types: deb deb-src
+URIs: http://security.debian.org/debian-security
+Suites: trixie-security
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+EOF
+}
+
+transition_sources() {
+    local apt_dir="${1:-${OSM_APT_DIR:-/etc/apt}}"
+    log_info "Executing Phase 2: APT deb822 Repository Matrix Transition in ${apt_dir}..."
+
+    if [[ ! -d "${apt_dir}" ]]; then
+        log_error "Target APT directory ${apt_dir} does not exist."
+        return 2
+    fi
+
+    mkdir -p "${apt_dir}/sources.list.d"
+
+    # 1. Write deb822 format sources
+    generate_deb822_sources "${apt_dir}/sources.list.d/debian.sources"
+
+    # 2. Clear legacy sources.list to prevent duplicate warnings
+    if [[ -f "${apt_dir}/sources.list" ]]; then
+        cat > "${apt_dir}/sources.list" << 'EOF'
+# Legacy sources.list cleared by os-manager. Active repositories are configured in sources.list.d/debian.sources
+EOF
+    fi
+
+    # 3. Disable external third party lists
+    shopt -s nullglob
+    local list_files=("${apt_dir}/sources.list.d/"*.list)
+    shopt -u nullglob
+
+    for f in "${list_files[@]}"; do
+        log_warn "Disabling third-party repository during upgrade: $(basename "${f}")"
+        mv "${f}" "${f}.disabled_for_upgrade"
+    done
+
+    log_pass "Phase 2 deb822 Source Transition completed successfully."
+    return 0
+}
+
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -614,6 +671,10 @@ parse_args() {
                 ;;
             --backup-only)
                 BACKUP_ONLY=1
+                shift
+                ;;
+            --transition-only)
+                TRANSITION_ONLY=1
                 shift
                 ;;
             --allow-unattached)
@@ -645,6 +706,12 @@ main() {
     if [[ "${BACKUP_ONLY}" -eq 1 ]]; then
         check_preflight
         create_backup
+        exit $?
+    fi
+
+    if [[ "${TRANSITION_ONLY}" -eq 1 ]]; then
+        check_preflight
+        transition_sources "${OSM_APT_DIR:-/etc/apt}"
         exit $?
     fi
 

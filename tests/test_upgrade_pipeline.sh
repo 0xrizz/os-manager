@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# tests/test_upgrade_pipeline.sh - Unit & Pipeline Tests for Debian 13 Upgrade Engine
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKSPACE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+UPGRADE_SCRIPT="${WORKSPACE_ROOT}/scripts/upgrade_debian_trixie.sh"
+
+TOTAL_TESTS=0
+PASSED_TESTS=0
+FAILED_TESTS=0
+
+assert_exit_code() {
+    local test_name="$1"
+    local expected_code="$2"
+    local actual_code="$3"
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    if [ "${actual_code}" -eq "${expected_code}" ]; then
+        echo "  [PASS] ${test_name} (exit code: ${actual_code})"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+        echo "  [FAIL] ${test_name} (expected: ${expected_code}, got: ${actual_code})"
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+    fi
+}
+
+assert_contains() {
+    local test_name="$1"
+    local haystack="$2"
+    local needle="$3"
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    if echo "${haystack}" | grep -qF -- "${needle}"; then
+        echo "  [PASS] ${test_name}"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+        echo "  [FAIL] ${test_name} (expected to contain '${needle}')"
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+    fi
+}
+
+echo "=================================================="
+echo "Running Debian 13 deb822 Transition & Pipeline Tests"
+echo "=================================================="
+
+# 1. Script check
+assert_exit_code "Upgrade script is executable" 0 $([ -x "${UPGRADE_SCRIPT}" ] && echo 0 || echo 1)
+
+# 2. Test sandbox deb822 transition
+SANDBOX_DIR="$(mktemp -d /tmp/osm_sandbox_apt_XXXXXX)"
+SANDBOX_BACKUP="$(mktemp -d /tmp/osm_sandbox_backup_XXXXXX)"
+trap 'rm -rf "${SANDBOX_DIR}" "${SANDBOX_BACKUP}"' EXIT
+
+mkdir -p "${SANDBOX_DIR}/sources.list.d"
+echo "deb http://deb.debian.org/debian bookworm main" > "${SANDBOX_DIR}/sources.list"
+echo "deb https://example.com/deb bookworm main" > "${SANDBOX_DIR}/sources.list.d/external.list"
+
+set +e
+TRANSITION_OUT="$(OSM_MOCK_ROOT=1 OSM_MOCK_TMUX=1 OSM_APT_DIR="${SANDBOX_DIR}" OSM_BACKUP_DIR="${SANDBOX_BACKUP}" "${UPGRADE_SCRIPT}" --transition-only 2>&1)"
+TRANSITION_RC=$?
+set -e
+
+assert_exit_code "--transition-only exits 0" 0 "${TRANSITION_RC}"
+
+# Verify debian.sources created with deb822 format
+DEB_SOURCES="${SANDBOX_DIR}/sources.list.d/debian.sources"
+assert_exit_code "debian.sources exists" 0 $([ -f "${DEB_SOURCES}" ] && echo 0 || echo 1)
+
+DEB_CONTENT="$(cat "${DEB_SOURCES}" 2>/dev/null || true)"
+assert_contains "deb822 Types stanza" "${DEB_CONTENT}" "Types: deb deb-src"
+assert_contains "deb822 URIs stanza" "${DEB_CONTENT}" "URIs: http://deb.debian.org/debian"
+assert_contains "deb822 Suites trixie" "${DEB_CONTENT}" "Suites: trixie trixie-updates trixie-backports"
+assert_contains "deb822 Components non-free-firmware" "${DEB_CONTENT}" "Components: main contrib non-free non-free-firmware"
+assert_contains "deb822 Security URI" "${DEB_CONTENT}" "URIs: http://security.debian.org/debian-security"
+assert_contains "deb822 Security Suite" "${DEB_CONTENT}" "Suites: trixie-security"
+
+# Verify legacy sources.list is emptied or deduplicated
+LEGACY_ACTIVE="$(grep -vE '^[[:space:]]*(#|$)' "${SANDBOX_DIR}/sources.list" 2>/dev/null || true)"
+assert_exit_code "Legacy sources.list has zero active lines" 0 $([ -z "${LEGACY_ACTIVE}" ] && echo 0 || echo 1)
+
+# Verify third-party repo is disabled
+assert_exit_code "External list renamed to disabled" 0 $([ -f "${SANDBOX_DIR}/sources.list.d/external.list.disabled_for_upgrade" ] && echo 0 || echo 1)
+
+echo "=================================================="
+echo "Task 1 Tests: ${PASSED_TESTS}/${TOTAL_TESTS} passed, ${FAILED_TESTS} failed"
+echo "=================================================="
+
+if [ "${FAILED_TESTS}" -gt 0 ]; then
+    exit 1
+fi
+exit 0
