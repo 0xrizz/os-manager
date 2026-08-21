@@ -3,6 +3,8 @@
 # Configures persistent /mnt/data mount for Partition 4 (DATA_STORE) and creates 8GB dynamic swapfile
 set -euo pipefail
 
+export PATH="$PATH:/usr/sbin:/sbin"
+
 FSTAB_PATH="/etc/fstab"
 MOUNT_POINT="/mnt/data"
 PART_DEV="/dev/nvme0n1p4"
@@ -114,8 +116,11 @@ else
         if [[ $EUID -eq 0 ]]; then
             DATA_UUID=$(blkid -s UUID -o value "${PART_DEV}" 2>/dev/null || true)
         else
-            DATA_UUID=$(sudo blkid -s UUID -o value "${PART_DEV}" 2>/dev/null || true)
+            DATA_UUID=$(blkid -s UUID -o value "${PART_DEV}" 2>/dev/null || sudo blkid -s UUID -o value "${PART_DEV}" 2>/dev/null || true)
         fi
+    fi
+    if [[ -z "$DATA_UUID" ]] && command -v lsblk >/dev/null 2>&1; then
+        DATA_UUID=$(lsblk -no UUID "${PART_DEV}" 2>/dev/null | tr -d ' \n\r' || true)
     fi
 fi
 
@@ -170,18 +175,23 @@ else
 
     # Live mount verification if configuring actual system fstab
     if [[ "${FSTAB_PATH}" == "/etc/fstab" ]]; then
-        echo "Mounting all filesystems via 'mount -a'..."
-        if [[ $EUID -eq 0 ]]; then
-            mount -a || true
-        else
-            sudo mount -a || true
-        fi
-
         if findmnt -n "${MOUNT_POINT}" >/dev/null 2>&1; then
-            echo "Mount verification successful:"
+            echo "Mount directory ${MOUNT_POINT} is already mounted:"
             df -hT "${MOUNT_POINT}"
         else
-            echo "NOTE: ${MOUNT_POINT} is not yet mounted (block device may not be attached in current environment)."
+            echo "Mounting all filesystems via 'mount -a'..."
+            if [[ $EUID -eq 0 ]]; then
+                mount -a || true
+            else
+                sudo mount -a || true
+            fi
+
+            if findmnt -n "${MOUNT_POINT}" >/dev/null 2>&1; then
+                echo "Mount verification successful:"
+                df -hT "${MOUNT_POINT}"
+            else
+                echo "NOTE: ${MOUNT_POINT} is not yet mounted (block device may not be attached in current environment)."
+            fi
         fi
     fi
 fi
@@ -213,22 +223,18 @@ else
         else
             echo "Swapfile at ${SWAP_PATH} already exists."
             # Ensure swapon if not active
-            if command -v swapon >/dev/null 2>&1; then
-                if ! swapon --show | grep -q "${SWAP_PATH}"; then
-                    echo "Activating existing swapfile..."
-                    if [[ $EUID -eq 0 ]]; then
-                        swapon "${SWAP_PATH}" 2>/dev/null || true
-                    else
-                        sudo swapon "${SWAP_PATH}" 2>/dev/null || true
-                    fi
+            if ! grep -q "${SWAP_PATH}" /proc/swaps 2>/dev/null; then
+                echo "Activating existing swapfile..."
+                if [[ $EUID -eq 0 ]]; then
+                    swapon "${SWAP_PATH}" 2>/dev/null || true
+                else
+                    sudo swapon "${SWAP_PATH}" 2>/dev/null || true
                 fi
             fi
         fi
 
-        if command -v swapon >/dev/null 2>&1; then
-            echo "Active swap devices:"
-            swapon --show || true
-        fi
+        echo "Active swap devices (/proc/swaps):"
+        cat /proc/swaps 2>/dev/null || true
     fi
 
     # Append swap entry to target fstab if not already present

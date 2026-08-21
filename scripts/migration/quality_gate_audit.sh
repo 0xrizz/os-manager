@@ -4,6 +4,8 @@
 # and Partition 4 (DATA_STORE) NTFS preservation before allowing staging partition cleanup.
 set -euo pipefail
 
+export PATH="$PATH:/usr/sbin:/sbin"
+
 # Configuration and CLI Options
 MOCK_MODE=false
 MOCK_FAIL_DATASTORE=false

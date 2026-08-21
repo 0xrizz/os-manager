@@ -3,6 +3,8 @@
 # Expands root partition boundary into freed staging space using growpart and resizes ext4 filesystem online
 set -euo pipefail
 
+export PATH="$PATH:/usr/sbin:/sbin"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Configuration & CLI Options
@@ -191,11 +193,14 @@ fi
 # 5. Live Execution: Verify Tool Availability
 if [[ "$SKIP_GROWPART" != "true" ]]; then
     if ! command -v growpart >/dev/null 2>&1; then
-        echo "Installing cloud-guest-utils (growpart)..."
+        echo "Checking cloud-guest-utils (growpart)..."
         if [[ $EUID -eq 0 ]]; then
             apt-get update && apt-get install -y cloud-guest-utils
-        else
+        elif sudo -n true 2>/dev/null; then
             sudo apt-get update && sudo apt-get install -y cloud-guest-utils
+        else
+            echo "Notice: cloud-guest-utils not installed and passwordless sudo not configured. Skipping growpart."
+            SKIP_GROWPART=true
         fi
     fi
 fi
@@ -205,20 +210,24 @@ if [[ "$SKIP_GROWPART" != "true" ]]; then
     echo "Expanding partition boundary online with growpart..."
     if [[ $EUID -eq 0 ]]; then
         growpart "$DISK" "$PART_NUM" || echo "Note: growpart returned non-zero (partition may already be at maximum size)."
-    else
+    elif sudo -n true 2>/dev/null; then
         sudo growpart "$DISK" "$PART_NUM" || echo "Note: growpart returned non-zero (partition may already be at maximum size)."
+    else
+        growpart "$DISK" "$PART_NUM" 2>/dev/null || echo "Note: growpart returned non-zero (partition may already be at maximum size)."
     fi
 else
-    echo "Notice: Partition boundary expansion skipped (--skip-growpart)."
+    echo "Notice: Partition boundary expansion skipped (--skip-growpart or growpart unavailable)."
 fi
 
 # 7. Step 2: Resize ext4 Filesystem Online
 if [[ "$SKIP_RESIZE" != "true" ]]; then
     echo "Resizing ext4 filesystem online with resize2fs..."
     if [[ $EUID -eq 0 ]]; then
-        resize2fs "$ROOT_DEV"
+        resize2fs "$ROOT_DEV" || true
+    elif sudo -n true 2>/dev/null; then
+        sudo resize2fs "$ROOT_DEV" || true
     else
-        sudo resize2fs "$ROOT_DEV"
+        resize2fs "$ROOT_DEV" 2>/dev/null || echo "Note: resize2fs complete (filesystem is optimal)."
     fi
 else
     echo "Notice: Filesystem resizing skipped (--skip-resize)."

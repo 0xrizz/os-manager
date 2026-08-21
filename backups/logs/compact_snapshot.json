@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-08-20T22:10:33Z",
+  "timestamp": "2026-08-21T13:43:40Z",
   "branch": "main",
-  "git_status": " M backups/logs/harness_audit.jsonl\n M backups/logs/harness_errors.jsonl\n M uv.lock"
+  "git_status": " M backups/logs/compact_snapshot.json\n M backups/logs/harness_audit.jsonl\n M backups/logs/harness_errors.jsonl\n M docs/LINUX_MIGRATION_BLUEPRINT.md\n?? docs/migration/\n?? docs/superpowers/plans/2026-08-20-zero-usb-debian-bare-metal-migration.md\n?? docs/superpowers/plans/2026-08-21-transition-partition-reclamation-and-root-expansion.md\n?? docs/superpowers/plans/2026-08-21-zero-usb-debian-root-relocation-and-expansion.md\n?? scripts/migration/\n?? tests/test_geometry_validator.sh\n?? tests/test_partition_reclamation.sh\n?? tests/test_reclaim_partitions.sh\n?? tests/test_zero_usb_relocation.sh"
 }

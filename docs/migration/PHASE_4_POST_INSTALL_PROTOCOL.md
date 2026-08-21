@@ -122,22 +122,26 @@ free -h
 
 ---
 
-## 7. Langkah 6: Pembersihan Partisi Staging & Ekspansi Root Online
+## 7. Langkah 6: Pembersihan Partisi Transisi & Ekspansi Root Zero-USB (~235 GB)
 
-Setelah sistem Debian bare-metal berjalan stabil (minimal 2-3 kali reboot sukses dan lolos Quality Gate), hapus partisi sementara `DEBIAN_SET` dan perluas partisi root Debian secara online tanpa reboot:
+Setelah sistem Debian bare-metal berjalan stabil dan lolos Quality Gate, bersihkan partisi eks-Windows C:, eks-DEBIAN_SET, dan recovery untuk menggabungkan seluruh ruang menjadi satu partisi root **~235 GB ext4** secara **100% Zero-USB**:
 
 ```bash
-# 1. Jalankan script ekspansi otomatis
-bash ~/dev/os-manager/scripts/migration/expand_root_partition.sh
+# 1. Jalankan simulasi Dry-Run
+cd ~/dev/os-manager
+./scripts/migration/zero_usb_root_relocate.sh --dry-run
 
-# Atau langkah manual:
-# sudo apt update && sudo apt install -y cloud-guest-utils
-# sudo growpart /dev/nvme0n1 <nomor_partisi_root>
-# sudo resize2fs /dev/nvme0n1p<nomor_partisi_root>
+# 2. Jalankan relokasi & staging otomasi One-Shot
+sudo ./scripts/migration/zero_usb_root_relocate.sh
 
-# 2. Verifikasi kapasitas root yang baru
+# 3. Reboot laptop untuk finalisasi ekspansi otomatis
+sudo reboot
+
+# 4. Verifikasi kapasitas root yang baru (~235 GB)
 df -hT /
 ```
+
+Detail teknis lengkap dapat dibaca di: [`docs/migration/ZERO_USB_ROOT_EXPANSION_PROTOCOL.md`](ZERO_USB_ROOT_EXPANSION_PROTOCOL.md).
 
 ---
 

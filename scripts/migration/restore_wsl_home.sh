@@ -3,6 +3,8 @@
 # Extracts WSL backup archive into target home directory and enforces strict SSH permissions
 set -euo pipefail
 
+export PATH="$PATH:/usr/sbin:/sbin"
+
 BACKUP_ARCHIVE="/mnt/data/wsl_backup/wsl_home_backup.tar.gz"
 TARGET_DIR="${HOME}"
 DRY_RUN=false
