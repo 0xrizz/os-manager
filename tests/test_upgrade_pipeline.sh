@@ -120,11 +120,16 @@ assert_contains "Runs dpkg configure" "${FAIL_APPLY_OUT}" "dpkg --configure -a"
 assert_contains "Runs apt install -f" "${FAIL_APPLY_OUT}" "apt-get install -f"
 assert_contains "Outputs efivars bind in rescue guidance" "${FAIL_APPLY_OUT}" "/sys/firmware/efi/efivars"
 
+# --- Task 3: Syntax & Integrity Checks ---
+assert_exit_code "Upgrade script syntax valid" 0 $(bash -n "${UPGRADE_SCRIPT}" && echo 0 || echo 1)
+assert_exit_code "Pipeline test syntax valid" 0 $(bash -n "${WORKSPACE_ROOT}/tests/test_upgrade_pipeline.sh" && echo 0 || echo 1)
+
 echo "=================================================="
-echo "Pipeline Test Suite Complete: ${PASSED_TESTS}/${TOTAL_TESTS} passed, ${FAILED_TESTS} failed"
+echo "Upgrade Pipeline Test Suite Complete: ${PASSED_TESTS}/${TOTAL_TESTS} passed, ${FAILED_TESTS} failed"
 echo "=================================================="
 
 if [ "${FAILED_TESTS}" -gt 0 ]; then
     exit 1
 fi
 exit 0
+

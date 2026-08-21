@@ -47,7 +47,7 @@
   - Behavior: Generates `sources.list.d/debian.sources`, cleans legacy `sources.list`, and disables third-party lists (`*.disabled_for_upgrade`).
   - CLI flag: `--transition-only`.
 
-- [ ] **Step 1: Write the failing test for Task 1 in `tests/test_upgrade_pipeline.sh`**
+- [x] **Step 1: Write the failing test for Task 1 in `tests/test_upgrade_pipeline.sh`**
 
 Create `tests/test_upgrade_pipeline.sh`:
 
@@ -144,12 +144,12 @@ fi
 exit 0
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `chmod +x tests/test_upgrade_pipeline.sh && bash tests/test_upgrade_pipeline.sh`
 Expected output: FAIL with "Unknown option: --transition-only".
 
-- [ ] **Step 3: Implement deb822 Subroutines in `scripts/upgrade_debian_trixie.sh`**
+- [x] **Step 3: Implement deb822 Subroutines in `scripts/upgrade_debian_trixie.sh`**
 
 Add `generate_deb822_sources` and `transition_sources` to `scripts/upgrade_debian_trixie.sh`:
 
@@ -211,12 +211,12 @@ EOF
 
 Update `parse_args` to support `--transition-only` and route in `main`.
 
-- [ ] **Step 4: Run test to verify Task 1 passes**
+- [x] **Step 4: Run test to verify Task 1 passes**
 
 Run: `bash tests/test_upgrade_pipeline.sh`
 Expected output: PASS: 10/10 passed, 0 failed.
 
-- [ ] **Step 5: Commit Task 1 deliverables**
+- [x] **Step 5: Commit Task 1 deliverables**
 
 ```bash
 git add scripts/upgrade_debian_trixie.sh tests/test_upgrade_pipeline.sh
@@ -243,7 +243,7 @@ git commit -m "feat(upgrade): implement Phase 2 deb822 repository transition wit
   - CLI flags: `--apply`, `--non-interactive`.
   - Behavior: Sets `NEEDRESTART_MODE=a`, `NEEDRESTART_SUSPEND=1`, `UCF_FORCE_CONFFOLD=1`, passes `-o APT::Keep-Downloaded-Packages="false"`, runs minimal upgrade, cleans cache immediately, installs `firmware-sof-signed`, `firmware-iwlwifi`, `firmware-misc-nonfree`, and `alsa-ucm-conf`, runs full upgrade, re-sanitizes NetworkManager keyfile permissions, and triggers emergency repair on error.
 
-- [ ] **Step 1: Write the failing test for Task 2 in `tests/test_upgrade_pipeline.sh`**
+- [x] **Step 1: Write the failing test for Task 2 in `tests/test_upgrade_pipeline.sh`**
 
 Append to `tests/test_upgrade_pipeline.sh`:
 
@@ -286,12 +286,12 @@ assert_contains "Runs apt install -f" "${FAIL_APPLY_OUT}" "apt-get install -f"
 assert_contains "Outputs efivars bind in rescue guidance" "${FAIL_APPLY_OUT}" "/sys/firmware/efi/efivars"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `bash tests/test_upgrade_pipeline.sh`
 Expected output: FAIL with "Unknown option: --apply".
 
-- [ ] **Step 3: Implement Staged Upgrade Subroutines in `scripts/upgrade_debian_trixie.sh`**
+- [x] **Step 3: Implement Staged Upgrade Subroutines in `scripts/upgrade_debian_trixie.sh`**
 
 Add implementation:
 
@@ -484,12 +484,12 @@ run_pipeline() {
 
 Update `parse_args` and `main` to handle `--apply` and `--non-interactive`.
 
-- [ ] **Step 4: Run test to verify all Task 1 and Task 2 tests pass**
+- [x] **Step 4: Run test to verify all Task 1 and Task 2 tests pass**
 
 Run: `bash tests/test_upgrade_pipeline.sh`
 Expected output: PASS: 22/22 passed, 0 failed.
 
-- [ ] **Step 5: Commit Task 2 deliverables**
+- [x] **Step 5: Commit Task 2 deliverables**
 
 ```bash
 git add scripts/upgrade_debian_trixie.sh tests/test_upgrade_pipeline.sh
@@ -504,7 +504,7 @@ git commit -m "feat(upgrade): implement staged upgrade with cache streaming, int
 - Modify: `tests/test_upgrade_pipeline.sh`
 - Test: `bash tests/test_upgrade_pipeline.sh` & `bash tests/test_upgrade_preflight.sh`.
 
-- [ ] **Step 1: Add syntax and integrity checks in `tests/test_upgrade_pipeline.sh`**
+- [x] **Step 1: Add syntax and integrity checks in `tests/test_upgrade_pipeline.sh`**
 
 ```bash
 # --- Task 3: Syntax & Integrity Checks ---
@@ -521,7 +521,7 @@ fi
 exit 0
 ```
 
-- [ ] **Step 2: Run both test suites**
+- [x] **Step 2: Run both test suites**
 
 Run:
 ```bash
@@ -530,7 +530,7 @@ bash tests/test_upgrade_pipeline.sh
 ```
 Expected output: Both test suites pass 100% with exit code 0.
 
-- [ ] **Step 3: Commit Task 3 regression tests**
+- [x] **Step 3: Commit Task 3 regression tests**
 
 ```bash
 git add tests/test_upgrade_pipeline.sh
