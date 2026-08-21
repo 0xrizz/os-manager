@@ -10,6 +10,7 @@ from .commands.diag import run_diag
 from .commands.init import run_init
 from .commands.perf import run_perf
 from .commands.service import run_service
+from .commands.upgrade import run_upgrade
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -55,6 +56,9 @@ def build_parser() -> argparse.ArgumentParser:
     service_parser = subparsers.add_parser("service", help="Manage background daemons")
     service_parser.add_argument("action", nargs="?", default="status", choices=["status", "start", "stop", "restart"])
 
+    # upgrade
+    subparsers.add_parser("upgrade", add_help=False, help="Debian 13 (Trixie) upgrade orchestration engine")
+
     return parser
 
 
@@ -82,6 +86,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_init(argv[1:])
     elif args.command == "service":
         return run_service(argv[1:])
+    elif args.command == "upgrade":
+        return run_upgrade(argv[1:])
     else:
         parser.print_help()
         return 0
