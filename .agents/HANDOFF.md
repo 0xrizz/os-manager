@@ -1,9 +1,9 @@
-# CHECKPOINT HANDOFF: Debian 13 (Trixie) Upgrade - Phase 0/1 Preflight & Backup Implementation
+# CHECKPOINT HANDOFF: Debian 13 (Trixie) Upgrade - Phase 2-4 deb822 Transition, SOF Audio Firmware & Staged Upgrade Engine
 
 **Status:** APPROVED & COMPLETED  
-**Timestamp:** 2026-08-21 22:55 WIB  
-**Git HEAD:** `57b2eaf`  
-**Plan:** `docs/superpowers/plans/2026-08-21-debian-13-trixie-upgrade-preflight-and-backup.md`  
+**Timestamp:** 2026-08-21 23:10 WIB  
+**Git HEAD:** `0d738f7`  
+**Plan:** `docs/superpowers/plans/2026-08-21-debian-13-trixie-upgrade-engine-and-execution.md`  
 **Spec:** `docs/superpowers/specs/2026-08-21-debian-13-trixie-upgrade-automation-design.md`  
 **Review Verdict:** APPROVED (Task 1: Approved, Task 2: Approved, Task 3: Approved, Whole-Plan Review: Approved)  
 
@@ -11,40 +11,41 @@
 
 ## 1. Executive Summary & Verification Matrix
 
-Plan 1 (Phase 0: Pre-Flight Safety Gate & Phase 1: Dual State Backup) has been fully implemented, rigorously verified via test-driven development (TDD), and independently audited across all hardware, power-state, memory pressure, and zero-data-loss constraints.
+Plan 2 (Phase 2: deb822 Transition, Point-of-No-Return Gate, Phase 3: Minimal Safe Upgrade & Cache Purge, Phase 4: Full Distribution Upgrade with Intel SOF Firmware and DPKG Emergency Repair) has been fully implemented, rigorously verified via test-driven development (TDD), and independently audited across all hardware, power-state, memory pressure, zero-downgrade, and zero-data-loss constraints.
 
 | Component / Task | Verified Artifacts | Status |
 | :--- | :--- | :---: |
-| **Task 1: Pre-Flight Gate & SRE Invariants (Phase 0)** | • `scripts/upgrade_debian_trixie.sh` (`check_preflight`, `ensure_sleep_inhibited`, `check_power_source`, `set_oom_protection`, `check_memory_headroom`, `check_multiplexer`, `check_mountpoint_and_headroom`, `check_secure_boot_and_dkms`, `sanitize_networkmanager_keyfiles`, `preseed_debconf_grub`, `check_network_connectivity`, `check_dpkg_integrity`)<br/>• `tests/test_upgrade_preflight.sh` (26/26 tests passing) | **PASSED & APPROVED** |
-| **Task 2: Dual State Backup & NTFS Mirroring (Phase 1)** | • `scripts/upgrade_debian_trixie.sh` (`create_backup`, `generate_emergency_rescue_script`)<br/>• Primary backup `/var/backups/osm/apt_pre_trixie_<timestamp>/`<br/>• Secondary NTFS tarball `/mnt/data/osm_backups/apt_pre_trixie_<timestamp>.tar.gz`<br/>• Executable recovery helper `/mnt/data/osm_backups/emergency_rescue.sh` (with efivars bind mount, host dpkg repair, and GPU `nouveau.modeset=0` flags)<br/>• `tests/test_upgrade_preflight.sh` (40/40 tests passing with JSON telemetry validation) | **PASSED & APPROVED** |
-| **Task 3: Edge Cases, Non-Mutation & Syntax (Phase 0/1)** | • `tests/test_upgrade_preflight.sh` (Edge cases: invalid CLI flags exit 1, dry-run non-mutation preserving `/etc/apt/sources.list` checksum, bash syntax validation)<br/>• Master Preflight Test Suite: 46/46 assertions passing cleanly | **PASSED & APPROVED** |
+| **Task 1: deb822 Repository Matrix Transition (Phase 2)** | • `scripts/upgrade_debian_trixie.sh` (`generate_deb822_sources`, `transition_sources`, `--transition-only`)<br/>• Writes standardized deb822 format to `/etc/apt/sources.list.d/debian.sources`<br/>• Guarantees `main`, `contrib`, `non-free`, and `non-free-firmware` across all suites (`trixie`, `trixie-updates`, `trixie-backports`, `trixie-security`)<br/>• Clears legacy `sources.list` to eliminate duplicate target warnings<br/>• Safely renames third-party repository lists to `*.disabled_for_upgrade`<br/>• `tests/test_upgrade_pipeline.sh` (11/11 tests passing) | **PASSED & APPROVED** |
+| **Task 2: Staged Upgrade Engine, Intel SOF Firmware & Cache Hygiene (Phases 3 & 4)** | • `scripts/upgrade_debian_trixie.sh` (`confirm_point_of_no_return`, `run_minimal_upgrade`, `install_core_firmware`, `run_full_upgrade`, `emergency_repair_dpkg`, `run_pipeline`, `--apply`, `--non-interactive`)<br/>• Explicitly queues and installs Intel Ice Lake audio/wifi firmware: `firmware-sof-signed`, `alsa-ucm-conf`, `firmware-iwlwifi`, `firmware-misc-nonfree`<br/>• Enforces non-interactive execution: `NEEDRESTART_MODE=a`, `NEEDRESTART_SUSPEND=1`, `UCF_FORCE_CONFFOLD=1`, `DEBIAN_FRONTEND=noninteractive`<br/>• Enforces streaming package downloads (`APT::Keep-Downloaded-Packages="false"`) and immediate intermediate `apt-get clean` to prevent `/` disk exhaustion<br/>• Satisfies Zero-Downgrade Invariant: on upgrade failure, triggers `dpkg --configure -a` and `apt-get install -f -y` emergency repair protocol with offline rescue instructions<br/>• Re-normalizes `/etc/NetworkManager/system-connections/*` keyfiles to `0600` post-upgrade<br/>• `tests/test_upgrade_pipeline.sh` (25/25 tests passing) | **PASSED & APPROVED** |
+| **Task 3: Pipeline Syntax, Regression & Mock Test Suite** | • `tests/test_upgrade_pipeline.sh` (Automated `bash -n` syntax validation for upgrade engine and pipeline tests, sandboxed execution with `OSM_MOCK_ROOT=1`, `OSM_MOCK_TMUX=1`, `OSM_MOCK_APT=1`)<br/>• Complete Test Matrix: 46 pre-flight assertions + 27 pipeline assertions = 73/73 tests passing cleanly (100% PASS rate, exit code 0) | **PASSED & APPROVED** |
 
 ---
 
 ## 2. Key Decisions & Rulings
-* **Ruling 1: Power & Sleep Self-Inhibition Wrapper:** `upgrade_debian_trixie.sh` automatically wraps itself under `systemd-inhibit --what=sleep:idle:shutdown:handle-lid-switch --why="Debian 13 Upgrade" --mode=block` when running as root, and aborts with code 2 if running on battery power (`on_ac_power` / sysfs check).
-* **Ruling 2: OOM Immunity & Memory Thresholds:** Sets `/proc/$$/oom_score_adj` to `-1000` to prevent uncatchable `SIGKILL` termination, and verifies `MemAvailable + SwapTotal >= 2048 MB` to ensure safe multi-threaded zstd initramfs compression.
-* **Ruling 3: 15 GB Root Headroom Expansion:** Increased root filesystem headroom threshold to $\ge 15\text{ GB}$ (15,728,640 KB) to accommodate peak transient storage spikes during parallel `.deb` archive downloads and package extractions.
-* **Ruling 4: NetworkManager & GPU Hardening:** Normalizes `/etc/NetworkManager/system-connections/*` permissions to `0600` owned by `root:root` and embeds discrete GPU black-screen fallback parameters (`nouveau.modeset=0 modprobe.blacklist=nouveau`) into the persistent emergency rescue script.
+* **Ruling 1: Universal `non-free-firmware` in deb822:** Every deb822 stanza generated in `debian.sources` explicitly contains `main contrib non-free non-free-firmware` to ensure seamless driver loading for Intel Wi-Fi (`iwlwifi`) and Sound Open Firmware on Linux 6.12+.
+* **Ruling 2: Zero-Downgrade Invariant & Automated DPKG Recovery:** Downgrades from Debian 13 (Trixie) to Debian 12 (Bookworm) are unsupported once package unpacking begins. When any phase encounters an error, the engine automatically attempts `dpkg --configure -a` and `apt-get install -f -y`, outputting explicit offline host mount and chroot recovery commands.
+* **Ruling 3: Intermediate Cache Purge & Archive Streaming:** All package installation commands pass `-o APT::Keep-Downloaded-Packages="false"`, and an immediate `apt-get clean` is executed directly between Phase 3 (minimal upgrade) and Phase 4 (full upgrade) to keep peak disk usage well within the 15 GB root headroom.
+* **Ruling 4: NetworkManager Keyfile 0600 Sanitization:** Permissions on `/etc/NetworkManager/system-connections/*` are normalized to `0600` owned by `root:root` both before upgrade (Phase 0) and immediately after package unpacking (Phase 4), ensuring Wi-Fi associations are preserved across Debian 13 security changes.
 
 ---
 
 ## 3. Unresolved Findings / Known Limitations
-* **Minor Note (Non-blocking):** In `generate_emergency_rescue_script()`, default block device paths (`/dev/nvme0n1p2` and `/dev/nvme0n1p1`) match the Lenovo IdeaPad 3 baseline. Dynamic `findmnt` auto-detection can be added in future maintenance if generic multi-device portability is desired.
+* None. All 73 tests pass cleanly. All safety guardrails and hardware invariants are enforced.
 
 ---
 
-## 4. Next Operator / Agent Steps for Plan 2 Execution
+## 4. Next Operator / Agent Steps for Plan 3 Execution
 
-Plan 2 is ready for immediate implementation via `subagent-driven-development`:
+Plan 3 is ready for immediate implementation via `subagent-driven-development`:
 
 1. **Target Implementation Plan:**
-   - [`docs/superpowers/plans/2026-08-21-debian-13-trixie-upgrade-engine-and-execution.md`](file:///home/rizz/dev/os-manager/docs/superpowers/plans/2026-08-21-debian-13-trixie-upgrade-engine-and-execution.md)
-2. **Key Tasks to Execute in Plan 2:**
-   - **Task 1:** Phase 2 deb822 Repository Matrix Transition (`generate_deb822_sources`, `transition_sources`, `/etc/apt/sources.list.d/debian.sources` with `non-free-firmware`).
-   - **Task 2:** Staged Upgrade Engine & SOF Audio Firmware (`confirm_point_of_no_return`, `run_minimal_upgrade` with immediate `apt-get clean`, `install_core_firmware` with `firmware-sof-signed`, `alsa-ucm-conf`, `firmware-iwlwifi`, `firmware-misc-nonfree`, `run_full_upgrade`, and `emergency_repair_dpkg`).
-   - **Task 3:** Sandbox Pipeline Test Suite in `tests/test_upgrade_pipeline.sh`.
+   - [`docs/superpowers/plans/2026-08-21-debian-13-trixie-upgrade-cli-and-verification.md`](file:///home/rizz/dev/os-manager/docs/superpowers/plans/2026-08-21-debian-13-trixie-upgrade-cli-and-verification.md)
+2. **Key Tasks to Execute in Plan 3:**
+   - **Task 1:** Phase 5 Hardware, DRM, Network, Lockdown & Audio Audit Subroutines (`audit_system_state`, `verify_intel_sof_audio`, `verify_networkmanager_state`, `verify_drm_device_nodes`, `verify_secureboot_lockdown_status`).
+   - **Task 2:** Python 3.12 Virtual Environment Rebuilder (`rebuild_python_venv` / `osm upgrade rebuild-venv`).
+   - **Task 3:** CLI Wrapper & Router Integration in `os_manager/commands/upgrade.py` with automatic tmux launcher/bootstrap.
+   - **Task 4:** Comprehensive Post-Upgrade CLI & Verification Test Suite.
 3. **Execution Command:**
    ```bash
-   /subagent-driven-development docs/superpowers/plans/2026-08-21-debian-13-trixie-upgrade-engine-and-execution.md
+   /subagent-driven-development docs/superpowers/plans/2026-08-21-debian-13-trixie-upgrade-cli-and-verification.md
    ```
