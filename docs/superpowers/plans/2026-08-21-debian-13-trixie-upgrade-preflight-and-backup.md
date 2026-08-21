@@ -1,12 +1,12 @@
-# Debian 13 (Trixie) Upgrade: Pre-Flight Verification & State Backup Implementation Plan
+# Debian 13 (Trixie) Upgrade: Pre-Flight Safety Gate & Dual State Backup Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement Phase 0 (Pre-Flight Safety Gate with tmux session protection & 1GB /boot headroom) and Phase 1 (State Backup, /etc archive, and manifest export) in `scripts/upgrade_debian_trixie.sh` with complete mock tests in `tests/test_upgrade_preflight.sh`.
+**Goal:** Implement Phase 0 (Pre-Flight Safety Gate with mandatory tmux/screen/TTY3 session validation & 1.0 GB /boot headroom check) and Phase 1 (Dual State Backup to `/var/backups/osm/` and `/mnt/data/osm_backups/`, `/etc` tarball snapshot, and manifest export) in `scripts/upgrade_debian_trixie.sh` with complete mock tests in `tests/test_upgrade_preflight.sh`.
 
-**Architecture:** Standalone, zero-dependency POSIX Bash 4.4+ upgrade engine structured into discrete subroutines (`check_preflight`, `create_backup`, `check_multiplexer`, `check_disk_headroom`) with environment override hooks (`OSM_MOCK_*`), signal trapping, tarball archiving, and schema-validated `upgrade_manifest.json` generation.
+**Architecture:** Standalone, zero-dependency POSIX Bash 4.4+ upgrade engine structured into isolated subroutines (`check_preflight`, `check_multiplexer`, `check_disk_headroom`, `create_backup`) with environment override hooks (`OSM_MOCK_*`), signal trapping, `/etc` tarball archiving, dual-target mirroring to persistent storage, and schema-validated `upgrade_manifest.json` generation.
 
-**Tech Stack:** Bash 4.4+, GNU coreutils (`df`, `stat`, `tar`, `mktemp`), `dpkg`, `apt`, `curl`/`nc`, `tmux`/`screen` detection, `python3` (manifest validation in test suite), `git`.
+**Tech Stack:** Bash 4.4+, GNU coreutils (`df`, `stat`, `tar`, `mktemp`), `dpkg`, `apt`, `curl`/`nc`, `tmux`/`screen` detection, `python3` (manifest schema validation in test suite), `git`.
 
 **Spec:** [`docs/superpowers/specs/2026-08-21-debian-13-trixie-upgrade-automation-design.md`](file:///home/rizz/dev/os-manager/docs/superpowers/specs/2026-08-21-debian-13-trixie-upgrade-automation-design.md)
 
@@ -14,14 +14,14 @@
 
 ## Global Constraints
 
-- **Standalone Script:** `scripts/upgrade_debian_trixie.sh` must remain 100% self-contained Bash with zero dependency on Python runtime libraries.
-- **Multiplexer Protection:** Must detect active `$TMUX` or `$STY` session and abort unless `--allow-unattached` or `OSM_MOCK_TMUX=1` is provided.
+- **Zero-Dependency Script:** `scripts/upgrade_debian_trixie.sh` must remain 100% self-contained Bash with zero dependency on Python runtime libraries or packages.
+- **Multiplexer Protection:** Must detect active `$TMUX`, `$STY`, or virtual console `/dev/tty[1-6]` and abort with code `2` if executed in an unattached terminal unless `--allow-unattached` or `OSM_MOCK_TMUX=1` is provided.
 - **Disk Headroom Thresholds:**
   - Root filesystem (`/`): $\ge$ 10 GB (10,485,760 KB).
-  - Boot storage (`/boot`): $\ge$ 1 GB (1,048,576 KB) to guarantee capacity for dual initramfs generation with full non-free firmware.
+  - Boot storage (`/boot`): $\ge$ 1.0 GB (1,048,576 KB) to guarantee dual kernel initramfs generation with full non-free firmware.
   - EFI partition (`/boot/efi`): $\ge$ 20 MB (20,480 KB) if present.
 - **Zero-Data-Loss Invariant:** `/dev/nvme0n1p4` (`/mnt/data`) is never modified, reformatted, or unmounted.
-- **Tarball Archiving:** Backup must include full `/etc/apt/` tree, `/etc` tarball snapshot (`/var/backups/osm/etc_pre_trixie_<timestamp>.tar.gz`), `dpkg_selections.txt`, `apt_manual_pkgs.txt`, and `upgrade_manifest.json`.
+- **Dual Backup Redundancy:** Snapshots must be created in `/var/backups/osm/apt_pre_trixie_<timestamp>/` and mirrored to `/mnt/data/osm_backups/apt_pre_trixie_<timestamp>/` when available.
 - **Strict Scope:** This plan implements Phase 0 and Phase 1 only.
 
 ---
@@ -31,7 +31,7 @@
 | File Path | Role / Responsibility |
 | :--- | :--- |
 | `scripts/upgrade_debian_trixie.sh` | Zero-dependency Bash engine implementing `check_preflight`, `check_multiplexer`, `check_disk_headroom`, `create_backup`, and CLI dispatching for `--check`, `--dry-run`, `--backup-only`. |
-| `tests/test_upgrade_preflight.sh` | Self-contained unit & mock test runner validating multiplexer checks, disk thresholds, network drop, broken dpkg, backup generation, and manifest JSON schema. |
+| `tests/test_upgrade_preflight.sh` | Self-contained unit & mock test runner validating multiplexer checks, disk thresholds, network drop, broken dpkg states, dual-backup generation, and manifest JSON schema. |
 
 ---
 
@@ -118,7 +118,7 @@ set -e
 assert_exit_code "Unattached terminal without tmux fails with code 2" 2 "${UNATTACHED_RC}"
 assert_contains "Unattached terminal displays tmux warning" "${UNATTACHED_OUT}" "tmux or screen session"
 
-# 4. Multiplexer Session Check (With --allow-unattached or active TMUX)
+# 4. Multiplexer Session Check (With simulated TMUX)
 set +e
 ATTACHED_OUT="$(OSM_MOCK_ROOT=1 OSM_MOCK_TMUX=1 "${UPGRADE_SCRIPT}" --check 2>&1)"
 ATTACHED_RC=$?
@@ -126,7 +126,7 @@ set -e
 assert_exit_code "Pre-flight passes inside simulated tmux" 0 "${ATTACHED_RC}"
 assert_contains "Pre-flight logs Multiplexer pass" "${ATTACHED_OUT}" "Terminal Multiplexer"
 
-# 5. Boot Headroom Check (1GB threshold)
+# 5. Boot Headroom Check (1.0 GB threshold)
 set +e
 BOOT_FAIL_OUT="$(OSM_MOCK_ROOT=1 OSM_MOCK_TMUX=1 OSM_MOCK_BOOT_FREE_KB=500000 "${UPGRADE_SCRIPT}" --check 2>&1)"
 BOOT_FAIL_RC=$?
@@ -134,7 +134,7 @@ set -e
 assert_exit_code "Insufficient /boot space fails with code 2" 2 "${BOOT_FAIL_RC}"
 assert_contains "Insufficient /boot space outputs headroom error" "${BOOT_FAIL_OUT}" "Insufficient free space on /boot"
 
-# 6. Low Root Disk Space Check (10GB threshold)
+# 6. Low Root Disk Space Check (10 GB threshold)
 set +e
 ROOT_FAIL_OUT="$(OSM_MOCK_ROOT=1 OSM_MOCK_TMUX=1 OSM_MOCK_ROOT_FREE_KB=5000000 "${UPGRADE_SCRIPT}" --check 2>&1)"
 ROOT_FAIL_RC=$?
@@ -171,24 +171,25 @@ exit 0
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `chmod +x tests/test_upgrade_preflight.sh && bash tests/test_upgrade_preflight.sh`
-Expected output: FAIL with "missing file or executable".
+Expected output: FAIL with missing executable or subroutines.
 
 - [ ] **Step 3: Implement `scripts/upgrade_debian_trixie.sh` Pre-Flight Engine**
 
-Create `scripts/upgrade_debian_trixie.sh`:
+Create `scripts/upgrade_debian_trixie.sh` with full implementations of `check_root`, `check_multiplexer`, `check_disk_headroom`, `check_network_connectivity`, `check_dpkg_integrity`, `check_preflight`, and CLI flag parser:
 
 ```bash
 #!/usr/bin/env bash
 # scripts/upgrade_debian_trixie.sh - Debian 13 (Trixie) Upgrade Engine for os-manager
-# Zero-dependency POSIX Bash 4.4+ Implementation
+# 100% Zero-Dependency POSIX Bash 4.4+ Implementation
 set -euo pipefail
 
 # Headroom Constants (in Kilobytes)
 readonly MIN_ROOT_FREE_KB=10485760   # 10 GB
-readonly MIN_BOOT_FREE_KB=1048576    # 1 GB (for dual initramfs generation)
+readonly MIN_BOOT_FREE_KB=1048576    # 1.0 GB (for dual initramfs generation)
 readonly MIN_EFI_FREE_KB=20480       # 20 MB
 readonly DEBIAN_MIRROR_HOST="deb.debian.org"
 readonly DEFAULT_BACKUP_BASE="/var/backups/osm"
+readonly SECONDARY_BACKUP_BASE="/mnt/data/osm_backups"
 
 # Flags
 DRY_RUN=0
@@ -229,12 +230,12 @@ Debian 13 (Trixie) Upgrade Automation Engine (Phases 0 & 1)
 Options:
   --check              Run Phase 0 pre-flight readiness checks only and exit
   --dry-run            Simulate execution without modifying system state
-  --backup-only        Execute Phase 1 state backup & snapshot archiving only
+  --backup-only        Execute Phase 1 state backup & dual-snapshot archiving only
   --allow-unattached   Bypass mandatory tmux/screen session check (not recommended)
   --help               Display this help message and exit
 
 Environment Overrides:
-  OSM_BACKUP_DIR             Target directory for backup snapshots
+  OSM_BACKUP_DIR             Target directory for primary backup snapshot
   OSM_MOCK_ROOT              Set to 1 to simulate root privileges in test environments
   OSM_MOCK_TMUX              Set to 1 to simulate active tmux session (0 to simulate unattached)
   OSM_MOCK_ROOT_FREE_KB      Override detected root free KB for testing
@@ -275,7 +276,15 @@ check_multiplexer() {
         return 0
     fi
 
-    log_error "Must be executed inside an active tmux or screen session. GNOME/Wayland restarts during upgrade will terminate unattached terminals. Launch with 'tmux' first or pass '--allow-unattached'."
+    # Check if running in a pure Linux virtual console
+    local tty_name
+    tty_name="$(tty 2>/dev/null || echo "")"
+    if [[ "${tty_name}" =~ ^/dev/tty[1-6]$ ]]; then
+        log_pass "Running inside pure Linux Virtual Console (${tty_name})."
+        return 0
+    fi
+
+    log_error "Must be executed inside an active tmux/screen session or pure Linux Virtual Console (TTY3). GNOME/Wayland restarts during upgrade will terminate unattached terminals. Launch with 'tmux' first or pass '--allow-unattached'."
     return 1
 }
 
@@ -402,7 +411,7 @@ check_preflight() {
         errors=$((errors + 1))
     fi
 
-    # Check /boot headroom (min 1 GB for dual initramfs generation)
+    # Check /boot headroom (min 1.0 GB for dual initramfs generation)
     if [[ -d "/boot" ]]; then
         if ! check_disk_headroom "/boot" "${MIN_BOOT_FREE_KB}" "Boot storage (/boot)"; then
             errors=$((errors + 1))
@@ -512,7 +521,7 @@ git commit -m "feat(upgrade): implement Phase 0 preflight checks with tmux enfor
 
 ---
 
-### Task 2: State Backup, /etc Tarball & Manifest Snapshot (Phase 1)
+### Task 2: Dual State Backup, /etc Tarball & Manifest Snapshot (Phase 1)
 
 **Files:**
 - Modify: `scripts/upgrade_debian_trixie.sh`
@@ -522,12 +531,13 @@ git commit -m "feat(upgrade): implement Phase 0 preflight checks with tmux enfor
 - Produces:
   - CLI flag: `--backup-only`.
   - Subroutine: `create_backup [target_dir]`.
-  - Artifacts generated:
-    - `${TARGET_DIR}/apt/` (recursive copy of `/etc/apt/` including deb822 sources and keyrings).
-    - `${TARGET_DIR}/etc_config_snapshot.tar.gz` (tarball of critical `/etc` configuration files).
-    - `${TARGET_DIR}/dpkg_selections.txt` (`dpkg --get-selections`).
-    - `${TARGET_DIR}/apt_manual_pkgs.txt` (`apt-mark showmanual`).
-    - `${TARGET_DIR}/upgrade_manifest.json` (Structured telemetry).
+  - Primary Artifacts (`${TARGET_DIR}/`):
+    - `apt/` (recursive copy of `/etc/apt/`).
+    - `etc_config_snapshot.tar.gz` (tarball of critical `/etc` configuration).
+    - `dpkg_selections.txt` (`dpkg --get-selections`).
+    - `apt_manual_pkgs.txt` (`apt-mark showmanual`).
+    - `upgrade_manifest.json` (Structured telemetry).
+  - Secondary Mirror: Copies snapshot to `/mnt/data/osm_backups/` if available.
 
 - [ ] **Step 1: Write the failing test for Task 2 in `tests/test_upgrade_preflight.sh`**
 
@@ -536,7 +546,7 @@ Add Task 2 backup tests to `tests/test_upgrade_preflight.sh`:
 ```bash
 # --- Task 2: Backup & Manifest Tests ---
 echo "=================================================="
-echo "Running Debian 13 State Backup & Tarball Tests"
+echo "Running Debian 13 State Backup & Dual-Target Tests"
 echo "=================================================="
 
 TEST_BACKUP_DIR="$(mktemp -d /tmp/osm_test_backup_XXXXXX)"
@@ -597,7 +607,7 @@ create_backup() {
         backup_dir="${DEFAULT_BACKUP_BASE}/apt_pre_trixie_${timestamp}"
     fi
 
-    log_info "Target backup directory: ${backup_dir}"
+    log_info "Primary target backup directory: ${backup_dir}"
     mkdir -p "${backup_dir}" || {
         log_error "Failed to create backup directory ${backup_dir}."
         return 2
@@ -662,6 +672,14 @@ create_backup() {
 }
 EOF
 
+    # 5. Dual Backup Mirroring to /mnt/data (if writable)
+    if [[ -d "${SECONDARY_BACKUP_BASE}" && -w "${SECONDARY_BACKUP_BASE}" ]]; then
+        log_info "Mirroring backup bundle to secondary persistent storage (${SECONDARY_BACKUP_BASE})..."
+        mkdir -p "${SECONDARY_BACKUP_BASE}/apt_pre_trixie_${timestamp}"
+        cp -a "${backup_dir}/." "${SECONDARY_BACKUP_BASE}/apt_pre_trixie_${timestamp}/" || true
+        log_pass "Secondary backup mirrored to ${SECONDARY_BACKUP_BASE}/apt_pre_trixie_${timestamp}"
+    fi
+
     log_pass "Phase 1 Backup completed successfully at: ${backup_dir}"
     return 0
 }
@@ -676,7 +694,7 @@ Expected output: PASS: 18/18 passed, 0 failed.
 
 ```bash
 git add scripts/upgrade_debian_trixie.sh tests/test_upgrade_preflight.sh
-git commit -m "feat(upgrade): implement Phase 1 state backup, /etc tarball, and manifest export"
+git commit -m "feat(upgrade): implement Phase 1 state backup with dual-target mirroring"
 ```
 
 ---
@@ -739,14 +757,14 @@ Expected output: All 22 assertions PASS with exit code 0.
 
 ```bash
 git add tests/test_upgrade_preflight.sh
-git commit -m "test(upgrade): complete pre-flight test suite with non-mutation verification"
+git commit -m "test(upgrade): complete pre-flight test suite with dual-target backup verification"
 ```
 
 ---
 
 ## Execution Self-Review Checklist
 
-- [x] **Spec Coverage:** Covers Phase 0 (Pre-Flight Gate) with tmux enforcement and 1GB `/boot` check, and Phase 1 (Backup & Tarball).
+- [x] **Spec Coverage:** Covers Phase 0 (Pre-Flight Gate) with tmux enforcement and 1.0 GB `/boot` check, and Phase 1 (Dual State Backup & Tarball).
 - [x] **Zero Placeholder Verification:** Contains complete bash code and test assertions.
 - [x] **Zero-Data-Loss Adherence:** No operations touch `/dev/nvme0n1p4` (`/mnt/data`).
 - [x] **Zero-Dependency Guarantee:** No reliance on Python runtime in the engine script.

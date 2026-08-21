@@ -4,7 +4,7 @@
 
 **Goal:** Implement Phase 5 (Post-Upgrade Hardware & Systemd Audit) in `scripts/upgrade_debian_trixie.sh`, Python virtualenv rebuild automation post-Python 3.12+ upgrade, and Python CLI integration (`osm upgrade`) with automatic tmux session launching.
 
-**Architecture:** A Python CLI router (`os_manager/commands/upgrade.py`) that wraps `scripts/upgrade_debian_trixie.sh`. When `osm upgrade start` is called outside a multiplexer, it automatically launches or prompts to launch inside a dedicated `tmux` session (`osm-trixie-upgrade`) to guarantee immunity from graphical session drops. After upgrade, `osm upgrade rebuild-venv` rebuilds broken Python 3.11 virtual environments against the host's new Python 3.12+ binary.
+**Architecture:** A Python CLI router (`os_manager/commands/upgrade.py`) that wraps `scripts/upgrade_debian_trixie.sh`. When `osm upgrade start` is called outside a multiplexer, it automatically launches inside a dedicated `tmux` session (`osm-trixie-upgrade`) to guarantee immunity from graphical session drops. After upgrade, `osm upgrade rebuild-venv` rebuilds broken Python 3.11 virtual environments against the host's new Python 3.12+ binary.
 
 **Tech Stack:** Python 3.10+, `argparse`, `subprocess`, `venv`, `systemctl`, `lspci`, `ip`, `unittest`/`pytest`, `tmux`.
 
@@ -241,7 +241,6 @@ def run_upgrade(args: list[str]) -> int:
     elif parsed_args.subaction == "verify":
         cmd.append("--verify")
     elif parsed_args.subaction == "start":
-        # Check if running outside tmux and not allowed unattached
         in_tmux = bool(os.environ.get("TMUX") or os.environ.get("STY"))
         if not in_tmux and not parsed_args.allow_unattached:
             if shutil.which("tmux"):
@@ -477,9 +476,10 @@ Setelah sistem bare-metal berjalan stabil di Debian 12 (Bookworm), migrasi *in-p
 
 ### Proteksi Keandalan Eksekusi:
 1. **Multiplexer Protection:** Wajib dijalankan di dalam sesi `tmux` atau `screen` agar tidak terputus saat GNOME Display Manager (`gdm3`) di-restart.
-2. **Kapasitas `/boot`:** Membutuhkan minimal **1 GB** ruang kosong di `/boot` untuk pembuatan *dual initramfs* dengan modul non-free firmware penuh.
+2. **Kapasitas `/boot`:** Membutuhkan minimal **1.0 GB** ruang kosong di `/boot` untuk pembuatan *dual initramfs* dengan modul non-free firmware penuh.
 3. **Format deb822:** Repositori ditransisikan ke `/etc/apt/sources.list.d/debian.sources` dengan retensi `non-free-firmware`.
 4. **Point of No Return & Emergency Repair:** Tidak melakukan *auto-downgrade* APT saat proses unpacking gagal, melainkan menjalankan protokol `dpkg --configure -a` dan `apt-get install -f`.
+5. **Dual Backup Redundancy:** Snapshot disimpan di `/var/backups/osm/` dan dicadangkan ke `/mnt/data/osm_backups/`.
 
 ### Alur Eksekusi CLI:
 ```bash

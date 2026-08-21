@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement Phase 2 (deb822 Repository Matrix Transition), Point-of-No-Return Safety Gate, Phase 3 (Minimal Safe Upgrade), and Phase 4 (Full Distribution Upgrade with Emergency DPKG Repair) in `scripts/upgrade_debian_trixie.sh` with sandbox pipeline tests in `tests/test_upgrade_pipeline.sh`.
+**Goal:** Implement Phase 2 (deb822 Repository Matrix Transition), Point-of-No-Return Safety Gate, Phase 3 (Minimal Safe Upgrade), and Phase 4 (Full Distribution Upgrade with Emergency DPKG Repair and chroot recovery runbook) in `scripts/upgrade_debian_trixie.sh` with sandbox pipeline tests in `tests/test_upgrade_pipeline.sh`.
 
 **Architecture:** A zero-dependency POSIX Bash engine transitioning APT to Debian 13's standardized deb822 stanza format (`/etc/apt/sources.list.d/debian.sources`) with `non-free-firmware` guaranteed across all suites, disabling legacy lists, enforcing non-interactive debconf flags, and providing automated `dpkg --configure -a` / `apt-get install -f` emergency recovery in place of unsupported source downgrades.
 
@@ -315,8 +315,13 @@ emergency_repair_dpkg() {
     log_info "2. Repairing broken dependencies: apt-get install -f -y..."
     run_apt_cmd apt-get install -f -y || true
 
-    log_warn "If the system cannot boot or packages remain broken, use a live USB chroot:"
-    log_warn "  sudo mount /dev/nvme0n1p2 /mnt && sudo chroot /mnt dpkg --configure -a"
+    log_warn "If the system cannot boot or packages remain broken, follow the Emergency Chroot Rescue Runbook:"
+    log_warn "  1. Boot from Debian Live USB"
+    log_warn "  2. Mount root: sudo mount /dev/nvme0n1p2 /mnt"
+    log_warn "  3. Mount EFI: sudo mount /dev/nvme0n1p1 /mnt/boot/efi"
+    log_warn "  4. Bind mounts: for i in /dev /dev/pts /proc /sys /run; do sudo mount --bind \$i /mnt\$i; done"
+    log_warn "  5. Chroot: sudo chroot /mnt"
+    log_warn "  6. Repair: dpkg --configure -a && apt-get install -f -y && update-initramfs -u -k all && update-grub"
 }
 
 confirm_point_of_no_return() {
@@ -491,5 +496,6 @@ git commit -m "test(upgrade): finalize Debian 13 upgrade pipeline regression sui
 
 - [x] **Spec Coverage:** Covers Phase 2 (deb822 source transition), Point of No Return gate, Phase 3 (minimal upgrade), and Phase 4 (full upgrade with emergency repair).
 - [x] **Zero-Downgrade Invariant:** No unsupported APT source downgrades; executes `dpkg --configure -a` and `apt-get install -f` on failure.
+- [x] **Emergency Chroot Rescue:** Documented complete runbook for offline chroot recovery.
 - [x] **Zero-Data-Loss Adherence:** No operations touch `/dev/nvme0n1p4` (`/mnt/data`).
 - [x] **deb822 Compliance:** Uses `/etc/apt/sources.list.d/debian.sources` and clears legacy file.
