@@ -1,6 +1,7 @@
 """tests/test_desktop_customization.py - Unit tests for GTK bookmarks, GSettings, and Dconf."""
 
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -80,6 +81,29 @@ class TestDesktopCustomization(unittest.TestCase):
         """Verify dconf_load_desktop returns False if file does not exist."""
         nonexistent = Path(self.temp_dir.name) / "nonexistent.ini"
         self.assertFalse(dconf_load_desktop(str(nonexistent)))
+
+    def test_setup_desktop_env_script_help(self):
+        """Verify help text of scripts/setup_desktop_env.sh."""
+        script_path = Path(__file__).resolve().parent.parent / "scripts" / "setup_desktop_env.sh"
+        res = subprocess.run(["bash", str(script_path), "--help"], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("macos-full", res.stdout)
+        self.assertIn("--backup", res.stdout)
+        self.assertIn("--restore", res.stdout)
+
+    def test_setup_desktop_env_script_unknown_option(self):
+        """Verify invalid option returns non-zero error code."""
+        script_path = Path(__file__).resolve().parent.parent / "scripts" / "setup_desktop_env.sh"
+        res = subprocess.run(["bash", str(script_path), "--unknown-invalid-flag"], capture_output=True, text=True)
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("Unknown option", res.stderr + res.stdout)
+
+    def test_setup_desktop_env_script_install_macos_theme(self):
+        """Verify --install-macos-theme guidance output."""
+        script_path = Path(__file__).resolve().parent.parent / "scripts" / "setup_desktop_env.sh"
+        res = subprocess.run(["bash", str(script_path), "--install-macos-theme"], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("WhiteSur", res.stdout)
 
 
 if __name__ == "__main__":
