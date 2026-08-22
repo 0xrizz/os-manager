@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.10+, Bash 4.4+, Linux sysfs (`ideapad_laptop` ACPI), VA-API (`intel-media-va-driver-non-free`), GTK 3/4 Bookmarks, Starship CLI, `fzf`, `zoxide`, `bat`, `eza`, `pytest`/`unittest`.
 
-**Spec Reference:** [`docs/DEBIAN_13_TRIXIE_UPGRADE_GUIDE.md`](file:///home/rizz/dev/os-manager/docs/DEBIAN_13_TRIXIE_UPGRADE_GUIDE.md) and [`docs/LINUX_MIGRATION_BLUEPRINT.md`](file:///home/rizz/dev/os-manager/docs/LINUX_MIGRATION_BLUEPRINT.md)
+**Spec:** [`docs/superpowers/specs/2026-08-22-debian-13-desktop-and-hardware-customization-design.md`](file:///home/rizz/dev/os-manager/docs/superpowers/specs/2026-08-22-debian-13-desktop-and-hardware-customization-design.md)
 
 ---
 
