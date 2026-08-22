@@ -16,22 +16,30 @@ You are an expert Linux Systems Engineer, DevOps Specialist, and Automation Arch
 ---
 
 ## 2. Current Task & Objective
-<!-- Describe the specific goal, plan, or feature to be implemented/verified -->
-* **Target Objective:** [ENTER OBJECTIVE HERE]
-* **Target Plan / Spec:** `docs/superpowers/plans/[PLAN_FILE].md`
-* **Applicable Standards:** `docs/[SPEC_FILE].md`
+* **Target Objective:** Implement the Debian 13 (Trixie) Desktop & Hardware Customization Suite (`osm tune`) covering Lenovo hardware power/thermals/GPU, kernel sysctl and storage hardening, GNOME 48 desktop aesthetics/dconf, and modern terminal DX tooling.
+* **Target Plan:** `docs/superpowers/plans/2026-08-22-debian-13-desktop-and-hardware-customization.md`
+* **Target Specification:** `docs/superpowers/specs/2026-08-22-debian-13-desktop-and-hardware-customization-design.md`
+* **Target Environment:** Bare-Metal Debian GNU/Linux 13 (Trixie), Linux Kernel 6.12+, GNOME 48 (Wayland), Lenovo IdeaPad 3 (81WD) with Intel Ice Lake (i5-1035G1) + NVIDIA GeForce MX330.
 
 ---
 
-## 3. Scope of Work & Deliverables
-1. [TASK 1: Brief description and target files]
-2. [TASK 2: Brief description and target files]
-3. [TASK 3: Brief description and target files]
+## 3. Scope of Work & 5-Task Execution Breakdown
+1. **Task 1: Lenovo Hardware Power, ACPI Platform Profiles, `thermald`, Hybrid GPU & Boot Persistence**
+   * Files: `scripts/tune_hardware.sh`, `os_manager/commands/tune.py`, `tests/test_tune_hardware.py`
+2. **Task 2: System Kernel Sysctl Tuning, NVMe TRIM Maintenance, PipeWire Audio & UFW Security**
+   * Files: `scripts/tune_system.sh`, `os_manager/commands/tune.py`, `tests/test_tune_system.py`
+3. **Task 3: GNOME 48 Desktop Aesthetics, Ergonomics, Nautilus Bookmarks & Dconf State**
+   * Files: `scripts/setup_desktop_env.sh`, `os_manager/commands/tune.py`, `tests/test_desktop_customization.py`
+4. **Task 4: Modern Terminal & Developer Experience Suite (Starship, Modern CLI, FZF, Bash Defaults, Tmux)**
+   * Files: `scripts/setup_terminal_env.sh`, `os_manager/commands/tune.py`, `tests/test_terminal_customization.py`
+5. **Task 5: Consolidated CLI Router (`osm tune`), Master Harness Registration, and Documentation Guide**
+   * Files: `os_manager/commands/tune.py`, `os_manager/cli.py`, `tests/test_harness.sh`, `docs/DEBIAN_13_CUSTOMIZATION_GUIDE.md`
 
 ---
 
 ## 4. Verification & Quality Gates
-* [ ] Bash syntax validation (`bash -n script.sh`)
+* [ ] Bash syntax validation (`bash -n scripts/tune_*.sh scripts/setup_*.sh`)
 * [ ] ShellCheck clean execution (0 errors, 0 warnings)
-* [ ] Automated test suite verification (`bash tests/test_[name].sh`)
-* [ ] Cross-mount synchronization to `/mnt/d/dev/os-manager/` (if applicable)
+* [ ] Python unit test suites (`tests/test_tune_hardware.py`, `tests/test_tune_system.py`, `tests/test_desktop_customization.py`, `tests/test_terminal_customization.py`)
+* [ ] Master regression test harness execution (`bash tests/test_harness.sh`)
+* [ ] Zero hardcoded path leaks (`scripts/harness_check.sh`)
