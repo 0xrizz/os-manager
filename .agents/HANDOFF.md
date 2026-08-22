@@ -1,10 +1,10 @@
 # CHECKPOINT HANDOFF: Debian 13 (Trixie) Desktop & Hardware Customization Suite Complete
 
 **Status:** IMPLEMENTATION COMPLETE & ALL REVIEWS APPROVED  
-**Date:** 2026-08-22 10:47 WIB  
+**Date:** 2026-08-22 10:55 WIB  
 **Branch:** `feat/debian-13-customization`  
 **Base Commit:** `0053df51a08efca446e26805f56e6b52eff3ed70`  
-**Head Commit:** `1e603ec` (`feat(tune): register osm tune CLI control plane, harness test suites, and documentation`)  
+**Head Commit:** `bcf4100` (`feat(desktop): add macOS Ver 3.0 aesthetic preset to desktop customization suite`)  
 **Design Specification:** [`docs/superpowers/specs/2026-08-22-debian-13-desktop-and-hardware-customization-design.md`](file:///home/rizz/dev/os-manager/docs/superpowers/specs/2026-08-22-debian-13-desktop-and-hardware-customization-design.md)  
 **Implementation Plan:** [`docs/superpowers/plans/2026-08-22-debian-13-desktop-and-hardware-customization.md`](file:///home/rizz/dev/os-manager/docs/superpowers/plans/2026-08-22-debian-13-desktop-and-hardware-customization.md)  
 **Documentation & Playbook:** [`docs/DEBIAN_13_CUSTOMIZATION_GUIDE.md`](file:///home/rizz/dev/os-manager/docs/DEBIAN_13_CUSTOMIZATION_GUIDE.md)  
@@ -14,7 +14,7 @@
 
 ## 1. Executive Milestone Summary
 
-All 5 tasks specified in the Debian 13 Desktop & Hardware Customization Plan have been autonomously implemented, verified with comprehensive unit and regression tests, and approved through per-task and whole-branch peer reviews under Subagent-Driven Development (SDD):
+All 5 tasks specified in the Debian 13 Desktop & Hardware Customization Plan plus the **macOS Ver 3.0 Aesthetic Preset Extension** have been autonomously implemented, verified with comprehensive unit and regression tests, and approved through per-task and whole-branch peer reviews under Subagent-Driven Development (SDD):
 
 1. **Hardware Power, Thermals & Hybrid GPU Tuning (Task 1):**
    - Lenovo Battery Conservation Mode (60% limit via ACPI `ideapad_laptop`).
@@ -29,10 +29,10 @@ All 5 tasks specified in the Debian 13 Desktop & Hardware Customization Plan hav
    - NVMe weekly TRIM automation (`fstrim.timer`).
    - PipeWire & WirePlumber audio stack diagnostics.
    - UFW host firewall audit & enablement (default deny in, allow out).
-3. **GNOME 48 Desktop Aesthetics, Ergonomics & Dconf State (Task 3):**
+3. **GNOME 48 Desktop Aesthetics, Ergonomics, Dconf State & macOS Preset (Task 3 + Extension):**
    - Inter (10.5pt) and JetBrains Mono (10pt) typography with subpixel rendering (`rgba`, `slight`).
    - Window management: minimize/maximize/close layout, centered windows, window-based `<Alt>Tab`.
-   - Dark theme (`prefer-dark`), Night Light, touchpad tap-to-click/natural-scroll, and audio boost to 150%.
+   - **macOS Ver 3.0 Preset (`osm tune desktop --preset macos`):** Traffic-light window controls on the left (`close,minimize,maximize:`), centered floating Dash-to-Dock, dark theme (`prefer-dark`), and Night Light.
    - Nautilus list-view and persistent `/mnt/data Data Store` bookmarking.
    - Declarative Dconf profile backup and restore (`dconf_dump_desktop` / `dconf_load_desktop`).
 4. **Modern Terminal & Developer Experience Suite (Task 4):**
@@ -54,6 +54,7 @@ All 5 tasks specified in the Debian 13 Desktop & Hardware Customization Plan hav
 | **RUL-02** | Hardware / Sysfs Mocking Strategy | Sysfs path parameter injection in all Python & Bash functions with fallback to `"unsupported"` / `"unknown"` | Allows 100% test passing in WSL2 and non-bare-metal CI while remaining zero-cost on bare-metal Debian 13 | Zero (standard best practice) |
 | **RUL-03** | Invariant INV-01 Protection | Nautilus bookmarks use `file:///mnt/data Data Store` without any destructive storage operations | Enforces absolute Zero Data Loss on `/dev/nvme0n1p4` | Zero (guarantees data integrity) |
 | **RUL-04** | Windows Interop Standard | Enforce `< /dev/null` and non-interactive flags on any Windows binary invocations | Prevents WSL terminal hangs | Zero (standard robustness rule) |
+| **RUL-05** | Desktop Preset Architecture | Provide both `standard` (Ubuntu/Fedora layout) and `macos` (Ver 3.0 traffic lights left + floating dock) options via `--preset` | Gives instant switchability between native GNOME and macOS workflows without code drift | Zero |
 
 ---
 
@@ -79,7 +80,7 @@ Summary: 68/68 passed (100% GREEN)
 ```
 
 **Unit Test Discovery:**
-- 70 tests passed in `unittest discover tests` with zero errors.
+- 71 tests passed in `unittest discover tests` with zero errors.
 
 ---
 
@@ -94,12 +95,14 @@ osm tune audit
 # 2. Apply all optimizations end-to-end (hardware, sysctl, desktop, terminal)
 osm tune all
 
-# 3. (Optional) Manage individual components:
+# 3. Apply macOS Ver 3.0 Aesthetic Preset (Traffic lights on left, dock centered):
+osm tune desktop --preset macos
+
+# 4. (Optional) Manage individual components:
 osm tune battery on               # Limit battery charging to 60%
 osm tune profile balanced         # Set ACPI thermal profile
 osm tune gpu power-save           # Autosuspend NVIDIA MX330 to Runtime D3 Cold
 osm tune vaapi install            # Install Intel VA-API non-free drivers
-osm tune desktop apply            # Apply GNOME 48 fonts, dark mode, bookmarks
 osm tune terminal setup           # Deploy Starship, Tmux profile, Bash hooks
 osm tune hardware-persist enable  # Enable boot persistence service
 ```
