@@ -891,7 +891,7 @@ verify_system_and_hardware() {
     log_info "3. Auditing Audio Subsystem & SOF DSP Firmware..."
     if [[ -f "/proc/asound/cards" ]]; then
         local sound_cards
-        sound_cards="$(grep -E '^[0-9]' /proc/asound/cards || true)"
+        sound_cards="$(grep -E '^[[:space:]]*[0-9]' /proc/asound/cards || true)"
         if [[ -n "${sound_cards}" ]]; then
             log_pass "Audio sound cards detected:\n${sound_cards}"
         else
