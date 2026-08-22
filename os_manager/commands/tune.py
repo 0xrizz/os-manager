@@ -315,6 +315,90 @@ def audit_pipewire_audio_status() -> dict[str, Any]:
     }
 
 
+def generate_earlyoom_config(ram_threshold: int = 5, swap_threshold: int = 5) -> str:
+    """Generate /etc/default/earlyoom configuration with protected processes."""
+    avoid_pattern = r"(^|/)(init|systemd|sshd|Xorg|wayland|gnome-shell|pipewire|wireplumber|agy|claude)$"
+    return (
+        "# /etc/default/earlyoom - Managed by os-manager\n"
+        f'EARLYOOM_ARGS="-m {ram_threshold} -s {swap_threshold} -r 60 --avoid \'{avoid_pattern}\'"\n'
+    )
+
+
+def audit_earlyoom_status() -> dict[str, Any]:
+    """Inspect earlyoom daemon installation and systemd service status."""
+    earlyoom_bin = shutil.which("earlyoom")
+    if not earlyoom_bin:
+        return {"available": False, "active": False}
+    try:
+        res = subprocess.run(["systemctl", "is-active", "earlyoom"], capture_output=True, text=True, check=False)
+        return {"available": True, "active": res.stdout.strip() == "active"}
+    except Exception:
+        return {"available": True, "active": False}
+
+
+def audit_dual_tier_swap_status(proc_swaps_path: str = "/proc/swaps") -> dict[str, Any]:
+    """Parse /proc/swaps to verify dual-tier ZRAM + swapfile hierarchy."""
+    node = Path(proc_swaps_path)
+    if not node.is_file():
+        return {"has_zram": False, "has_swapfile": False, "zram_priority": 0, "swapfile_priority": 0}
+    try:
+        content = node.read_text(encoding="utf-8")
+    except Exception:
+        return {"has_zram": False, "has_swapfile": False, "zram_priority": 0, "swapfile_priority": 0}
+    has_zram = False
+    has_swapfile = False
+    zram_prio = 0
+    swap_prio = 0
+    for line in content.splitlines():
+        if "zram" in line:
+            has_zram = True
+            parts = line.split()
+            if len(parts) >= 5:
+                try:
+                    zram_prio = int(parts[4])
+                except ValueError:
+                    pass
+        elif "swapfile" in line:
+            has_swapfile = True
+            parts = line.split()
+            if len(parts) >= 5:
+                try:
+                    swap_prio = int(parts[4])
+                except ValueError:
+                    pass
+    return {
+        "has_zram": has_zram,
+        "has_swapfile": has_swapfile,
+        "zram_priority": zram_prio,
+        "swapfile_priority": swap_prio,
+    }
+
+
+def configure_earlyoom(
+    ram_threshold: int = 5,
+    swap_threshold: int = 5,
+    config_path: str = "/etc/default/earlyoom",
+) -> bool:
+    """Deploy /etc/default/earlyoom configuration and enable/restart earlyoom service."""
+    cfg = generate_earlyoom_config(ram_threshold=ram_threshold, swap_threshold=swap_threshold)
+    p = Path(config_path)
+    try:
+        if os.geteuid() != 0:
+            res = subprocess.run(["sudo", "tee", config_path], input=cfg, text=True, capture_output=True, check=False)
+            if res.returncode != 0:
+                return False
+            subprocess.run(["sudo", "systemctl", "enable", "--now", "earlyoom"], capture_output=True, check=False)
+            subprocess.run(["sudo", "systemctl", "restart", "earlyoom"], capture_output=True, check=False)
+        else:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(cfg, encoding="utf-8")
+            subprocess.run(["systemctl", "enable", "--now", "earlyoom"], capture_output=True, check=False)
+            subprocess.run(["systemctl", "restart", "earlyoom"], capture_output=True, check=False)
+        return True
+    except Exception:
+        return False
+
+
 GTK_BOOKMARKS_DEFAULT = os.path.expanduser("~/.config/gtk-3.0/bookmarks")
 
 

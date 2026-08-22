@@ -190,6 +190,76 @@ status_audio() {
     fi
 }
 
+enable_earlyoom() {
+    log_info "Configuring and enabling EarlyOOM daemon..."
+    if ! command -v earlyoom >/dev/null 2>&1; then
+        log_info "Installing earlyoom package..."
+        if [[ $EUID -ne 0 ]]; then
+            sudo apt-get update -qq && sudo apt-get install -y -q earlyoom < /dev/null
+        else
+            apt-get update -qq && apt-get install -y -q earlyoom < /dev/null
+        fi
+    fi
+
+    local earlyoom_conf="/etc/default/earlyoom"
+    local avoid_pattern='(^|/)(init|systemd|sshd|Xorg|wayland|gnome-shell|pipewire|wireplumber|agy|claude)$'
+    if [[ $EUID -ne 0 ]]; then
+        cat <<EOF | sudo tee "${earlyoom_conf}" >/dev/null
+# /etc/default/earlyoom - Managed by os-manager
+EARLYOOM_ARGS="-m 5 -s 5 -r 60 --avoid '${avoid_pattern}'"
+EOF
+        sudo systemctl enable --now earlyoom 2>/dev/null || true
+        sudo systemctl restart earlyoom 2>/dev/null || true
+    else
+        cat <<EOF | tee "${earlyoom_conf}" >/dev/null
+# /etc/default/earlyoom - Managed by os-manager
+EARLYOOM_ARGS="-m 5 -s 5 -r 60 --avoid '${avoid_pattern}'"
+EOF
+        systemctl enable --now earlyoom 2>/dev/null || true
+        systemctl restart earlyoom 2>/dev/null || true
+    fi
+    log_pass "EarlyOOM daemon configured and active at: ${earlyoom_conf}"
+}
+
+status_earlyoom() {
+    if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet earlyoom 2>/dev/null; then
+        log_pass "EarlyOOM daemon: Active"
+    else
+        log_warn "EarlyOOM daemon: Inactive"
+    fi
+}
+
+audit_swap() {
+    log_info "Auditing dual-tier swap hierarchy..."
+    if [[ -f "/proc/swaps" ]]; then
+        local zram_found=0
+        local swapfile_found=0
+        while IFS= read -r line; do
+            if echo "$line" | grep -q "zram"; then
+                zram_found=1
+                log_pass "ZRAM active: $line"
+            elif echo "$line" | grep -q "swapfile"; then
+                swapfile_found=1
+                log_pass "Swapfile active: $line"
+            fi
+        done < "/proc/swaps"
+        if [[ $zram_found -eq 0 ]]; then
+            log_warn "ZRAM swap device not found in /proc/swaps"
+        fi
+        if [[ $swapfile_found -eq 0 ]]; then
+            log_warn "Swapfile not found in /proc/swaps"
+        fi
+    else
+        log_warn "/proc/swaps is not accessible."
+    fi
+}
+
+audit_memory() {
+    log_info "Auditing memory & resilience subsystems..."
+    status_earlyoom
+    audit_swap
+}
+
 enable_firewall() {
     log_info "Configuring and enabling UFW firewall..."
     local ufw_cmd="ufw"
@@ -242,6 +312,7 @@ audit_system() {
     echo "=================================================="
     audit_storage
     audit_sysctl
+    audit_memory
     status_audio
     status_firewall
     echo "=================================================="
@@ -255,6 +326,8 @@ Options:
     --storage [migrate|audit]  Migrate NTFS mount to ntfs3 or audit storage status
     --sysctl [apply|audit]     Apply or audit kernel sysctl performance configuration
     --trim [enable|status]     Enable periodic TRIM or check fstrim.timer status
+    --earlyoom [enable|status] Configure EarlyOOM daemon or check status
+    --memory [apply|audit]     Configure memory resilience (EarlyOOM) or audit swap/memory
     --audio [status]           Check PipeWire / WirePlumber audio stack status
     --firewall [enable|status] Enable UFW firewall or check status
     --audit                    Run comprehensive audit across all subsystems
@@ -286,6 +359,20 @@ main() {
                 status_nvme_trim
             else
                 enable_nvme_trim
+            fi
+            ;;
+        --earlyoom)
+            if [[ "${subaction}" == "status" ]]; then
+                status_earlyoom
+            else
+                enable_earlyoom
+            fi
+            ;;
+        --memory)
+            if [[ "${subaction}" == "apply" ]]; then
+                enable_earlyoom
+            else
+                audit_memory
             fi
             ;;
         --audio)

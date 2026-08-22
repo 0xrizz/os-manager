@@ -4,11 +4,15 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from os_manager.commands.tune import (
+    audit_dual_tier_swap_status,
+    audit_earlyoom_status,
     audit_fstrim_timer_status,
     audit_ntfs_mount_driver,
     audit_pipewire_audio_status,
     audit_sysctl_parameters,
     audit_ufw_firewall_status,
+    configure_earlyoom,
+    generate_earlyoom_config,
     generate_fstab_ntfs3_entry,
     generate_sysctl_performance_config,
     migrate_ntfs_driver,
@@ -185,6 +189,98 @@ class TestTuneSystem(unittest.TestCase):
         self.assertIn("Remount failed, rolled back", res["error"])
         # Check that copy was called twice: once for backup, once for restore
         self.assertEqual(mock_copy.call_count, 2)
+
+    def test_generate_earlyoom_config(self):
+        """Verify EarlyOOM configuration string generation with session whitelist."""
+        cfg = generate_earlyoom_config(ram_threshold=5, swap_threshold=5)
+        self.assertIn("-m 5", cfg)
+        self.assertIn("-s 5", cfg)
+        self.assertIn("--avoid", cfg)
+        self.assertIn("pipewire", cfg)
+        self.assertIn("wireplumber", cfg)
+        self.assertIn("gnome-shell", cfg)
+        self.assertIn("wayland", cfg)
+        self.assertIn("agy", cfg)
+        self.assertIn("claude", cfg)
+
+    def test_generate_earlyoom_config_custom_thresholds(self):
+        """Verify EarlyOOM configuration string with custom thresholds."""
+        cfg = generate_earlyoom_config(ram_threshold=10, swap_threshold=15)
+        self.assertIn("-m 10", cfg)
+        self.assertIn("-s 15", cfg)
+
+    def test_audit_dual_tier_swap_status(self):
+        """Verify detection of ZRAM and swapfile in /proc/swaps."""
+        mock_swaps = (
+            "Filename\tType\tSize\tUsed\tPriority\n"
+            "/swapfile file\t8388604\t514964\t-2\n"
+            "/dev/zram0 partition\t3841940\t1543188\t100\n"
+        )
+        with patch("pathlib.Path.is_file", return_value=True), patch("pathlib.Path.read_text", return_value=mock_swaps):
+            res = audit_dual_tier_swap_status(proc_swaps_path="/proc/swaps")
+            self.assertTrue(res["has_zram"])
+            self.assertTrue(res["has_swapfile"])
+            self.assertEqual(res["zram_priority"], 100)
+            self.assertEqual(res["swapfile_priority"], -2)
+
+    def test_audit_dual_tier_swap_status_missing_file(self):
+        """Verify dual tier swap status when proc swaps file is missing."""
+        with patch("pathlib.Path.is_file", return_value=False):
+            res = audit_dual_tier_swap_status(proc_swaps_path="/proc/swaps_nonexistent")
+            self.assertFalse(res["has_zram"])
+            self.assertFalse(res["has_swapfile"])
+            self.assertEqual(res["zram_priority"], 0)
+            self.assertEqual(res["swapfile_priority"], 0)
+
+    @patch("subprocess.run")
+    @patch("shutil.which")
+    def test_audit_earlyoom_status_active(self, mock_which, mock_run):
+        """Verify EarlyOOM audit when installed and active."""
+        mock_which.return_value = "/usr/bin/earlyoom"
+        mock_run.return_value = MagicMock(returncode=0, stdout="active\n")
+        res = audit_earlyoom_status()
+        self.assertTrue(res["available"])
+        self.assertTrue(res["active"])
+
+    @patch("subprocess.run")
+    @patch("shutil.which")
+    def test_audit_earlyoom_status_inactive(self, mock_which, mock_run):
+        """Verify EarlyOOM audit when installed but inactive."""
+        mock_which.return_value = "/usr/bin/earlyoom"
+        mock_run.return_value = MagicMock(returncode=3, stdout="inactive\n")
+        res = audit_earlyoom_status()
+        self.assertTrue(res["available"])
+        self.assertFalse(res["active"])
+
+    @patch("shutil.which")
+    def test_audit_earlyoom_status_not_installed(self, mock_which):
+        """Verify EarlyOOM audit when binary is missing."""
+        mock_which.return_value = None
+        res = audit_earlyoom_status()
+        self.assertFalse(res["available"])
+        self.assertFalse(res["active"])
+
+    @patch("subprocess.run")
+    @patch("pathlib.Path.write_text")
+    @patch("pathlib.Path.mkdir")
+    @patch("os.geteuid", return_value=0)
+    def test_configure_earlyoom_root(self, mock_geteuid, mock_mkdir, mock_write, mock_run):
+        """Verify configure_earlyoom writes file and restarts service as root."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        success = configure_earlyoom(ram_threshold=5, swap_threshold=5, config_path="/etc/default/earlyoom")
+        self.assertTrue(success)
+        mock_write.assert_called_once()
+        self.assertIn("-m 5", mock_write.call_args[0][0])
+        self.assertEqual(mock_run.call_count, 2)
+
+    @patch("subprocess.run")
+    @patch("os.geteuid", return_value=1000)
+    def test_configure_earlyoom_non_root(self, mock_geteuid, mock_run):
+        """Verify configure_earlyoom uses sudo when non-root."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        success = configure_earlyoom(ram_threshold=5, swap_threshold=5, config_path="/etc/default/earlyoom")
+        self.assertTrue(success)
+        self.assertEqual(mock_run.call_count, 3)
 
 
 if __name__ == "__main__":
