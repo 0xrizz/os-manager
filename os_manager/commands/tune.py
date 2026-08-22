@@ -157,6 +157,94 @@ WantedBy=multi-user.target
 """
 
 
+def generate_hardware_persistence_config(
+    conservation: bool = True,
+    fn_lock: bool = True,
+    gpu_power: str = "auto",
+) -> str:
+    """Generate /etc/osm/hardware-tune.conf state configuration."""
+    cm_val = "1" if conservation else "0"
+    fn_val = "1" if fn_lock else "0"
+    return (
+        f"CONSERVATION_MODE={cm_val}\n"
+        f"FN_LOCK={fn_val}\n"
+        f"GPU_POWER_SAVE={gpu_power}\n"
+    )
+
+
+def generate_hardware_persistence_service() -> str:
+    """Generate systemd service unit for restoring ACPI & GPU tuning at boot."""
+    return (
+        "[Unit]\n"
+        "Description=osm-hardware-tune Lenovo Hardware Power & ACPI Tuning Persistence\n"
+        "After=multi-user.target\n\n"
+        "[Service]\n"
+        "Type=oneshot\n"
+        "ExecStart=/usr/local/bin/osm tune hardware --apply\n"
+        "RemainAfterExit=yes\n\n"
+        "[Install]\n"
+        "WantedBy=multi-user.target\n"
+    )
+
+
+def configure_hardware_persistence(
+    enable: bool = True,
+    config_path: str = "/etc/osm/hardware-tune.conf",
+    service_path: str = "/etc/systemd/system/osm-hardware-tune.service",
+    conservation: bool = True,
+    fn_lock: bool = True,
+    gpu_power: str = "auto",
+) -> bool:
+    """Configure systemd service and config file for hardware persistence."""
+    try:
+        if enable:
+            cfg = generate_hardware_persistence_config(conservation=conservation, fn_lock=fn_lock, gpu_power=gpu_power)
+            srv = generate_hardware_persistence_service()
+            if os.geteuid() != 0:
+                conf_dir = os.path.dirname(config_path)
+                subprocess.run(["sudo", "mkdir", "-p", conf_dir], capture_output=True, check=False)
+                res_cfg = subprocess.run(
+                    ["sudo", "tee", config_path], input=cfg, text=True, capture_output=True, check=False
+                )
+                if res_cfg.returncode != 0:
+                    return False
+                srv_dir = os.path.dirname(service_path)
+                subprocess.run(["sudo", "mkdir", "-p", srv_dir], capture_output=True, check=False)
+                res_srv = subprocess.run(
+                    ["sudo", "tee", service_path], input=srv, text=True, capture_output=True, check=False
+                )
+                if res_srv.returncode != 0:
+                    return False
+                subprocess.run(["sudo", "systemctl", "daemon-reload"], capture_output=True, check=False)
+                subprocess.run(["sudo", "systemctl", "enable", "osm-hardware-tune.service"], capture_output=True, check=False)
+            else:
+                p_cfg = Path(config_path)
+                p_cfg.parent.mkdir(parents=True, exist_ok=True)
+                p_cfg.write_text(cfg, encoding="utf-8")
+
+                p_srv = Path(service_path)
+                p_srv.parent.mkdir(parents=True, exist_ok=True)
+                p_srv.write_text(srv, encoding="utf-8")
+
+                subprocess.run(["systemctl", "daemon-reload"], capture_output=True, check=False)
+                subprocess.run(["systemctl", "enable", "osm-hardware-tune.service"], capture_output=True, check=False)
+            return True
+        else:
+            if os.geteuid() != 0:
+                subprocess.run(["sudo", "systemctl", "disable", "--now", "osm-hardware-tune.service"], capture_output=True, check=False)
+                subprocess.run(["sudo", "rm", "-f", service_path], capture_output=True, check=False)
+                subprocess.run(["sudo", "systemctl", "daemon-reload"], capture_output=True, check=False)
+            else:
+                subprocess.run(["systemctl", "disable", "--now", "osm-hardware-tune.service"], capture_output=True, check=False)
+                p_srv = Path(service_path)
+                if p_srv.is_file():
+                    p_srv.unlink()
+                subprocess.run(["systemctl", "daemon-reload"], capture_output=True, check=False)
+            return True
+    except Exception:
+        return False
+
+
 def generate_sysctl_performance_config() -> str:
     """Generate sysctl performance configuration content."""
     return """# os-manager Debian 13 Kernel Performance Tuning

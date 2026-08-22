@@ -231,7 +231,7 @@ After=multi-user.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/osm tune hardware-persist apply --config ${PERSIST_CONF}
+ExecStart=/usr/local/bin/osm tune hardware --apply
 RemainAfterExit=yes
 
 [Install]

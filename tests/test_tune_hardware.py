@@ -9,7 +9,10 @@ from unittest.mock import MagicMock, patch
 from os_manager.commands.tune import (
     audit_gpu_runtime_power,
     audit_vaapi_acceleration,
+    configure_hardware_persistence,
     generate_hardware_persist_unit,
+    generate_hardware_persistence_config,
+    generate_hardware_persistence_service,
     get_battery_conservation_status,
     get_fn_lock_status,
     get_platform_profile,
@@ -127,6 +130,84 @@ class TestTuneHardware(unittest.TestCase):
         self.assertIn("[Unit]", unit)
         self.assertIn("Description=os-manager Lenovo Hardware Power & ACPI Tuning Persistence", unit)
         self.assertIn("WantedBy=multi-user.target", unit)
+
+    def test_generate_hardware_persistence_config(self):
+        """Verify hardware persistence configuration file format."""
+        cfg = generate_hardware_persistence_config(conservation=True, fn_lock=True, gpu_power="auto")
+        self.assertIn("CONSERVATION_MODE=1", cfg)
+        self.assertIn("FN_LOCK=1", cfg)
+        self.assertIn("GPU_POWER_SAVE=auto", cfg)
+
+    def test_generate_hardware_persistence_config_custom(self):
+        """Verify hardware persistence configuration with disabled/custom flags."""
+        cfg = generate_hardware_persistence_config(conservation=False, fn_lock=False, gpu_power="on")
+        self.assertIn("CONSERVATION_MODE=0", cfg)
+        self.assertIn("FN_LOCK=0", cfg)
+        self.assertIn("GPU_POWER_SAVE=on", cfg)
+
+    def test_generate_hardware_persistence_service(self):
+        """Verify systemd service unit definition for hardware persistence."""
+        unit = generate_hardware_persistence_service()
+        self.assertIn("[Unit]", unit)
+        self.assertIn("osm-hardware-tune", unit)
+        self.assertIn("ExecStart=", unit)
+
+    @patch("subprocess.run")
+    @patch("pathlib.Path.write_text")
+    @patch("pathlib.Path.mkdir")
+    @patch("os.geteuid", return_value=0)
+    def test_configure_hardware_persistence_enable_root(self, mock_geteuid, mock_mkdir, mock_write, mock_run):
+        """Verify configure_hardware_persistence writes config & service unit as root."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        success = configure_hardware_persistence(
+            enable=True,
+            config_path="/etc/osm/hardware-tune.conf",
+            service_path="/etc/systemd/system/osm-hardware-tune.service",
+        )
+        self.assertTrue(success)
+        self.assertEqual(mock_write.call_count, 2)
+        self.assertEqual(mock_run.call_count, 2)
+
+    @patch("subprocess.run")
+    @patch("os.geteuid", return_value=1000)
+    def test_configure_hardware_persistence_enable_non_root(self, mock_geteuid, mock_run):
+        """Verify configure_hardware_persistence uses sudo when running as non-root."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        success = configure_hardware_persistence(
+            enable=True,
+            config_path="/etc/osm/hardware-tune.conf",
+            service_path="/etc/systemd/system/osm-hardware-tune.service",
+        )
+        self.assertTrue(success)
+        # sudo mkdir -p (conf), sudo tee (conf), sudo mkdir -p (srv), sudo tee (srv), daemon-reload, enable
+        self.assertTrue(mock_run.call_count >= 4)
+
+    @patch("subprocess.run")
+    @patch("pathlib.Path.unlink")
+    @patch("pathlib.Path.is_file", return_value=True)
+    @patch("os.geteuid", return_value=0)
+    def test_configure_hardware_persistence_disable_root(self, mock_geteuid, mock_is_file, mock_unlink, mock_run):
+        """Verify configure_hardware_persistence disables and removes service unit as root."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        success = configure_hardware_persistence(
+            enable=False,
+            service_path="/etc/systemd/system/osm-hardware-tune.service",
+        )
+        self.assertTrue(success)
+        mock_unlink.assert_called_once()
+        self.assertEqual(mock_run.call_count, 2)
+
+    @patch("subprocess.run")
+    @patch("os.geteuid", return_value=1000)
+    def test_configure_hardware_persistence_disable_non_root(self, mock_geteuid, mock_run):
+        """Verify configure_hardware_persistence uses sudo to disable service as non-root."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        success = configure_hardware_persistence(
+            enable=False,
+            service_path="/etc/systemd/system/osm-hardware-tune.service",
+        )
+        self.assertTrue(success)
+        self.assertEqual(mock_run.call_count, 3)
 
 
 if __name__ == "__main__":
