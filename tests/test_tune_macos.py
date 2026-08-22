@@ -6,10 +6,13 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from os_manager.commands.tune_macos import (
+    apply_macos_gsettings,
+    build_macos_gsettings_matrix,
     build_theme_installer_commands,
     clean_sandbox,
     create_desktop_snapshot,
     find_latest_snapshot,
+    get_required_extensions,
     install_upstream_themes,
     list_desktop_snapshots,
     restore_desktop_snapshot,
@@ -170,6 +173,38 @@ class TestMacOSAssetEngine(unittest.TestCase):
         self.assertFalse(res["dry_run"])
         self.assertFalse(res["success"])
         self.assertEqual(res["status"], "failed")
+
+
+class TestMacOSGSettingsAndExtensions(unittest.TestCase):
+    def test_get_required_extensions(self):
+        core_exts = get_required_extensions(full=False)
+        full_exts = get_required_extensions(full=True)
+        self.assertIn("user-theme@gnome-shell-extensions.gcampax.github.com", core_exts)
+        self.assertIn("dash-to-dock@micxgx.gmail.com", core_exts)
+        self.assertIn("blur-my-shell@aunetx", full_exts)
+        self.assertGreater(len(full_exts), len(core_exts))
+
+    def test_build_macos_gsettings_matrix(self):
+        matrix = build_macos_gsettings_matrix(accent="default", dark=True, full=True)
+        dict_matrix = {f"{s}.{k}": v for s, k, v in matrix}
+
+        self.assertEqual(dict_matrix.get("org.gnome.desktop.wm.preferences.button-layout"), "'close,minimize,maximize:'")
+        self.assertEqual(dict_matrix.get("org.gnome.desktop.interface.gtk-theme"), "'WhiteSur-Dark'")
+        self.assertEqual(dict_matrix.get("org.gnome.shell.extensions.dash-to-dock.dock-position"), "'BOTTOM'")
+
+    @patch("subprocess.run")
+    def test_apply_macos_gsettings_dry_run(self, mock_run):
+        res = apply_macos_gsettings(dry_run=True)
+        self.assertTrue(res["dry_run"])
+        self.assertGreater(len(res["settings_matrix"]), 5)
+        mock_run.assert_not_called()
+
+    @patch("subprocess.run")
+    def test_apply_macos_gsettings_execution(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        res = apply_macos_gsettings(dry_run=False)
+        self.assertTrue(res["success"])
+        self.assertGreater(mock_run.call_count, 5)
 
 
 if __name__ == "__main__":
