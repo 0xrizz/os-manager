@@ -19,16 +19,15 @@ You are an expert Linux Systems Engineer, DevOps Specialist, and Automation Arch
 ---
 
 ## 2. Current Task & Objective
-* **Target Objective:** Maintenance and ongoing system automation for Debian 13 (Trixie) bare-metal environment.
-* **Target Plan:** Complete (`docs/superpowers/plans/2026-08-22-system-optimization-tuning.md` merged into `main`).
-* **Target Specification:** Complete (`docs/superpowers/specs/2026-08-22-system-optimization-tuning-design.md`).
-* **Baseline Context:** All 5 phases of Debian 13 Upgrade & Optimization Suite (Storage ntfs3, earlyoom 5%, Battery Conservation 60%, MX330 D3 Cold power gating, macOS Ver 3.0 GNOME theme, and Node 26 runtime) are verified (140/140 tests GREEN) and merged into `main`.
+* **Target Objective:** {{TASK_OBJECTIVE}}
+* **Target Plan:** {{PLAN_PATH}}
+* **Target Specification:** {{SPEC_PATH}}
+* **Baseline Context:** {{BASELINE_CONTEXT}}
 
 ---
 
 ## 3. Scope of Work & Task Breakdown
-1. Ready for next feature development, system monitoring, or custom workflow requests.
-2. Maintain zero-data-loss integrity and test coverage.
+{{TASK_BREAKDOWN}}
 
 ---
 
