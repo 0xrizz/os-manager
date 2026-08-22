@@ -155,3 +155,60 @@ RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target
 """
+
+
+def generate_sysctl_performance_config() -> str:
+    """Generate sysctl performance configuration content."""
+    return """# os-manager Debian 13 Kernel Performance Tuning
+vm.swappiness = 10
+vm.vfs_cache_pressure = 50
+fs.inotify.max_user_watches = 524288
+fs.inotify.max_user_instances = 1024
+vm.dirty_background_ratio = 5
+vm.dirty_ratio = 10
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+"""
+
+
+def audit_sysctl_parameters() -> dict[str, str]:
+    """Inspect active kernel sysctl values."""
+    def _read_sysctl(key: str) -> str:
+        res = subprocess.run(["sysctl", "-n", key], capture_output=True, text=True, check=False)
+        return res.stdout.strip() if res.returncode == 0 else "unknown"
+
+    return {
+        "swappiness": _read_sysctl("vm.swappiness"),
+        "inotify_watches": _read_sysctl("fs.inotify.max_user_watches"),
+        "congestion_control": _read_sysctl("net.ipv4.tcp_congestion_control"),
+    }
+
+
+def audit_fstrim_timer_status() -> dict[str, Any]:
+    """Inspect systemd fstrim.timer state."""
+    res = subprocess.run(["systemctl", "is-active", "fstrim.timer"], capture_output=True, text=True, check=False)
+    return {"active": res.stdout.strip() == "active"}
+
+
+def audit_ufw_firewall_status() -> dict[str, Any]:
+    """Inspect UFW firewall status and default incoming policy."""
+    if not shutil.which("ufw"):
+        return {"available": False, "active": False, "default_deny_incoming": False}
+
+    res = subprocess.run(["ufw", "status", "verbose"], capture_output=True, text=True, check=False)
+    out = res.stdout
+    is_active = "Status: active" in out
+    default_deny = "deny (incoming)" in out
+    return {"available": True, "active": is_active, "default_deny_incoming": default_deny}
+
+
+def audit_pipewire_audio_status() -> dict[str, Any]:
+    """Check availability of PipeWire audio stack."""
+    pw_bin = shutil.which("pipewire")
+    wp_bin = shutil.which("wireplumber")
+    return {
+        "available": bool(pw_bin),
+        "pipewire": pw_bin or "missing",
+        "wireplumber": wp_bin or "missing",
+    }
+
