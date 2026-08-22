@@ -66,3 +66,97 @@ def restore_desktop_snapshot(snapshot_file: str | None = None, backup_dir: str |
             return res.returncode == 0
     except Exception:
         return False
+
+
+DEFAULT_SANDBOX_DIR = "/tmp/osm-macos-build"
+DEFAULT_FONTS_DIR = os.path.expanduser("~/.local/share/fonts/SF-Pro")
+DEFAULT_WALLPAPER_DIR = os.path.expanduser("~/.local/share/backgrounds/macos")
+
+
+def clean_sandbox(sandbox_dir: str = DEFAULT_SANDBOX_DIR) -> bool:
+    """Safely purge build sandbox directory."""
+    p = Path(sandbox_dir)
+    if p.exists():
+        try:
+            shutil.rmtree(p)
+            return True
+        except Exception:
+            return False
+    return True
+
+
+def build_theme_installer_commands(
+    accent: str = "default",
+    dark: bool = True,
+    sandbox_dir: str = DEFAULT_SANDBOX_DIR,
+) -> list[list[str]]:
+    """Generate ordered list of shell commands for cloning and installing WhiteSur themes."""
+    color_mode = "Dark" if dark else "Light"
+
+    gtk_dir = str(Path(sandbox_dir) / "gtk")
+    icon_dir = str(Path(sandbox_dir) / "icons")
+    cursor_dir = str(Path(sandbox_dir) / "cursors")
+
+    cmds = [
+        # GTK theme
+        ["git", "clone", "--depth=1", "https://github.com/vinceliuice/WhiteSur-gtk-theme.git", gtk_dir],
+        ["bash", f"{gtk_dir}/install.sh", "-c", color_mode, "-t", accent, "-N", "glassy", "--shell", "-p", "30", "-HD"],
+        # Icon theme
+        ["git", "clone", "--depth=1", "https://github.com/vinceliuice/WhiteSur-icon-theme.git", icon_dir],
+        ["bash", f"{icon_dir}/install.sh", "-a", "-t", accent, "-b"],
+        # Cursor theme
+        ["git", "clone", "--depth=1", "https://github.com/vinceliuice/WhiteSur-cursors.git", cursor_dir],
+        ["bash", f"{cursor_dir}/install.sh"],
+    ]
+    return cmds
+
+
+def setup_apple_fonts(target_dir: str | None = None) -> bool:
+    """Ensure font directory exists and update fontconfig cache."""
+    fdir = Path(target_dir) if target_dir else Path(DEFAULT_FONTS_DIR)
+    fdir.mkdir(parents=True, exist_ok=True)
+    try:
+        subprocess.run(["fc-cache", "-f", str(fdir)], capture_output=True, check=False)
+        return True
+    except Exception:
+        return False
+
+
+def install_upstream_themes(
+    accent: str = "default",
+    dark: bool = True,
+    sandbox_dir: str = DEFAULT_SANDBOX_DIR,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Execute or plan full upstream WhiteSur theme installations."""
+    cmds = build_theme_installer_commands(accent=accent, dark=dark, sandbox_dir=sandbox_dir)
+
+    if dry_run:
+        return {
+            "status": "planned",
+            "dry_run": True,
+            "sandbox_dir": sandbox_dir,
+            "planned_commands": [" ".join(c) for c in cmds],
+        }
+
+    clean_sandbox(sandbox_dir)
+    results = []
+    success = True
+
+    try:
+        for cmd in cmds:
+            res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            results.append({"cmd": " ".join(cmd), "code": res.returncode})
+            if res.returncode != 0:
+                success = False
+                break
+    finally:
+        clean_sandbox(sandbox_dir)
+
+    return {
+        "status": "completed" if success else "failed",
+        "dry_run": False,
+        "success": success,
+        "results": results,
+    }
+

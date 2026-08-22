@@ -6,10 +6,14 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from os_manager.commands.tune_macos import (
+    build_theme_installer_commands,
+    clean_sandbox,
     create_desktop_snapshot,
     find_latest_snapshot,
+    install_upstream_themes,
     list_desktop_snapshots,
     restore_desktop_snapshot,
+    setup_apple_fonts,
 )
 
 
@@ -111,6 +115,61 @@ class TestMacOSSnapshotAndRollback(unittest.TestCase):
 
         ok = restore_desktop_snapshot(str(snap))
         self.assertFalse(ok)
+
+
+class TestMacOSAssetEngine(unittest.TestCase):
+    def test_build_theme_installer_commands(self):
+        cmds = build_theme_installer_commands(accent="blue", dark=True, sandbox_dir="/tmp/test-build")
+        self.assertGreaterEqual(len(cmds), 3)
+        # Verify git clones & installer invocations
+        flat_cmds = [" ".join(c) for c in cmds]
+        self.assertTrue(any("WhiteSur-gtk-theme.git" in c for c in flat_cmds))
+        self.assertTrue(any("WhiteSur-icon-theme.git" in c for c in flat_cmds))
+        self.assertTrue(any("WhiteSur-cursors.git" in c for c in flat_cmds))
+
+    @patch("subprocess.run")
+    def test_install_upstream_themes_dry_run(self, mock_run):
+        res = install_upstream_themes(accent="default", dark=True, dry_run=True)
+        self.assertTrue(res["dry_run"])
+        self.assertEqual(res["status"], "planned")
+        self.assertGreater(len(res["planned_commands"]), 0)
+        mock_run.assert_not_called()
+
+    @patch("subprocess.run")
+    def test_setup_apple_fonts(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        with tempfile.TemporaryDirectory() as font_dir:
+            ok = setup_apple_fonts(target_dir=font_dir)
+            self.assertTrue(ok)
+            mock_run.assert_called_with(["fc-cache", "-f", font_dir], capture_output=True, check=False)
+
+    def test_clean_sandbox(self):
+        with tempfile.TemporaryDirectory() as tmp_d:
+            sub = Path(tmp_d) / "sandbox"
+            sub.mkdir()
+            (sub / "dummy.txt").write_text("hello")
+            self.assertTrue(sub.exists())
+            self.assertTrue(clean_sandbox(str(sub)))
+            self.assertFalse(sub.exists())
+            # Cleaning non-existent path should return True safely
+            self.assertTrue(clean_sandbox(str(sub)))
+
+    @patch("subprocess.run")
+    def test_install_upstream_themes_success(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        res = install_upstream_themes(accent="default", dark=True, dry_run=False)
+        self.assertFalse(res["dry_run"])
+        self.assertTrue(res["success"])
+        self.assertEqual(res["status"], "completed")
+        self.assertGreaterEqual(len(res["results"]), 3)
+
+    @patch("subprocess.run")
+    def test_install_upstream_themes_failure(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=1)
+        res = install_upstream_themes(accent="default", dark=True, dry_run=False)
+        self.assertFalse(res["dry_run"])
+        self.assertFalse(res["success"])
+        self.assertEqual(res["status"], "failed")
 
 
 if __name__ == "__main__":
