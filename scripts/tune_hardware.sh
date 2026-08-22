@@ -177,9 +177,16 @@ install_vaapi_drivers() {
 
 audit_thermals() {
     log_info "Auditing Intel thermald daemon status..."
-    if ! command -v thermald >/dev/null 2>&1; then
-        log_warn "thermald is not installed. Run: $0 --thermals install"
-        return 1
+    local thermald_cmd="thermald"
+    if ! command -v "${thermald_cmd}" >/dev/null 2>&1; then
+        if [[ -x "/usr/sbin/thermald" ]]; then
+            thermald_cmd="/usr/sbin/thermald"
+        elif [[ -x "/sbin/thermald" ]]; then
+            thermald_cmd="/sbin/thermald"
+        else
+            log_warn "thermald is not installed. Run: $0 --thermals install"
+            return 1
+        fi
     fi
     if systemctl is-active --quiet thermald 2>/dev/null; then
         log_pass "thermald service is active and running."

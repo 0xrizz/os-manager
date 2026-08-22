@@ -43,12 +43,20 @@ EOF
 
 audit_sysctl() {
     log_info "Auditing kernel sysctl parameters..."
+    local sysctl_cmd="sysctl"
+    if ! command -v "${sysctl_cmd}" >/dev/null 2>&1; then
+        if [[ -x "/sbin/sysctl" ]]; then
+            sysctl_cmd="/sbin/sysctl"
+        elif [[ -x "/usr/sbin/sysctl" ]]; then
+            sysctl_cmd="/usr/sbin/sysctl"
+        fi
+    fi
     local swappiness
-    swappiness="$(sysctl -n vm.swappiness 2>/dev/null || echo "unknown")"
+    swappiness="$("${sysctl_cmd}" -n vm.swappiness 2>/dev/null || echo "unknown")"
     local bbr
-    bbr="$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo "unknown")"
+    bbr="$("${sysctl_cmd}" -n net.ipv4.tcp_congestion_control 2>/dev/null || echo "unknown")"
     local inotify
-    inotify="$(sysctl -n fs.inotify.max_user_watches 2>/dev/null || echo "unknown")"
+    inotify="$("${sysctl_cmd}" -n fs.inotify.max_user_watches 2>/dev/null || echo "unknown")"
 
     log_info "vm.swappiness: ${swappiness} (target: 10)"
     log_info "TCP Congestion Control: ${bbr} (target: bbr)"
@@ -94,30 +102,48 @@ status_audio() {
 
 enable_firewall() {
     log_info "Configuring and enabling UFW firewall..."
-    if ! command -v ufw >/dev/null 2>&1; then
-        log_error "UFW is not installed. Install with: sudo apt install -y ufw"
-        return 1
+    local ufw_cmd="ufw"
+    if ! command -v "${ufw_cmd}" >/dev/null 2>&1; then
+        if [[ -x "/usr/sbin/ufw" ]]; then
+            ufw_cmd="/usr/sbin/ufw"
+        elif [[ -x "/sbin/ufw" ]]; then
+            ufw_cmd="/sbin/ufw"
+        else
+            log_error "UFW is not installed. Install with: sudo apt install -y ufw"
+            return 1
+        fi
     fi
     if [[ $EUID -ne 0 ]]; then
-        sudo ufw default deny incoming
-        sudo ufw default allow outgoing
-        sudo ufw --force enable
+        sudo "${ufw_cmd}" default deny incoming
+        sudo "${ufw_cmd}" default allow outgoing
+        sudo "${ufw_cmd}" --force enable
     else
-        ufw default deny incoming
-        ufw default allow outgoing
-        ufw --force enable
+        "${ufw_cmd}" default deny incoming
+        "${ufw_cmd}" default allow outgoing
+        "${ufw_cmd}" --force enable
     fi
     log_pass "UFW firewall enabled with default deny incoming / allow outgoing."
 }
 
 status_firewall() {
-    if command -v ufw >/dev/null 2>&1; then
-        local ufw_st
-        ufw_st="$(ufw status 2>/dev/null | head -n 1 || echo "unknown")"
-        log_info "UFW Firewall: ${ufw_st}"
-    else
-        log_warn "UFW Firewall not installed."
+    local ufw_cmd="ufw"
+    if ! command -v "${ufw_cmd}" >/dev/null 2>&1; then
+        if [[ -x "/usr/sbin/ufw" ]]; then
+            ufw_cmd="/usr/sbin/ufw"
+        elif [[ -x "/sbin/ufw" ]]; then
+            ufw_cmd="/sbin/ufw"
+        else
+            log_warn "UFW Firewall not installed."
+            return 0
+        fi
     fi
+    local ufw_st
+    if [[ $EUID -ne 0 ]]; then
+        ufw_st="$(sudo "${ufw_cmd}" status 2>/dev/null | head -n 1 || echo "unknown")"
+    else
+        ufw_st="$("${ufw_cmd}" status 2>/dev/null | head -n 1 || echo "unknown")"
+    fi
+    log_info "UFW Firewall: ${ufw_st}"
 }
 
 audit_system() {
