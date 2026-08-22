@@ -85,6 +85,96 @@ status_nvme_trim() {
     fi
 }
 
+audit_storage() {
+    log_info "Auditing storage filesystem drivers and NVMe TRIM..."
+    local mount_point="${1:-/mnt/data}"
+    local fstype="unknown"
+    if command -v findmnt >/dev/null 2>&1; then
+        fstype="$(findmnt -n -o FSTYPE "${mount_point}" 2>/dev/null || echo "unmounted")"
+    fi
+    if [[ "${fstype}" == "ntfs3" ]]; then
+        log_pass "Storage ${mount_point}: ${fstype} (in-kernel high-performance driver)"
+    elif [[ "${fstype}" == "fuseblk" || "${fstype}" == "ntfs-3g" ]]; then
+        log_warn "Storage ${mount_point}: ${fstype} (userspace FUSE driver - migration recommended)"
+    else
+        log_info "Storage ${mount_point}: ${fstype}"
+    fi
+    status_nvme_trim
+}
+
+migrate_ntfs_storage() {
+    local mount_point="${1:-/mnt/data}"
+    local fstab_path="/etc/fstab"
+    log_info "Migrating ${mount_point} to in-kernel ntfs3 driver..."
+
+    if ! grep -q "${mount_point}" "${fstab_path}" 2>/dev/null; then
+        log_warn "Mount point ${mount_point} not found in ${fstab_path}."
+        return 0
+    fi
+
+    if grep "${mount_point}" "${fstab_path}" | grep -q "ntfs3" && ! grep "${mount_point}" "${fstab_path}" | grep -q "ntfs-3g"; then
+        log_pass "${mount_point} is already configured with ntfs3 in ${fstab_path}."
+        return 0
+    fi
+
+    local ts
+    ts="$(date +%Y%m%d%H%M%S)"
+    local backup_path="${fstab_path}.bak.${ts}"
+
+    log_info "Creating fstab backup at ${backup_path}..."
+    if [[ $EUID -ne 0 ]]; then
+        sudo cp "${fstab_path}" "${backup_path}"
+    else
+        cp "${fstab_path}" "${backup_path}"
+    fi
+
+    # Update fstab
+    log_info "Updating fstab entry to ntfs3..."
+    local tmp_fstab
+    tmp_fstab="$(mktemp)"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if echo "$line" | grep -q "${mount_point}" && echo "$line" | grep -q "ntfs-3g"; then
+            local p1 p2 p3 p4 prest
+            read -r p1 p2 p3 p4 prest <<< "$line"
+            if [[ "$p4" != *"iocharset=utf8"* ]]; then
+                p4="${p4},iocharset=utf8"
+            fi
+            echo "$p1 $p2 ntfs3 $p4 $prest" >> "$tmp_fstab"
+        else
+            echo "$line" >> "$tmp_fstab"
+        fi
+    done < "${fstab_path}"
+
+    if [[ $EUID -ne 0 ]]; then
+        sudo cp "${tmp_fstab}" "${fstab_path}"
+    else
+        cp "${tmp_fstab}" "${fstab_path}"
+    fi
+    rm -f "${tmp_fstab}"
+
+    log_info "Testing remount of ${mount_point}..."
+    local remount_ok=0
+    if [[ $EUID -ne 0 ]]; then
+        sudo mount -o remount "${mount_point}" 2>/dev/null || remount_ok=1
+    else
+        mount -o remount "${mount_point}" 2>/dev/null || remount_ok=1
+    fi
+
+    if [[ $remount_ok -ne 0 ]]; then
+        log_error "Remount with ntfs3 failed! Rolling back to ${backup_path}..."
+        if [[ $EUID -ne 0 ]]; then
+            sudo cp "${backup_path}" "${fstab_path}"
+            sudo mount -o remount "${mount_point}" 2>/dev/null || true
+        else
+            cp "${backup_path}" "${fstab_path}"
+            mount -o remount "${mount_point}" 2>/dev/null || true
+        fi
+        return 1
+    fi
+
+    log_pass "Successfully migrated ${mount_point} to ntfs3 driver."
+}
+
 status_audio() {
     log_info "Auditing PipeWire audio stack..."
     if command -v pipewire >/dev/null 2>&1; then
@@ -150,8 +240,8 @@ audit_system() {
     echo "=================================================="
     echo "      Kernel, Storage & Security Hardening Audit  "
     echo "=================================================="
+    audit_storage
     audit_sysctl
-    status_nvme_trim
     status_audio
     status_firewall
     echo "=================================================="
@@ -162,6 +252,7 @@ show_help() {
 Usage: $(basename "$0") [OPTION] [SUBCOMMAND]
 
 Options:
+    --storage [migrate|audit]  Migrate NTFS mount to ntfs3 or audit storage status
     --sysctl [apply|audit]     Apply or audit kernel sysctl performance configuration
     --trim [enable|status]     Enable periodic TRIM or check fstrim.timer status
     --audio [status]           Check PipeWire / WirePlumber audio stack status
@@ -176,6 +267,13 @@ main() {
     local subaction="${2:-}"
 
     case "${action}" in
+        --storage)
+            if [[ "${subaction}" == "migrate" ]]; then
+                migrate_ntfs_storage
+            else
+                audit_storage
+            fi
+            ;;
         --sysctl)
             if [[ "${subaction}" == "audit" ]]; then
                 audit_sysctl

@@ -189,6 +189,100 @@ def audit_sysctl_parameters() -> dict[str, str]:
     }
 
 
+def generate_fstab_ntfs3_entry(current_fstab: str, mount_point: str = "/mnt/data") -> str:
+    """Replace ntfs-3g FUSE driver with in-kernel ntfs3 driver in fstab content."""
+    lines = []
+    for line in current_fstab.splitlines():
+        if mount_point in line and "ntfs-3g" in line:
+            parts = line.split()
+            if len(parts) >= 4:
+                opts = parts[3]
+                if "iocharset=utf8" not in opts:
+                    opts = f"{opts},iocharset=utf8"
+                line = f"{parts[0]} {parts[1]} ntfs3 {opts} {' '.join(parts[4:])}".strip()
+        lines.append(line)
+    return "\n".join(lines) + "\n"
+
+
+def audit_ntfs_mount_driver(mount_point: str = "/mnt/data") -> dict[str, Any]:
+    """Audit current mount driver for a given mount point."""
+    try:
+        res = subprocess.run(
+            ["findmnt", "-n", "-o", "FSTYPE", mount_point],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        fstype = res.stdout.strip() if res.returncode == 0 else "unknown"
+        return {
+            "mount_point": mount_point,
+            "driver": fstype,
+            "is_inkernel": fstype == "ntfs3",
+        }
+    except Exception:
+        return {"mount_point": mount_point, "driver": "unknown", "is_inkernel": False}
+
+
+def migrate_ntfs_driver(fstab_path: str = "/etc/fstab", mount_point: str = "/mnt/data") -> dict[str, Any]:
+    """Migrate mount_point in fstab from ntfs-3g to in-kernel ntfs3 with backup and remount."""
+    p = Path(fstab_path)
+    if not p.is_file():
+        return {"success": False, "error": f"Fstab file not found: {fstab_path}"}
+
+    try:
+        content = p.read_text(encoding="utf-8")
+    except Exception as e:
+        return {"success": False, "error": f"Failed to read {fstab_path}: {e}"}
+
+    if "ntfs3" in content and mount_point in content and "ntfs-3g" not in content:
+        return {
+            "success": True,
+            "status": "already_migrated",
+            "driver": "ntfs3",
+            "mount_point": mount_point,
+        }
+
+    import datetime
+
+    ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    backup_path = f"{fstab_path}.bak.{ts}"
+    try:
+        shutil.copy2(fstab_path, backup_path)
+    except Exception as e:
+        return {"success": False, "error": f"Failed to create fstab backup at {backup_path}: {e}"}
+
+    new_content = generate_fstab_ntfs3_entry(content, mount_point=mount_point)
+    try:
+        p.write_text(new_content, encoding="utf-8")
+    except Exception as e:
+        return {"success": False, "error": f"Failed to write updated fstab to {fstab_path}: {e}"}
+
+    # Attempt remount
+    res = subprocess.run(["mount", "-o", "remount", mount_point], capture_output=True, text=True, check=False)
+    if res.returncode != 0:
+        # Rollback on remount failure
+        try:
+            shutil.copy2(backup_path, fstab_path)
+            subprocess.run(["mount", "-o", "remount", mount_point], capture_output=True, text=True, check=False)
+        except Exception:
+            pass
+        return {
+            "success": False,
+            "status": "failed",
+            "error": f"Remount failed, rolled back: {res.stderr.strip() or res.stdout.strip()}",
+            "backup": backup_path,
+            "rolled_back": True,
+        }
+
+    return {
+        "success": True,
+        "status": "migrated",
+        "driver": "ntfs3",
+        "backup": backup_path,
+        "mount_point": mount_point,
+    }
+
+
 def audit_fstrim_timer_status() -> dict[str, Any]:
     """Inspect systemd fstrim.timer state."""
     try:
