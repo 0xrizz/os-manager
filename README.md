@@ -13,7 +13,7 @@
   <a href="https://github.com/0xrizz/os-manager/actions"><img src="https://img.shields.io/github/actions/workflow/status/0xrizz/os-manager/ci.yml?branch=main&label=CI&logo=github" alt="CI Status"></a>
   <a href="https://pypi.org/project/0xrizz-os-manager/"><img src="https://img.shields.io/pypi/v/0xrizz-os-manager?color=blue&logo=pypi" alt="PyPI Version"></a>
   <a href="https://github.com/0xrizz/os-manager/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
-  <a href="https://github.com/0xrizz/os-manager"><img src="https://img.shields.io/badge/tests-59%2F59%20passing-brightgreen" alt="Tests"></a>
+  <a href="https://github.com/0xrizz/os-manager"><img src="https://img.shields.io/badge/tests-148%2F148%20passing-brightgreen" alt="Tests"></a>
 </p>
 
 <p align="center">
@@ -44,7 +44,7 @@ osm check
 │ • Security      : Tier 0-3 Guard Active (Exit 2 on host violation)       │
 │ • Virtualization: Rootless Podman Sandbox Fallback Ready                 │
 │ • Observability : Prometheus Exporter (:9100) + Monotonic Tracing        │
-│ • Test Engine   : 59/59 Assertions Passing [100% OK]                     │
+│ • Test Engine   : 148/148 Assertions Passing [100% OK]                   │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -57,6 +57,20 @@ osm check
 - **Workstation Performance**: Automated VHDX compaction, zero 9P latency enforcement on ext4, and fast cache cleanup.
 - **Background Observability**: Built-in Prometheus metrics exporter (`127.0.0.1:9100`) and nanosecond hook latency tracing.
 - **Multi-Agent SSOT Bridge**: Zero-copy relative symlinks synchronizing skills across Claude Code, Universal Agent, and Google Antigravity.
+- **Host Security ID (HSI) Hardening**: Hardware security posture audit and remediation engine (zRAM swap encryption, s2idle sleep, DBX revocation).
+
+---
+
+### 🛡️ Host Security ID (HSI) Hardening Engine
+
+Audit and harden hardware security postures against firmware, cold-boot, and unencrypted swap vulnerabilities:
+
+```bash
+osm hsi audit          # Audit HSI security posture (sleep mode, swap encryption, DBX)
+osm hsi audit --json   # Telemetry output in JSON format
+osm hsi apply --dry-run # Simulate hardening steps
+sudo osm hsi apply     # Apply automated zRAM swap, s2idle sleep, and DBX updates
+```
 
 ---
 
