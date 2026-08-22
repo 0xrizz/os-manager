@@ -248,15 +248,20 @@ def add_nautilus_bookmark(uri: str, label: str, bookmark_file: str = GTK_BOOKMAR
     return True
 
 
-def apply_desktop_gsettings() -> dict[str, bool]:
-    """Apply standard GNOME 48 desktop ergonomics via gsettings."""
+def apply_desktop_gsettings(preset: str = "standard") -> dict[str, bool]:
+    """Apply GNOME 48 desktop ergonomics and aesthetic presets via gsettings."""
+    if preset == "macos":
+        button_layout = "'close,minimize,maximize:'"
+    else:
+        button_layout = "'appmenu:minimize,maximize,close'"
+
     settings = [
         ("org.gnome.desktop.interface", "font-name", "'Inter 10.5'"),
         ("org.gnome.desktop.interface", "document-font-name", "'Inter 11'"),
         ("org.gnome.desktop.interface", "monospace-font-name", "'JetBrains Mono 10'"),
         ("org.gnome.desktop.interface", "font-antialiasing", "'rgba'"),
         ("org.gnome.desktop.interface", "font-hinting", "'slight'"),
-        ("org.gnome.desktop.wm.preferences", "button-layout", "'appmenu:minimize,maximize,close'"),
+        ("org.gnome.desktop.wm.preferences", "button-layout", button_layout),
         ("org.gnome.mutter", "center-new-windows", "true"),
         ("org.gnome.desktop.interface", "color-scheme", "'prefer-dark'"),
         ("org.gnome.settings-daemon.plugins.color", "night-light-enabled", "true"),
@@ -267,6 +272,16 @@ def apply_desktop_gsettings() -> dict[str, bool]:
         ("org.gnome.nautilus.preferences", "default-folder-viewer", "'list-view'"),
         ("org.gnome.nautilus.preferences", "date-time-format", "'detailed'"),
     ]
+
+    if preset == "macos":
+        settings.extend([
+            ("org.gnome.shell.extensions.dash-to-dock", "dock-position", "'BOTTOM'"),
+            ("org.gnome.shell.extensions.dash-to-dock", "extend-height", "false"),
+            ("org.gnome.shell.extensions.dash-to-dock", "dash-max-icon-size", "48"),
+            ("org.gnome.shell.extensions.dash-to-dock", "autohide", "true"),
+            ("org.gnome.shell.extensions.dash-to-dock", "dock-fixed", "false"),
+            ("org.gnome.shell.extensions.dash-to-dock", "intellihide", "true"),
+        ])
 
     results = {}
     for schema, key, val in settings:
@@ -452,6 +467,7 @@ def run_tune(args: list[str]) -> int:
     # desktop
     desk_p = subparsers.add_parser("desktop", help="Manage GNOME aesthetics, bookmarks, and dconf")
     desk_p.add_argument("action", nargs="?", default="apply", choices=["apply", "audit", "backup", "restore"])
+    desk_p.add_argument("--preset", default="standard", choices=["standard", "macos"], help="Visual aesthetic preset (standard or macos)")
     desk_p.add_argument("--file", default=None, help="Target dconf file path")
 
     # terminal
@@ -590,8 +606,9 @@ def run_tune(args: list[str]) -> int:
     elif parsed_args.subaction == "desktop":
         if parsed_args.action == "apply":
             add_nautilus_bookmark("file:///mnt/data", "Data Store")
-            apply_desktop_gsettings()
-            print("[PASS] GNOME desktop typography, ergonomics, and bookmarks configured.")
+            preset_name = getattr(parsed_args, "preset", "standard")
+            apply_desktop_gsettings(preset=preset_name)
+            print(f"[PASS] GNOME desktop typography, ergonomics ({preset_name} preset), and bookmarks configured.")
             return 0
         elif parsed_args.action == "backup":
             target = parsed_args.file or os.path.expanduser("~/.config/dconf/gnome-desktop.ini")

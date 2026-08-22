@@ -121,6 +121,12 @@ class TestOsmCli(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("GTK Bookmarks", out)
 
+    def test_tune_desktop_preset_macos(self):
+        """Verify osm tune desktop --preset macos executes successfully."""
+        code, out, _ = self.run_cli(["tune", "desktop", "--preset", "macos"])
+        self.assertEqual(code, 0)
+        self.assertIn("macos", out.lower())
+
     def test_tune_terminal_audit(self):
         """Verify osm tune terminal audit runs."""
         code, out, _ = self.run_cli(["tune", "terminal", "audit"])

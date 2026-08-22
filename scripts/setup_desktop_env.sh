@@ -28,7 +28,7 @@ add_bookmark() {
 }
 
 apply_gsettings_tweaks() {
-    log_info "Applying GNOME 48 typography, window controls, and ergonomics..."
+    log_info "Applying GNOME 48 typography, standard window controls, and ergonomics..."
     if ! command -v gsettings >/dev/null 2>&1; then
         log_warn "gsettings not available in current environment."
         return 0
@@ -41,7 +41,7 @@ apply_gsettings_tweaks() {
     gsettings set org.gnome.desktop.interface font-antialiasing 'rgba' 2>/dev/null || true
     gsettings set org.gnome.desktop.interface font-hinting 'slight' 2>/dev/null || true
 
-    # Window Management & Ergonomics
+    # Window Management & Ergonomics (Standard Right Controls)
     gsettings set org.gnome.desktop.wm.preferences button-layout 'appmenu:minimize,maximize,close' 2>/dev/null || true
     gsettings set org.gnome.mutter center-new-windows true 2>/dev/null || true
     gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null || true
@@ -59,7 +59,73 @@ apply_gsettings_tweaks() {
     gsettings set org.gnome.nautilus.preferences default-folder-viewer 'list-view' 2>/dev/null || true
     gsettings set org.gnome.nautilus.preferences date-time-format 'detailed' 2>/dev/null || true
 
-    log_pass "Desktop gsettings configuration applied successfully."
+    log_pass "Standard desktop gsettings configuration applied successfully."
+}
+
+apply_macos_gsettings_tweaks() {
+    log_info "Applying GNOME 48 macOS Ver 3.0 visual preset (left traffic lights, typography, centered dock)..."
+    if ! command -v gsettings >/dev/null 2>&1; then
+        log_warn "gsettings not available in current environment."
+        return 0
+    fi
+
+    # Typography & Subpixel Rendering
+    gsettings set org.gnome.desktop.interface font-name 'Inter 10.5' 2>/dev/null || true
+    gsettings set org.gnome.desktop.interface document-font-name 'Inter 11' 2>/dev/null || true
+    gsettings set org.gnome.desktop.interface monospace-font-name 'JetBrains Mono 10' 2>/dev/null || true
+    gsettings set org.gnome.desktop.interface font-antialiasing 'rgba' 2>/dev/null || true
+    gsettings set org.gnome.desktop.interface font-hinting 'slight' 2>/dev/null || true
+
+    # Window Management (macOS Traffic Light Buttons on Left)
+    gsettings set org.gnome.desktop.wm.preferences button-layout 'close,minimize,maximize:' 2>/dev/null || true
+    gsettings set org.gnome.mutter center-new-windows true 2>/dev/null || true
+
+    # Dark Mode & Night Light
+    gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null || true
+    gsettings set org.gnome.settings-daemon.plugins.color night-light-enabled true 2>/dev/null || true
+    gsettings set org.gnome.desktop.wm.keybindings switch-applications "[]" 2>/dev/null || true
+    gsettings set org.gnome.desktop.wm.keybindings switch-windows "['<Alt>Tab']" 2>/dev/null || true
+
+    # Touchpad Natural Scrolling & Tap-to-Click
+    gsettings set org.gnome.desktop.peripherals.touchpad tap-to-click true 2>/dev/null || true
+    gsettings set org.gnome.desktop.peripherals.touchpad natural-scroll true 2>/dev/null || true
+    gsettings set org.gnome.desktop.peripherals.touchpad disable-while-typing true 2>/dev/null || true
+    gsettings set org.gnome.desktop.sound allow-volume-above-100-percent true 2>/dev/null || true
+
+    # Nautilus Developer View
+    gsettings set org.gnome.nautilus.preferences default-folder-viewer 'list-view' 2>/dev/null || true
+    gsettings set org.gnome.nautilus.preferences date-time-format 'detailed' 2>/dev/null || true
+
+    # Dash-to-Dock / Shell Preferences (Centered Bottom Dock, Autohide)
+    gsettings set org.gnome.shell.extensions.dash-to-dock dock-position 'BOTTOM' 2>/dev/null || true
+    gsettings set org.gnome.shell.extensions.dash-to-dock extend-height false 2>/dev/null || true
+    gsettings set org.gnome.shell.extensions.dash-to-dock dash-max-icon-size 48 2>/dev/null || true
+    gsettings set org.gnome.shell.extensions.dash-to-dock autohide true 2>/dev/null || true
+    gsettings set org.gnome.shell.extensions.dash-to-dock dock-fixed false 2>/dev/null || true
+    gsettings set org.gnome.shell.extensions.dash-to-dock intellihide true 2>/dev/null || true
+    gsettings set org.gnome.shell.extensions.dash-to-dock custom-theme-shrink true 2>/dev/null || true
+    gsettings set org.gnome.shell.extensions.dash-to-dock show-trash-icon false 2>/dev/null || true
+    gsettings set org.gnome.shell.extensions.dash-to-dock show-mounts false 2>/dev/null || true
+
+    log_pass "macOS Ver 3.0 desktop gsettings configuration applied successfully."
+}
+
+install_macos_theme_tools() {
+    log_info "macOS Ver 3.0 Theme & Extensions Setup Guidance"
+    echo "=================================================="
+    echo "Recommended Theme Repositories & GNOME Extensions:"
+    echo "1. WhiteSur GTK Theme: https://github.com/vinceliuice/WhiteSur-gtk-theme"
+    echo "2. WhiteSur Icon Theme: https://github.com/vinceliuice/WhiteSur-icon-theme"
+    echo "3. WhiteSur Cursor Theme: https://github.com/vinceliuice/WhiteSur-cursors"
+    echo "4. GNOME Extensions: Dash to Dock, User Themes, Blur my Shell"
+    echo "=================================================="
+    echo "Quick Installation Commands:"
+    echo "  git clone https://github.com/vinceliuice/WhiteSur-gtk-theme.git /tmp/WhiteSur-gtk-theme"
+    echo "  bash /tmp/WhiteSur-gtk-theme/install.sh -c Dark -t all -N glassy -s 220"
+    echo "  git clone https://github.com/vinceliuice/WhiteSur-icon-theme.git /tmp/WhiteSur-icon-theme"
+    echo "  bash /tmp/WhiteSur-icon-theme/install.sh -a -t default"
+    echo "=================================================="
+    log_pass "macOS theme tools guidance displayed."
 }
 
 dump_dconf() {
@@ -88,11 +154,30 @@ load_dconf() {
 }
 
 main() {
-    local action="${1:-apply}"
+    local action="${1:---apply}"
+    local preset="standard"
+
     case "${action}" in
         --apply)
+            preset="${2:-standard}"
             add_bookmark "file:///mnt/data" "Data Store" "${BOOKMARKS_FILE}"
-            apply_gsettings_tweaks
+            if [[ "${preset}" == "macos" ]]; then
+                apply_macos_gsettings_tweaks
+            else
+                apply_gsettings_tweaks
+            fi
+            ;;
+        --preset)
+            preset="${2:-standard}"
+            add_bookmark "file:///mnt/data" "Data Store" "${BOOKMARKS_FILE}"
+            if [[ "${preset}" == "macos" ]]; then
+                apply_macos_gsettings_tweaks
+            else
+                apply_gsettings_tweaks
+            fi
+            ;;
+        --install-macos-theme)
+            install_macos_theme_tools
             ;;
         --bookmark)
             add_bookmark "${2:-file:///mnt/data}" "${3:-Data Store}" "${BOOKMARKS_FILE}"
@@ -104,7 +189,7 @@ main() {
             load_dconf "${2:-${DCONF_PROFILE_PATH}}"
             ;;
         *)
-            echo "Usage: $(basename "$0") [--apply|--bookmark|--dconf-dump|--dconf-load]"
+            echo "Usage: $(basename "$0") [--apply [standard|macos]|--preset [standard|macos]|--install-macos-theme|--bookmark|--dconf-dump|--dconf-load]"
             exit 1
             ;;
     esac

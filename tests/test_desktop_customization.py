@@ -46,11 +46,25 @@ class TestDesktopCustomization(unittest.TestCase):
 
     @patch("subprocess.run")
     def test_apply_desktop_gsettings(self, mock_run):
-        """Verify execution of key gsettings schemas."""
+        """Verify execution of key gsettings schemas for standard preset."""
         mock_run.return_value = MagicMock(returncode=0)
-        res = apply_desktop_gsettings()
+        res = apply_desktop_gsettings(preset="standard")
         self.assertTrue(all(res.values()))
         self.assertGreater(mock_run.call_count, 5)
+        called_cmds = [call_args[0][0] for call_args in mock_run.call_args_list]
+        self.assertTrue(any("appmenu:minimize,maximize,close" in " ".join(cmd) for cmd in called_cmds))
+
+    @patch("subprocess.run")
+    def test_apply_desktop_gsettings_macos_preset(self, mock_run):
+        """Verify execution of macOS preset gsettings schemas including left traffic lights."""
+        mock_run.return_value = MagicMock(returncode=0)
+        res = apply_desktop_gsettings(preset="macos")
+        self.assertTrue(all(res.values()))
+        self.assertIn("org.gnome.desktop.wm.preferences.button-layout", res)
+        self.assertIn("org.gnome.shell.extensions.dash-to-dock.dock-position", res)
+        called_cmds = [call_args[0][0] for call_args in mock_run.call_args_list]
+        self.assertTrue(any("close,minimize,maximize:" in " ".join(cmd) for cmd in called_cmds))
+        self.assertTrue(any("org.gnome.shell.extensions.dash-to-dock" in " ".join(cmd) for cmd in called_cmds))
 
     @patch("subprocess.run")
     def test_dconf_dump_and_load(self, mock_run):

@@ -28,7 +28,8 @@ flowchart TD
     SYS --> UFW["UFW Firewall (Default Deny In)"]
 
     DSK --> FONT["Inter & JetBrains Mono Typography"]
-    DSK --> ERGO["Window Buttons, Dark Mode & Touchpad"]
+    DSK --> ERGO["Window Buttons (Standard / macOS Left Traffic Lights)"]
+    DSK --> DOCK["Centered Bottom Dock (Dash-to-Dock Preset)"]
     DSK --> GTK["Nautilus Bookmarks (/mnt/data Data Store)"]
     DSK --> DCONF["Dconf State Dump & Restore"]
 
@@ -133,6 +134,22 @@ Kustomisasi tampilan dan workflow desktop dioptimalkan untuk produktivitas devel
 * **Default Folder View**: List View (`list-view`) dengan format tanggal detail (`detailed`).
 * **GTK Bookmark Otomatis**: Menambahkan `file:///mnt/data Data Store` ke file `~/.config/gtk-3.0/bookmarks` sehingga partisi data persistent selalu muncul di sidebar file manager Nautilus.
 * **Dconf Backup / Restore**: Menyediakan backup deklaratif status konfigurasi GNOME ke `~/.config/dconf/gnome-desktop.ini`.
+
+### 4.4 Preset Estetika Visual macOS Ver 3.0
+
+Preset estetika `macos` (`osm tune desktop --preset macos` atau `bash scripts/setup_desktop_env.sh --preset macos`) mentransformasi desktop GNOME 48 menjadi layout elegan terinspirasi macOS:
+
+* **Tombol Jendela Kiri (Traffic Lights)**: Tombol Close, Minimize, dan Maximize diletakkan di sudut kiri atas jendela (`org.gnome.desktop.wm.preferences button-layout 'close,minimize,maximize:'`).
+* **Centered Bottom Dock (`dash-to-dock`)**:
+  * Posisi dock di bawah layar (`dock-position = 'BOTTOM'`)
+  * Dock terpusat / ukuran dinamis tanpa bar layar penuh (`extend-height = false`)
+  * Ukuran ikon dock 48px (`dash-max-icon-size = 48`)
+  * Mode cerdas Autohide & Intellihide (`autohide = true`, `intellihide = true`, `dock-fixed = false`)
+  * Dock shrink theme adaptif (`custom-theme-shrink = true`)
+  * Kebersihan visual: Sembunyikan ikon trash dan mounted storage (`show-trash-icon = false`, `show-mounts = false`)
+* **Tipografi & Tampilan Subpixel**: Font `Inter` untuk antarmuka/dokumen dan `JetBrains Mono` untuk terminal, dilengkapi subpixel antialiasing `rgba` dan hinting `slight`.
+* **Dark Mode & Night Light**: Dark mode preferensial global (`color-scheme = 'prefer-dark'`) dan jadwal Night Light otomatis.
+* **WhiteSur Theme & Extensions Guidance**: Panduan interaktif pemasangan tema GTK WhiteSur, ikon WhiteSur, kursor WhiteSur, serta GNOME extensions melalui perintah `bash scripts/setup_desktop_env.sh --install-macos-theme`.
 
 ---
 
@@ -253,21 +270,23 @@ osm tune system apply         # Menerapkan konfigurasi sysctl kernel performa ti
 # ----------------------------------------------------
 # 4. DESKTOP GNOME 48 TUNING
 # ----------------------------------------------------
-osm tune desktop audit        # Memeriksa daftar bookmark GTK Nautilus
-osm tune desktop apply        # Menerapkan tipografi Inter/JetBrains Mono, ergonomi, & bookmark /mnt/data
-osm tune desktop backup       # Mengekspor dconf settings ke ~/.config/dconf/gnome-desktop.ini
-osm tune desktop restore      # Mengimpor dconf settings dari ~/.config/dconf/gnome-desktop.ini
+osm tune desktop audit                    # Memeriksa daftar bookmark GTK Nautilus
+osm tune desktop apply                    # Menerapkan preset standar (tombol kanan, tipografi, bookmark)
+osm tune desktop --preset standard        # Menerapkan preset GNOME standar
+osm tune desktop --preset macos           # Menerapkan preset estetika macOS Ver 3.0 (traffic lights kiri, centered dock)
+osm tune desktop backup                   # Mengekspor dconf settings ke ~/.config/dconf/gnome-desktop.ini
+osm tune desktop restore                  # Mengimpor dconf settings dari ~/.config/dconf/gnome-desktop.ini
 
 # ----------------------------------------------------
 # 5. TERMINAL & DEVELOPER EXPERIENCE
 # ----------------------------------------------------
-osm tune terminal audit       # Memeriksa ketersediaan CLI tools, Starship, Tmux, dan Bashrc hooks
-osm tune terminal setup       # Memasang konfigurasi Starship, Tmux, dan injeksi Bash power-up hooks
+osm tune terminal audit                   # Memeriksa ketersediaan CLI tools, Starship, Tmux, dan Bashrc hooks
+osm tune terminal setup                   # Memasang konfigurasi Starship, Tmux, dan injeksi Bash power-up hooks
 
 # ----------------------------------------------------
 # 6. END-TO-END AUTOMATION
 # ----------------------------------------------------
-osm tune all                  # Menjalankan seluruh subrutin kustomisasi end-to-end secara sekuensial
+osm tune all                              # Menjalankan seluruh subrutin kustomisasi end-to-end secara sekuensial
 ```
 
 ---
@@ -291,6 +310,9 @@ bash scripts/tune_system.sh --audit
 
 # GNOME Desktop
 bash scripts/setup_desktop_env.sh --apply
+bash scripts/setup_desktop_env.sh --preset standard
+bash scripts/setup_desktop_env.sh --preset macos
+bash scripts/setup_desktop_env.sh --install-macos-theme
 bash scripts/setup_desktop_env.sh --dconf-dump
 bash scripts/setup_desktop_env.sh --dconf-load
 
