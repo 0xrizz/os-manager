@@ -17,12 +17,13 @@ echo "============================================================"
 echo " [osm] Host Security ID (HSI) Remediation Engine"
 echo "============================================================"
 
-# Guardrail: Ensure /dev/nvme0n1p4 is protected
+# Guardrail: Ensure /dev/nvme0n1p4 (DATA_STORE) and /mnt/data are protected
 PROTECTED_PARTITION="/dev/nvme0n1p4"
+PROTECTED_MOUNT="/mnt/data"
 
 if [[ "${DRY_RUN}" == "true" ]]; then
     echo "[DRY-RUN] Mode active. No system files will be written."
-    echo "[DRY-RUN] Protected partition ${PROTECTED_PARTITION} is safe."
+    echo "[DRY-RUN] Protected partition ${PROTECTED_PARTITION} (${PROTECTED_MOUNT}) is safe."
     echo "[DRY-RUN] Would install systemd-zram-generator"
     echo "[DRY-RUN] Would configure /etc/systemd/zram-generator.conf"
     echo "[DRY-RUN] Would update /etc/default/grub with mem_sleep_default=s2idle"
@@ -61,8 +62,8 @@ if [[ -f /etc/fstab ]]; then
     echo "    Backing up /etc/fstab to /etc/fstab.bak.${TIMESTAMP}..."
     cp /etc/fstab "/etc/fstab.bak.${TIMESTAMP}"
 
-    # Comment out unencrypted swap partitions, excluding any protected partitions
-    sed -i -E 's|^([^#].*\s+swap\s+.*)$|# Disabled for HSI hardening: \1|g' /etc/fstab
+    # Comment out unencrypted swap partitions, explicitly excluding protected DATA_STORE partitions
+    sed -i -E '/nvme0n1p4|\/mnt\/data/! s|^([^#].*\s+swap\s+.*)$|# Disabled for HSI hardening: \1|g' /etc/fstab
 fi
 
 # Reload and start zram generator

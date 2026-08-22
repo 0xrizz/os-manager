@@ -142,6 +142,63 @@ def audit_hsi_posture() -> dict[str, Any]:
     }
 
 
+def get_sudo_password(env_path: Path | None = None) -> str | None:
+    """Retrieve sudo password from environment or .env file in repo root."""
+    if "SUDO_PASSWORD" in os.environ and os.environ["SUDO_PASSWORD"]:
+        return os.environ["SUDO_PASSWORD"]
+    if env_path is None:
+        env_path = Path(__file__).resolve().parents[2] / ".env"
+    if env_path.is_file():
+        try:
+            content = env_path.read_text()
+            for line in content.splitlines():
+                line = line.strip()
+                if line.startswith("SUDO_PASSWORD="):
+                    return line.split("=", 1)[1].strip()
+            # If no SUDO_PASSWORD prefix, fallback to single-line stripped content if non-empty
+            stripped = content.strip()
+            if stripped and "\n" not in stripped and "=" not in stripped:
+                return stripped
+        except Exception:
+            pass
+    return None
+
+
+def run_privileged_command(
+    cmd: list[str],
+    env_path: Path | None = None,
+    **kwargs: Any,
+) -> subprocess.CompletedProcess[Any]:
+    """Execute command with elevated privileges using non-interactive sudo compliance.
+
+    Tests `sudo -n true` first. If password is required, reads SUDO_PASSWORD from
+    env or .env file and passes it via `sudo -S`.
+    """
+    if os.geteuid() == 0:
+        return subprocess.run(cmd, **kwargs)
+
+    # Test passwordless sudo
+    try:
+        res_test = subprocess.run(["sudo", "-n", "true"], capture_output=True, check=False)
+        if res_test.returncode == 0:
+            return subprocess.run(["sudo"] + cmd, **kwargs)
+    except Exception:
+        pass
+
+    # Try non-interactive sudo with password if available
+    password = get_sudo_password(env_path=env_path)
+    if password:
+        return subprocess.run(
+            ["sudo", "-S"] + cmd,
+            input=f"{password}\n",
+            text=True,
+            **kwargs,
+        )
+
+    # Fallback to standard sudo invocation
+    return subprocess.run(["sudo"] + cmd, **kwargs)
+
+
 def run_hsi(args: list[str]) -> int:
     """Execute HSI audit or hardening CLI command."""
     parser = argparse.ArgumentParser(
@@ -186,8 +243,7 @@ def run_hsi(args: list[str]) -> int:
             print(f"[ERROR] Playbook script not found at {script_path}")
             return 1
 
-        cmd = ["sudo", str(script_path)] if os.geteuid() != 0 else [str(script_path)]
-        res = subprocess.run(cmd, check=False)
+        res = run_privileged_command([str(script_path)], check=False)
         return res.returncode
 
     return 0

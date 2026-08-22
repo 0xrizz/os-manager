@@ -1,14 +1,20 @@
 """Tests for HSI security hardening module."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+import os
+import subprocess
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from os_manager.commands.hsi import (
     audit_hsi_posture,
-    generate_zram_config,
-    check_sleep_state,
     check_active_swap,
+    check_sleep_state,
+    generate_zram_config,
+    get_sudo_password,
     run_hsi,
+    run_privileged_command,
 )
 
 
@@ -84,3 +90,91 @@ def test_run_hsi_audit_json(capsys):
         captured = capsys.readouterr()
         assert code == 0
         assert '"overall_status": "hardened"' in captured.out
+
+
+def test_get_sudo_password_env_var(monkeypatch):
+    """Verify SUDO_PASSWORD is read from os.environ when present."""
+    monkeypatch.setenv("SUDO_PASSWORD", "env_secret_123")
+    assert get_sudo_password() == "env_secret_123"
+
+
+def test_get_sudo_password_dotenv_file(tmp_path, monkeypatch):
+    """Verify SUDO_PASSWORD is parsed from .env file when not in os.environ."""
+    monkeypatch.delenv("SUDO_PASSWORD", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text("SOME_VAR=foo\nSUDO_PASSWORD=file_secret_456\nOTHER=bar\n")
+    assert get_sudo_password(env_path=env_file) == "file_secret_456"
+
+
+def test_get_sudo_password_none(tmp_path, monkeypatch):
+    """Verify get_sudo_password returns None when no password configured."""
+    monkeypatch.delenv("SUDO_PASSWORD", raising=False)
+    assert get_sudo_password(env_path=tmp_path / ".nonexistent") is None
+
+
+def test_run_privileged_command_as_root(monkeypatch):
+    """Verify command runs without sudo prefix when already root."""
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(args=["/bin/foo"], returncode=0)
+        res = run_privileged_command(["/bin/foo"])
+        mock_run.assert_called_once_with(["/bin/foo"])
+        assert res.returncode == 0
+
+
+def test_run_privileged_command_passwordless_sudo(monkeypatch):
+    """Verify passwordless sudo is used when sudo -n true succeeds."""
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    with patch("subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            subprocess.CompletedProcess(args=["sudo", "-n", "true"], returncode=0),
+            subprocess.CompletedProcess(args=["sudo", "/bin/foo"], returncode=0),
+        ]
+        res = run_privileged_command(["/bin/foo"])
+        assert mock_run.call_count == 2
+        mock_run.assert_called_with(["sudo", "/bin/foo"])
+        assert res.returncode == 0
+
+
+def test_run_privileged_command_sudo_with_password(monkeypatch):
+    """Verify sudo -S with password input when sudo -n true fails and password exists."""
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    monkeypatch.setenv("SUDO_PASSWORD", "secretpass")
+    with patch("subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            subprocess.CompletedProcess(args=["sudo", "-n", "true"], returncode=1),
+            subprocess.CompletedProcess(args=["sudo", "-S", "/bin/foo"], returncode=0),
+        ]
+        res = run_privileged_command(["/bin/foo"])
+        assert mock_run.call_count == 2
+        mock_run.assert_called_with(
+            ["sudo", "-S", "/bin/foo"],
+            input="secretpass\n",
+            text=True,
+        )
+        assert res.returncode == 0
+
+
+def test_run_privileged_command_sudo_fallback(tmp_path, monkeypatch):
+    """Verify fallback to standard sudo when no password is available."""
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    monkeypatch.delenv("SUDO_PASSWORD", raising=False)
+    with patch("subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            subprocess.CompletedProcess(args=["sudo", "-n", "true"], returncode=1),
+            subprocess.CompletedProcess(args=["sudo", "/bin/foo"], returncode=0),
+        ]
+        res = run_privileged_command(["/bin/foo"], env_path=tmp_path / ".nonexistent")
+        assert mock_run.call_count == 2
+        mock_run.assert_called_with(["sudo", "/bin/foo"])
+        assert res.returncode == 0
+
+
+def test_run_hsi_apply_invokes_privileged_command(tmp_path):
+    """Verify run_hsi apply invokes run_privileged_command with script path."""
+    with patch("os_manager.commands.hsi.run_privileged_command") as mock_priv, \
+         patch("pathlib.Path.is_file", return_value=True):
+        mock_priv.return_value = subprocess.CompletedProcess(args=["script"], returncode=0)
+        code = run_hsi(["apply"])
+        assert code == 0
+        assert mock_priv.called
