@@ -5,7 +5,7 @@ import json
 import sys
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 class TestOsmCli(unittest.TestCase):
@@ -134,6 +134,107 @@ class TestOsmCli(unittest.TestCase):
         code, out, _ = self.run_cli(["tune", "terminal", "audit"])
         self.assertEqual(code, 0)
         self.assertIn("Terminal environment audit", out)
+
+    def test_cli_tune_storage_audit(self):
+        """Verify osm tune storage --audit CLI invocation."""
+        code, out, _ = self.run_cli(["tune", "storage", "--audit"])
+        self.assertEqual(code, 0)
+        self.assertIn("Storage", out)
+
+    @patch("os_manager.commands.tune.migrate_ntfs_driver")
+    @patch("subprocess.run")
+    def test_cli_tune_storage_apply(self, mock_run, mock_migrate):
+        """Verify osm tune storage --apply CLI invocation."""
+        mock_migrate.return_value = {"success": True, "status": "migrated"}
+        mock_run.return_value = MagicMock(returncode=0)
+        code, out, _ = self.run_cli(["tune", "storage", "--apply"])
+        self.assertEqual(code, 0)
+        self.assertIn("Storage", out)
+
+    def test_cli_tune_memory_audit(self):
+        """Verify osm tune memory --audit CLI invocation."""
+        code, out, _ = self.run_cli(["tune", "memory", "--audit"])
+        self.assertEqual(code, 0)
+        self.assertIn("EarlyOOM", out)
+
+    @patch("os_manager.commands.tune.configure_earlyoom", return_value=True)
+    def test_cli_tune_memory_apply(self, mock_conf):
+        """Verify osm tune memory --apply CLI invocation."""
+        code, out, _ = self.run_cli(["tune", "memory", "--apply"])
+        self.assertEqual(code, 0)
+        self.assertIn("EarlyOOM", out)
+
+    def test_cli_tune_hardware_audit(self):
+        """Verify osm tune hardware --audit CLI invocation."""
+        code, out, _ = self.run_cli(["tune", "hardware", "--audit"])
+        self.assertEqual(code, 0)
+        self.assertIn("Battery Conservation", out)
+
+    @patch("os_manager.commands.tune.set_battery_conservation_mode", return_value=True)
+    @patch("os_manager.commands.tune.set_fn_lock_mode", return_value=True)
+    @patch("subprocess.run")
+    def test_cli_tune_hardware_apply(self, mock_run, mock_fn, mock_bat):
+        """Verify osm tune hardware --apply CLI invocation."""
+        mock_run.return_value = MagicMock(returncode=0)
+        code, out, _ = self.run_cli(["tune", "hardware", "--apply"])
+        self.assertEqual(code, 0)
+        self.assertIn("Hardware", out)
+
+    def test_cli_tune_system_audit(self):
+        """Verify osm tune system --audit CLI invocation."""
+        code, out, _ = self.run_cli(["tune", "system", "--audit"])
+        self.assertEqual(code, 0)
+        self.assertIn("vm.swappiness", out)
+
+    @patch("subprocess.run")
+    def test_cli_tune_system_apply(self, mock_run):
+        """Verify osm tune system --apply CLI invocation."""
+        mock_run.return_value = MagicMock(returncode=0)
+        code, out, _ = self.run_cli(["tune", "system", "--apply"])
+        self.assertEqual(code, 0)
+
+    def test_cli_tune_persist_status(self):
+        """Verify osm tune persist --status CLI invocation."""
+        code, out, _ = self.run_cli(["tune", "persist", "--status"])
+        self.assertEqual(code, 0)
+        self.assertIn("Persistence", out)
+
+    @patch("os_manager.commands.tune.configure_hardware_persistence", return_value=True)
+    def test_cli_tune_persist_enable(self, mock_persist):
+        """Verify osm tune persist --enable CLI invocation."""
+        code, out, _ = self.run_cli(["tune", "persist", "--enable"])
+        self.assertEqual(code, 0)
+        self.assertIn("Persistence", out)
+
+    @patch("os_manager.commands.tune.configure_hardware_persistence", return_value=True)
+    def test_cli_tune_persist_disable(self, mock_persist):
+        """Verify osm tune persist --disable CLI invocation."""
+        code, out, _ = self.run_cli(["tune", "persist", "--disable"])
+        self.assertEqual(code, 0)
+        self.assertIn("Persistence", out)
+
+    def test_cli_tune_all_json(self):
+        """Verify osm tune all --json output returns valid telemetry payload."""
+        code, out, _ = self.run_cli(["tune", "all", "--json"])
+        self.assertEqual(code, 0)
+        data = json.loads(out)
+        self.assertIn("subsystems", data)
+        self.assertIn("storage", data["subsystems"])
+        self.assertIn("memory", data["subsystems"])
+        self.assertIn("hardware", data["subsystems"])
+        self.assertIn("sysctl", data["subsystems"])
+        self.assertEqual(data["status"], "success")
+
+    def test_collect_tune_telemetry(self):
+        """Verify collect_tune_telemetry produces valid dictionary adhering to schema."""
+        from os_manager.commands.tune import collect_tune_telemetry
+        telemetry = collect_tune_telemetry()
+        self.assertEqual(telemetry["status"], "success")
+        self.assertIn("timestamp", telemetry)
+        self.assertIn("storage", telemetry["subsystems"])
+        self.assertIn("memory", telemetry["subsystems"])
+        self.assertIn("hardware", telemetry["subsystems"])
+        self.assertIn("sysctl", telemetry["subsystems"])
 
 
 if __name__ == "__main__":

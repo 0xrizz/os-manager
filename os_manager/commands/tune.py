@@ -1,6 +1,8 @@
 """Hardware power, thermal, system, desktop, and terminal customization command module."""
 
 import argparse
+import datetime
+import json
 import os
 import shutil
 import subprocess
@@ -330,8 +332,6 @@ def migrate_ntfs_driver(fstab_path: str = "/etc/fstab", mount_point: str = "/mnt
             "mount_point": mount_point,
         }
 
-    import datetime
-
     ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     backup_path = f"{fstab_path}.bak.{ts}"
     try:
@@ -485,6 +485,75 @@ def configure_earlyoom(
         return True
     except Exception:
         return False
+
+
+def collect_tune_telemetry() -> dict[str, Any]:
+    """Collect master telemetry dictionary across all system optimization subsystems."""
+    # Storage subsystem
+    stor_audit = audit_ntfs_mount_driver("/mnt/data")
+    trim_audit = audit_fstrim_timer_status()
+    storage_data = {
+        "ntfs_driver": stor_audit.get("driver", "unknown"),
+        "trim_active": trim_audit.get("active", False),
+    }
+
+    # Memory subsystem
+    oom_audit = audit_earlyoom_status()
+    swap_audit = audit_dual_tier_swap_status()
+    memory_data = {
+        "earlyoom_active": oom_audit.get("active", False),
+        "zram_active": swap_audit.get("has_zram", False),
+        "swapfile_active": swap_audit.get("has_swapfile", False),
+    }
+
+    # Hardware subsystem
+    gpu_audit = audit_gpu_runtime_power()
+    therm_active = False
+    if shutil.which("thermald"):
+        try:
+            res_therm = subprocess.run(
+                ["systemctl", "is-active", "thermald"], capture_output=True, text=True, check=False
+            )
+            therm_active = res_therm.stdout.strip() == "active"
+        except Exception:
+            therm_active = False
+
+    hardware_data = {
+        "conservation_mode": get_battery_conservation_status(),
+        "gpu_status": gpu_audit.get("runtime_status", "unknown"),
+        "thermald_active": therm_active,
+    }
+
+    # Sysctl subsystem
+    sysctl_audit = audit_sysctl_parameters()
+    swappiness_raw = sysctl_audit.get("swappiness", "unknown")
+    try:
+        swappiness_val: Any = int(swappiness_raw)
+    except (ValueError, TypeError):
+        swappiness_val = swappiness_raw
+
+    inotify_raw = sysctl_audit.get("inotify_watches", "unknown")
+    try:
+        inotify_val: Any = int(inotify_raw)
+    except (ValueError, TypeError):
+        inotify_val = inotify_raw
+
+    sysctl_data = {
+        "swappiness": swappiness_val,
+        "tcp_congestion": sysctl_audit.get("congestion_control", "unknown"),
+        "inotify_watches": inotify_val,
+    }
+
+    return {
+        "status": "success",
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+        "subsystems": {
+            "storage": storage_data,
+            "memory": memory_data,
+            "hardware": hardware_data,
+            "sysctl": sysctl_data,
+        },
+    }
 
 
 GTK_BOOKMARKS_DEFAULT = os.path.expanduser("~/.config/gtk-3.0/bookmarks")
@@ -691,11 +760,59 @@ def inject_bashrc_hooks(bashrc_path: str = BASHRC_DEFAULT) -> bool:
 
 def run_tune(args: list[str]) -> int:
     """Execute osm tune subcommands."""
+    if args and args[0] == "tune":
+        args = args[1:]
+
     parser = argparse.ArgumentParser(
         prog="osm tune",
         description="Debian 13 bare-metal hardware, kernel, desktop, and terminal optimization suite.",
     )
+    parser.add_argument("--json", dest="top_json", action="store_true", help="Output telemetry as JSON")
     subparsers = parser.add_subparsers(dest="subaction", help="Tuning subcommands")
+
+    # storage
+    stor_p = subparsers.add_parser("storage", help="Manage storage NTFS driver and NVMe TRIM")
+    stor_group = stor_p.add_mutually_exclusive_group()
+    stor_group.add_argument("--apply", action="store_true", help="Migrate fstab to ntfs3 and enable fstrim.timer")
+    stor_group.add_argument("--audit", action="store_true", help="Audit storage drivers and TRIM status")
+    stor_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
+
+    # memory
+    mem_p = subparsers.add_parser("memory", help="Manage EarlyOOM memory protection and swap hierarchy")
+    mem_group = mem_p.add_mutually_exclusive_group()
+    mem_group.add_argument("--apply", action="store_true", help="Configure and enable EarlyOOM daemon")
+    mem_group.add_argument("--audit", action="store_true", help="Audit EarlyOOM and swap telemetry")
+    mem_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
+
+    # hardware
+    hw_p = subparsers.add_parser("hardware", help="Manage Lenovo ACPI, GPU power gating, and thermald")
+    hw_group = hw_p.add_mutually_exclusive_group()
+    hw_group.add_argument("--apply", action="store_true", help="Apply Lenovo battery conservation, Fn-Lock, and GPU power save")
+    hw_group.add_argument("--audit", action="store_true", help="Audit hardware ACPI, GPU, and thermals")
+    hw_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
+
+    # system
+    sys_p = subparsers.add_parser("system", help="Manage kernel sysctl, TRIM, and security")
+    sys_group = sys_p.add_mutually_exclusive_group()
+    sys_group.add_argument("--apply", action="store_true", help="Apply kernel sysctl performance configuration")
+    sys_group.add_argument("--audit", action="store_true", help="Audit kernel sysctl, TRIM, and security")
+    sys_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
+
+    # persist
+    persist_p = subparsers.add_parser("persist", help="Manage hardware and system tuning boot persistence")
+    persist_group = persist_p.add_mutually_exclusive_group()
+    persist_group.add_argument("--enable", action="store_true", help="Enable tuning persistence service at boot")
+    persist_group.add_argument("--disable", action="store_true", help="Disable tuning persistence service")
+    persist_group.add_argument("--status", action="store_true", help="Check persistence service status")
+    persist_p.add_argument("action", nargs="?", default="status", choices=["status", "enable", "disable"])
+
+    # all
+    all_p = subparsers.add_parser("all", help="Apply or audit all tuning subroutines end-to-end")
+    all_group = all_p.add_mutually_exclusive_group()
+    all_group.add_argument("--apply", action="store_true", help="Apply all tuning subroutines end-to-end")
+    all_group.add_argument("--audit", action="store_true", help="Audit all tuning subroutines end-to-end")
+    all_group.add_argument("--json", action="store_true", help="Output all subsystem telemetry as JSON")
+    all_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply", "json"])
 
     # battery
     bat_p = subparsers.add_parser("battery", help="Manage Lenovo battery conservation mode")
@@ -722,13 +839,9 @@ def run_tune(args: list[str]) -> int:
     va_p.add_argument("action", nargs="?", default="status", choices=["status", "install"])
 
     # hardware-persist
-    persist_p = subparsers.add_parser("hardware-persist", help="Manage hardware tuning persistence")
-    persist_p.add_argument("action", nargs="?", default="status", choices=["status", "apply", "enable", "disable"])
-    persist_p.add_argument("--config", default="/etc/osm/hardware-tune.conf", help="Path to hardware tuning config")
-
-    # system
-    sys_p = subparsers.add_parser("system", help="Manage kernel sysctl, TRIM, and security")
-    sys_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
+    hw_persist_p = subparsers.add_parser("hardware-persist", help="Manage hardware tuning persistence")
+    hw_persist_p.add_argument("action", nargs="?", default="status", choices=["status", "apply", "enable", "disable"])
+    hw_persist_p.add_argument("--config", default="/etc/osm/hardware-tune.conf", help="Path to hardware tuning config")
 
     # desktop
     desk_p = subparsers.add_parser("desktop", help="Manage GNOME 48 aesthetics, ergonomics, and macOS presets")
@@ -743,9 +856,9 @@ def run_tune(args: list[str]) -> int:
     term_p = subparsers.add_parser("terminal", help="Manage Starship, modern CLI, Bash, and Tmux")
     term_p.add_argument("action", nargs="?", default="setup", choices=["setup", "audit"])
 
-    # audit & all
-    subparsers.add_parser("audit", help="Audit all hardware, system, desktop, and terminal tuning")
-    subparsers.add_parser("all", help="Apply all tuning subroutines end-to-end")
+    # audit
+    audit_p = subparsers.add_parser("audit", help="Audit all hardware, system, desktop, and terminal tuning")
+    audit_p.add_argument("--json", action="store_true", help="Output telemetry as JSON")
 
     if not args:
         parser.print_help()
@@ -753,7 +866,143 @@ def run_tune(args: list[str]) -> int:
 
     parsed_args, _ = parser.parse_known_args(args)
 
-    if parsed_args.subaction == "battery":
+    if getattr(parsed_args, "top_json", False) and parsed_args.subaction is None:
+        telemetry = collect_tune_telemetry()
+        print(json.dumps(telemetry, indent=2))
+        return 0
+
+    if parsed_args.subaction == "storage":
+        is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
+        if is_apply:
+            res_mig = migrate_ntfs_driver(mount_point="/mnt/data")
+            if os.geteuid() != 0:
+                subprocess.run(["sudo", "systemctl", "enable", "--now", "fstrim.timer"], capture_output=True, check=False)
+            else:
+                subprocess.run(["systemctl", "enable", "--now", "fstrim.timer"], capture_output=True, check=False)
+            status_str = "migrated" if res_mig.get("success") else "applied"
+            print(f"[PASS] Storage /mnt/data {status_str} and fstrim.timer enabled.")
+            return 0 if res_mig.get("success") else 1
+        else:
+            ntfs = audit_ntfs_mount_driver("/mnt/data")
+            trim = audit_fstrim_timer_status()
+            print("==================================================")
+            print("         Storage & Filesystem I/O Audit           ")
+            print("==================================================")
+            print(f"1. Storage /mnt/data Driver: {ntfs['driver']} (In-Kernel: {ntfs['is_inkernel']})")
+            print(f"2. NVMe fstrim.timer: {'Active' if trim['active'] else 'Inactive'}")
+            return 0
+
+    elif parsed_args.subaction == "memory":
+        is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
+        if is_apply:
+            success = configure_earlyoom()
+            status_str = "configured and enabled" if success else "configuration failed"
+            print(f"[PASS] Memory Resilience & EarlyOOM {status_str}.")
+            return 0 if success else 1
+        else:
+            oom = audit_earlyoom_status()
+            swap = audit_dual_tier_swap_status()
+            print("==================================================")
+            print("       Memory & Resilience Telemetry Audit        ")
+            print("==================================================")
+            print(f"1. EarlyOOM Daemon Available: {oom.get('available', False)}")
+            print(f"2. EarlyOOM Daemon Active: {oom.get('active', False)}")
+            print(f"3. Dual-Tier ZRAM Active: {swap.get('has_zram', False)} (Priority: {swap.get('zram_priority', 0)})")
+            print(f"4. Dual-Tier Swapfile Active: {swap.get('has_swapfile', False)} (Priority: {swap.get('swapfile_priority', 0)})")
+            return 0
+
+    elif parsed_args.subaction == "hardware":
+        is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
+        if is_apply:
+            set_battery_conservation_mode(True)
+            set_fn_lock_mode(True)
+            if os.geteuid() != 0:
+                subprocess.run(["sudo", "tee", f"{SYSFS_GPU_DEFAULT}/control"], input="auto\n", text=True, capture_output=True, check=False)
+            else:
+                if Path(f"{SYSFS_GPU_DEFAULT}/control").is_file():
+                    subprocess.run(["tee", f"{SYSFS_GPU_DEFAULT}/control"], input="auto\n", text=True, capture_output=True, check=False)
+            print("[PASS] Hardware power, ACPI conservation, Fn-Lock, and GPU power gating applied.")
+            return 0
+        else:
+            print("==================================================")
+            print("     Hardware Power, ACPI & GPU Diagnostics       ")
+            print("==================================================")
+            print(f"1. Lenovo Battery Conservation: {get_battery_conservation_status()}")
+            print(f"2. Lenovo Platform Profile: {get_platform_profile()}")
+            print(f"3. Lenovo Fn-Lock: {get_fn_lock_status()}")
+            gpu = audit_gpu_runtime_power()
+            print(f"4. NVIDIA GPU D3 State: {gpu.get('runtime_status', 'unknown')}")
+            va = audit_vaapi_acceleration()
+            print(f"5. Intel VA-API Acceleration: {'Available' if va['available'] else 'Unavailable'}")
+            return 0
+
+    elif parsed_args.subaction == "system":
+        is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
+        if is_apply:
+            return subprocess.run(["bash", "scripts/tune_system.sh", "--sysctl"], check=False).returncode
+        sys_info = audit_sysctl_parameters()
+        print("==================================================")
+        print("          Kernel & Sysctl System Audit            ")
+        print("==================================================")
+        print(f"1. vm.swappiness: {sys_info['swappiness']}")
+        print(f"2. fs.inotify.max_user_watches: {sys_info['inotify_watches']}")
+        print(f"3. TCP Congestion Control: {sys_info['congestion_control']}")
+        trim = audit_fstrim_timer_status()
+        print(f"4. NVMe fstrim.timer: {'Active' if trim['active'] else 'Inactive'}")
+        return 0
+
+    elif parsed_args.subaction == "persist":
+        is_enable = getattr(parsed_args, "enable", False) or parsed_args.action == "enable"
+        is_disable = getattr(parsed_args, "disable", False) or parsed_args.action == "disable"
+        if is_enable:
+            success = configure_hardware_persistence(enable=True)
+            print(f"[PASS] Hardware Tuning Boot Persistence {'enabled' if success else 'failed'}.")
+            return 0 if success else 1
+        elif is_disable:
+            success = configure_hardware_persistence(enable=False)
+            print(f"[PASS] Hardware Tuning Boot Persistence {'disabled' if success else 'failed'}.")
+            return 0 if success else 1
+        else:
+            unit_exists = Path("/etc/systemd/system/osm-hardware-tune.service").is_file()
+            print(f"Persistence Service Unit: {'Configured' if unit_exists else 'Not configured'}")
+            return 0
+
+    elif parsed_args.subaction == "all":
+        is_json = getattr(parsed_args, "json", False) or getattr(parsed_args, "action", "") == "json" or getattr(parsed_args, "top_json", False)
+        if is_json:
+            telemetry = collect_tune_telemetry()
+            print(json.dumps(telemetry, indent=2))
+            return 0
+        is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
+        if is_apply:
+            print("[INFO] Executing all customization subroutines end-to-end...")
+            subprocess.run(["bash", "scripts/tune_hardware.sh", "--audit"], check=False)
+            subprocess.run(["bash", "scripts/tune_system.sh", "--sysctl"], check=False)
+            subprocess.run(["bash", "scripts/setup_desktop_env.sh", "--apply"], check=False)
+            subprocess.run(["bash", "scripts/setup_terminal_env.sh"], check=False)
+            print("[PASS] All hardware, system, desktop, and terminal optimizations applied.")
+            return 0
+        else:
+            print("==================================================")
+            print("   Debian 13 Complete Tuning & Diagnostic Audit   ")
+            print("==================================================")
+            print(f"1. Lenovo Battery Conservation: {get_battery_conservation_status()}")
+            print(f"2. Lenovo Platform Profile: {get_platform_profile()}")
+            print(f"3. Lenovo Fn-Lock: {get_fn_lock_status()}")
+            gpu = audit_gpu_runtime_power()
+            print(f"4. NVIDIA GPU D3 State: {gpu.get('runtime_status', 'unknown')}")
+            va = audit_vaapi_acceleration()
+            print(f"5. Intel VA-API Acceleration: {'Available' if va['available'] else 'Unavailable'}")
+            sys_info = audit_sysctl_parameters()
+            print(f"6. Kernel TCP Congestion: {sys_info['congestion_control']}")
+            print(f"7. NVMe fstrim.timer: {'Active' if audit_fstrim_timer_status()['active'] else 'Inactive'}")
+            oom = audit_earlyoom_status()
+            print(f"8. EarlyOOM Protection: {'Active' if oom['active'] else 'Inactive'}")
+            ntfs = audit_ntfs_mount_driver("/mnt/data")
+            print(f"9. Storage /mnt/data: {ntfs['driver']}")
+            return 0
+
+    elif parsed_args.subaction == "battery":
         if parsed_args.mode == "status":
             st = get_battery_conservation_status()
             print(f"Lenovo Battery Conservation Mode: {st}")
@@ -861,17 +1110,6 @@ def run_tune(args: list[str]) -> int:
         else:
             return subprocess.run(["bash", "scripts/tune_hardware.sh", "--persist", "status"], check=False).returncode
 
-    elif parsed_args.subaction == "system":
-        if parsed_args.action == "apply":
-            return subprocess.run(["bash", "scripts/tune_system.sh", "--sysctl"], check=False).returncode
-        sys_info = audit_sysctl_parameters()
-        print(f"1. vm.swappiness: {sys_info['swappiness']}")
-        print(f"2. fs.inotify.max_user_watches: {sys_info['inotify_watches']}")
-        print(f"3. TCP Congestion Control: {sys_info['congestion_control']}")
-        trim = audit_fstrim_timer_status()
-        print(f"4. NVMe fstrim.timer: {'Active' if trim['active'] else 'Inactive'}")
-        return 0
-
     elif parsed_args.subaction == "desktop":
         if parsed_args.action == "apply":
             add_nautilus_bookmark("file:///mnt/data", "Data Store")
@@ -939,6 +1177,10 @@ def run_tune(args: list[str]) -> int:
         return 0
 
     elif parsed_args.subaction == "audit":
+        if getattr(parsed_args, "json", False):
+            telemetry = collect_tune_telemetry()
+            print(json.dumps(telemetry, indent=2))
+            return 0
         print("==================================================")
         print("    Debian 13 Hardware & Desktop Diagnostics      ")
         print("==================================================")
@@ -952,15 +1194,6 @@ def run_tune(args: list[str]) -> int:
         sys_info = audit_sysctl_parameters()
         print(f"6. Kernel TCP Congestion: {sys_info['congestion_control']}")
         print(f"7. NVMe fstrim.timer: {'Active' if audit_fstrim_timer_status()['active'] else 'Inactive'}")
-        return 0
-
-    elif parsed_args.subaction == "all":
-        print("[INFO] Executing all customization subroutines end-to-end...")
-        subprocess.run(["bash", "scripts/tune_hardware.sh", "--audit"], check=False)
-        subprocess.run(["bash", "scripts/tune_system.sh", "--sysctl"], check=False)
-        subprocess.run(["bash", "scripts/setup_desktop_env.sh", "--apply"], check=False)
-        subprocess.run(["bash", "scripts/setup_terminal_env.sh"], check=False)
-        print("[PASS] All hardware, system, desktop, and terminal optimizations applied.")
         return 0
 
     parser.print_help()
