@@ -236,6 +236,15 @@ class TestOsmCli(unittest.TestCase):
         self.assertIn("hardware", telemetry["subsystems"])
         self.assertIn("sysctl", telemetry["subsystems"])
 
+    def test_cli_hsi_subcommand(self):
+        """Verify that osm hsi routes to run_hsi."""
+        with patch("os_manager.commands.hsi.run_hsi", return_value=0) as mock_hsi:
+            from os_manager.cli import main
+            code = main(["hsi", "audit"])
+            self.assertEqual(code, 0)
+            mock_hsi.assert_called_once_with(["audit"])
+
 
 if __name__ == "__main__":
     unittest.main()
+

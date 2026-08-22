@@ -7,6 +7,7 @@ from . import __version__
 from .commands.check import run_check
 from .commands.clean import run_clean
 from .commands.diag import run_diag
+from .commands.hsi import run_hsi
 from .commands.init import run_init
 from .commands.perf import run_perf
 from .commands.service import run_service
@@ -63,6 +64,9 @@ def build_parser() -> argparse.ArgumentParser:
     # tune
     subparsers.add_parser("tune", add_help=False, help="Hardware, system, desktop, and terminal tuning engine")
 
+    # hsi
+    subparsers.add_parser("hsi", add_help=False, help="Host Security ID (HSI) hardware & firmware hardening engine")
+
     return parser
 
 
@@ -94,6 +98,9 @@ def main(argv: list[str] | None = None) -> int:
         return run_upgrade(argv[1:])
     elif args.command == "tune":
         return run_tune(argv[1:])
+    elif args.command == "hsi":
+        from .commands.hsi import run_hsi
+        return run_hsi(argv[1:])
     else:
         parser.print_help()
         return 0
