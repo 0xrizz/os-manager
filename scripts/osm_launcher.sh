@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
 # Entrypoint launcher dispatching to Python CLI or bash fallbacks
 set -euo pipefail
-WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Robust symlink resolution
+SOURCE_PATH="${BASH_SOURCE[0]}"
+while [ -h "${SOURCE_PATH}" ]; do
+    DIR="$(cd -P "$(dirname "${SOURCE_PATH}")" && pwd)"
+    SOURCE_PATH="$(readlink "${SOURCE_PATH}")"
+    [[ ${SOURCE_PATH} != /* ]] && SOURCE_PATH="${DIR}/${SOURCE_PATH}"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "${SOURCE_PATH}")" && pwd)"
+WORKSPACE_ROOT="$(cd -P "${SCRIPT_DIR}/.." && pwd)"
 
 if command -v python3 >/dev/null 2>&1 && [ -f "${WORKSPACE_ROOT}/os_manager/cli.py" ]; then
     export PYTHONPATH="${WORKSPACE_ROOT}:${PYTHONPATH:-}"
