@@ -3,7 +3,7 @@
 **Status:** APPROVED  
 **Date:** 2026-08-22  
 **Author:** Lead Systems Tooling Architect & Desktop Experience Engineer  
-**Target Environment:** Bare-Metal Debian GNU/Linux 13 (Trixie), Linux Kernel 6.12+, GNOME 48 (Wayland), Lenovo IdeaPad 3 (81WD) with Intel Ice Lake + NVIDIA MX330  
+**Target Environment:** Bare-Metal Debian GNU/Linux 13 (Trixie), Linux Kernel 6.12+, GNOME 48 (Wayland), Lenovo IdeaPad 3 (81WD) with Intel Ice Lake (i5-1035G1) + NVIDIA GeForce MX330  
 **Target Plan:** [`docs/superpowers/plans/2026-08-22-debian-13-desktop-and-hardware-customization.md`](file:///home/rizz/dev/os-manager/docs/superpowers/plans/2026-08-22-debian-13-desktop-and-hardware-customization.md)
 
 ---
@@ -11,10 +11,10 @@
 ## 1. Executive Summary & Objective
 
 Following the successful in-place distribution upgrade to Debian 13 (Trixie) and Linux Kernel 6.12, the objective of this specification is to establish an automated, idempotent, and test-driven customization suite for:
-1. **Hardware Power & Thermal Management:** Automated Lenovo IdeaPad battery conservation mode (60% charging threshold via ACPI kernel module `ideapad_laptop`) and hardware video decoding acceleration (VA-API on Intel Iris Plus Graphics G1).
+1. **Hardware Power, Thermals & Hybrid Graphics Management:** Automated Lenovo IdeaPad battery conservation mode (60% charging threshold via ACPI `ideapad_laptop`), ACPI platform thermal profiles (`Fn+Q`), Fn-Lock control, Intel Ice Lake proactive thermal management (`thermald`), NVIDIA MX330 PCIe Runtime D3 Cold power-gating, Intel Iris Plus VA-API video decoding acceleration, and persistent `systemd` boot restoration.
 2. **GNOME 48 Desktop Aesthetics, Ergonomics & Developer Workflow:** Native typography integration (Inter & JetBrains Mono), subpixel font rendering, window management ergonomics (minimize/maximize, centered placement, window-based Alt+Tab), full dark theme & night light schedule, touchpad gestures/tap-to-click tuning, audio over-amplification, Nautilus list-view & terminal integration, Extension Manager deployment, and declarative `dconf` desktop state backup/restore.
 3. **Modern Terminal & Developer Experience (DX):** Starship cross-shell prompt, fuzzy file/history search (`fzf`), smart directory navigation (`zoxide`), syntax-highlighted paging (`bat`), and modern file listings (`eza`).
-4. **CLI Control Plane Integration:** Consolidated management under `osm tune` (`battery`, `vaapi`, `desktop`, `terminal`, `all`) with full JSON telemetry and master harness validation.
+4. **CLI Control Plane Integration:** Consolidated management under `osm tune` (`battery`, `profile`, `fn-lock`, `thermals`, `gpu`, `vaapi`, `hardware-persist`, `desktop`, `terminal`, `all`) with full JSON telemetry and master harness validation.
 
 ---
 
@@ -24,8 +24,8 @@ Following the successful in-place distribution upgrade to Debian 13 (Trixie) and
 | :--- | :--- | :--- |
 | **INV-01** | **Zero Data Loss on `/mnt/data`** | All operations strictly treat `/dev/nvme0n1p4` (`/mnt/data`) as persistent read/write storage. No partition, format, or mount disruption is permitted. |
 | **INV-02** | **Strict Idempotency** | Every script subroutine (`tune_hardware.sh`, `setup_desktop_env.sh`, `setup_terminal_env.sh`) must be safe to run repeatedly without creating duplicate entries in `~/.bashrc`, `~/.config/gtk-3.0/bookmarks`, or system configurations. |
-| **INV-03** | **Root vs User Boundary Separation** | System package installations (`apt-get`) and sysfs writes (`/sys/bus/platform/...`) require root/sudo privileges. All user-space dotfiles and desktop configurations (`~/.config/starship.toml`, `~/.bashrc`, `bookmarks`, `gsettings`, `dconf`) must be executed under the active user's `$HOME` with non-root ownership. |
-| **INV-04** | **Hybrid GPU & Wayland Decoupling** | All display rendering and VA-API hardware decoders prioritize Intel Iris Plus Graphics (`i915` / `/dev/dri/card0` / `/dev/dri/renderD128`) on Wayland to maximize battery longevity and eliminate Wayland compositor lockups. |
+| **INV-03** | **Root vs User Boundary Separation** | System package installations (`apt-get`), daemon management (`systemd`), and sysfs writes (`/sys/...`) require root/sudo privileges. All user-space dotfiles and desktop configurations (`~/.config/starship.toml`, `~/.bashrc`, `bookmarks`, `gsettings`, `dconf`) must be executed under the active user's `$HOME` with non-root ownership. |
+| **INV-04** | **Hybrid GPU & Wayland Decoupling** | All display rendering and VA-API hardware decoders prioritize Intel Iris Plus Graphics (`i915` / `/dev/dri/card0` / `/dev/dri/renderD128`) on Wayland. The discrete NVIDIA MX330 is power-gated into Runtime D3 Cold (`suspended`) when idle. |
 | **INV-05** | **Offline/Fallback Resilience** | Python CLI subcommands must provide graceful fallbacks (e.g. headless/no D-Bus detection for `gsettings`, `uv` fallback when `python3-venv` is missing, warnings on non-Lenovo hardware). |
 
 ---
@@ -34,12 +34,15 @@ Following the successful in-place distribution upgrade to Debian 13 (Trixie) and
 
 ```mermaid
 flowchart TD
-    CLI["osm tune CLI Router (Python 3.13)"] --> SUB1["Hardware Tuning Subsystem (scripts/tune_hardware.sh)"]
+    CLI["osm tune CLI Router (Python 3.13)"] --> SUB1["Hardware, Power & GPU Subsystem (scripts/tune_hardware.sh)"]
     CLI --> SUB2["Desktop Aesthetics & Ergonomics Subsystem (scripts/setup_desktop_env.sh)"]
     CLI --> SUB3["Terminal DX Subsystem (scripts/setup_terminal_env.sh)"]
 
-    SUB1 --> ACPI["Lenovo Conservation Mode (/sys/.../conservation_mode)"]
+    SUB1 --> ACPI["Lenovo ACPI (Conservation Mode, Fn+Q Profile, Fn-Lock)"]
+    SUB1 --> THERMAL["Intel Ice Lake Thermals (thermald & intel_pstate EPP)"]
+    SUB1 --> GPU["NVIDIA MX330 Power-Gating (Runtime D3 Cold / Suspended)"]
     SUB1 --> VAAPI["Intel VA-API Driver (intel-media-va-driver-non-free)"]
+    SUB1 --> PERSIST["Boot Persistence Service (osm-hardware-tune.service)"]
 
     SUB2 --> FONTS["Typography (Inter & JetBrains Mono) + Subpixel Rendering"]
     SUB2 --> THEME["Dark Mode + Accent + Night Light + Window Ergonomics"]
@@ -54,7 +57,7 @@ flowchart TD
 
 ---
 
-### 3.1 Subsystem 1: Lenovo Hardware Power & VA-API Video Acceleration
+### 3.1 Subsystem 1: Lenovo Hardware Power, Thermals & Hybrid Graphics Management
 
 #### 1. Lenovo Battery Conservation Mode:
 * **Sysfs Path:** `/sys/bus/platform/drivers/ideapad_acpi/VPC2004:00/conservation_mode`
@@ -64,11 +67,54 @@ flowchart TD
   * Writing `0` allows normal 100% full charging.
 * **CLI Interface:** `osm tune battery [status|on|off]`
 
-#### 2. Intel VA-API Hardware Video Decoding:
+#### 2. Lenovo Platform Profiles (`Fn+Q` Thermal Modes):
+* **Sysfs Interface:** `/sys/firmware/acpi/platform_profile`
+* **Supported Modes:** Read from `/sys/firmware/acpi/platform_profile_choices`:
+  * `low-power` (Quiet mode: reduced CPU TDP, silent fan profile, extended battery longevity).
+  * `balanced` (Intelligent cooling: dynamic thermal throttling and fan curves).
+  * `performance` (Extreme performance: maximum CPU boost power limits).
+* **CLI Interface:** `osm tune profile [status|quiet|balanced|performance]`
+
+#### 3. Lenovo Fn-Lock Control:
+* **Sysfs Path:** `/sys/bus/platform/drivers/ideapad_acpi/VPC2004:00/fn_lock`
+* **Behavior:**
+  * Writing `1` restores standard F1–F12 function key behavior.
+  * Writing `0` configures keys as multimedia action shortcuts (volume, brightness, etc.).
+* **CLI Interface:** `osm tune fn-lock [status|on|off]`
+
+#### 4. Intel Ice Lake Proactive Thermal Management:
+* **Thermal Daemon:** Deploy and enable `thermald` (Intel Dynamic Platform and Thermal Framework for Linux) to eliminate CPU thermal throttling spikes on Intel Ice Lake 10nm.
+* **CPU Energy Performance Preference (EPP):**
+  * Utilize `intel_pstate` scaling governor (`powersave`).
+  * Dynamic EPP Policy: `balance_performance` on AC mains, `balance_power` on battery.
+* **CLI Interface:** `osm tune thermals [status|install]`
+
+#### 5. Hybrid GPU Power-Gating (NVIDIA GeForce MX330):
+* **Target Hardware:** NVIDIA GeForce MX330 (PCI `0000:01:00.0`, GP108 architecture).
+* **Power Management Policy:**
+  * GNOME 48 Wayland compositor runs exclusively on Intel Iris Plus Graphics (`i915`).
+  * Enforce PCIe Runtime Power Management (`/sys/bus/pci/devices/0000:01:00.0/power/control` $\rightarrow$ `auto`).
+  * Verify discrete GPU drops into **Runtime D3 Cold (`suspended`)** when idle (0W power draw).
+* **CLI Interface:** `osm tune gpu [status|power-save]`
+
+#### 6. Intel Iris Plus VA-API Hardware Video Decoding:
 * **Target Hardware:** Intel Core i5-1035G1 (Intel Iris Plus Graphics G1 / Ice Lake)
 * **Required Packages:** `intel-media-va-driver-non-free`, `vainfo`, `i965-va-driver-shaders`
 * **Verification Command:** `vainfo` inspecting `VAProfileH264Main`, `VAProfileHEVCMain`, `VAProfileVP9Profile0` for `VAEntrypointVLD`.
 * **CLI Interface:** `osm tune vaapi [status|install]`
+
+#### 7. Boot Persistence Service (`systemd`):
+* **Configuration File:** `/etc/osm/hardware-tune.conf`
+  ```ini
+  [hardware]
+  conservation_mode=1
+  platform_profile=balanced
+  fn_lock=1
+  gpu_power_save=1
+  ```
+* **Systemd Unit File:** `/etc/systemd/system/osm-hardware-tune.service`
+  * Automatically invokes `scripts/tune_hardware.sh --apply-config` upon boot to guarantee persistent hardware settings across reboots.
+* **CLI Interface:** `osm tune hardware-persist [status|enable|disable]`
 
 ---
 
@@ -156,17 +202,41 @@ flowchart TD
 The `osm tune` command group provides unified access to all customization features:
 
 ```bash
-# Audit all hardware power, media, and environment tuning
+# Audit all hardware power, media, thermal, and desktop tuning
 osm tune audit
 
-# Manage Lenovo battery conservation mode
+# Manage Lenovo battery conservation mode (60% threshold)
 osm tune battery status
 osm tune battery on
 osm tune battery off
 
-# Inspect and install VA-API video decoding acceleration
+# Manage Lenovo ACPI platform profile (Fn+Q modes)
+osm tune profile status
+osm tune profile quiet
+osm tune profile balanced
+osm tune profile performance
+
+# Manage Lenovo Fn-Lock hotkeys
+osm tune fn-lock status
+osm tune fn-lock on
+osm tune fn-lock off
+
+# Manage Intel thermal daemon and CPU energy preference
+osm tune thermals status
+osm tune thermals install
+
+# Inspect and manage hybrid GPU power-gating (NVIDIA MX330 Runtime D3 Cold)
+osm tune gpu status
+osm tune gpu power-save
+
+# Inspect and install Intel VA-API video decoding acceleration
 osm tune vaapi status
 osm tune vaapi install
+
+# Manage persistent hardware settings on boot
+osm tune hardware-persist status
+osm tune hardware-persist enable
+osm tune hardware-persist disable
 
 # Configure GNOME typography, dark theme, ergonomics, touchpad, bookmarks, and extensions
 osm tune desktop
@@ -188,7 +258,7 @@ osm tune all
 
 | Test Suite | Scope | Target Assertions |
 | :--- | :--- | :--- |
-| `tests/test_tune_hardware.py` | Python unit tests for battery sysfs reading/writing, VA-API detection, and CLI argument parsing. | • Mock sysfs read `1` $\rightarrow$ `enabled`<br/>• Mock sysfs read `0` $\rightarrow$ `disabled`<br/>• Non-existent path $\rightarrow$ `unsupported`<br/>• `set_battery_conservation_mode` invokes `tee`<br/>• `audit_vaapi_acceleration` parses vainfo output |
+| `tests/test_tune_hardware.py` | Python unit tests for battery sysfs, platform profile, fn-lock, thermals, GPU D3 status, VA-API detection, and boot persistence service generation. | • Mock sysfs read `1` $\rightarrow$ `enabled`<br/>• Mock sysfs read `0` $\rightarrow$ `disabled`<br/>• Non-existent path $\rightarrow$ `unsupported`<br/>• `set_battery_conservation_mode` invokes `tee`<br/>• `set_platform_profile` validates choices and writes to sysfs<br/>• `audit_vaapi_acceleration` parses vainfo output<br/>• `audit_gpu_runtime_power` detects suspended/active state<br/>• `generate_hardware_persist_unit` produces valid systemd unit |
 | `tests/test_desktop_customization.py` | Python unit tests for GTK 3 bookmarks, GSettings schema configuration, and Dconf backup/restore. | • Fresh bookmark creation writes `file:///mnt/data Data Store`<br/>• Subsequent calls do not duplicate entries<br/>• Respects custom bookmark path overrides<br/>• `apply_desktop_gsettings` executes expected `gsettings set` calls<br/>• `dconf_dump_desktop` and `dconf_load_desktop` export/import cleanly |
 | `tests/test_terminal_customization.py` | Python unit tests for Starship configuration generation and `.bashrc` alias injection. | • TOML configuration contains directory, git, and python modules<br/>• `.bashrc` alias injection includes marker and hooks<br/>• Re-running is strictly idempotent |
 | `tests/test_harness.sh` | Master regression test suite integration. | • All new unit suites pass with exit code 0<br/>• Zero hardcoded path leaks<br/>• 100% clean harness execution |
@@ -197,7 +267,7 @@ osm tune all
 
 ## 6. Execution & Rollout Plan
 
-1. **Task 1:** Lenovo Hardware Power Tuning & VA-API Video Acceleration Engine ([`scripts/tune_hardware.sh`](file:///home/rizz/dev/os-manager/scripts/tune_hardware.sh)).
+1. **Task 1:** Lenovo Hardware Power Tuning, ACPI Platform Profiles, `thermald`, Hybrid GPU Power-Gating, VA-API Video Acceleration & Systemd Boot Persistence ([`scripts/tune_hardware.sh`](file:///home/rizz/dev/os-manager/scripts/tune_hardware.sh)).
 2. **Task 2:** GNOME 48 Desktop Aesthetics, Ergonomics, Nautilus Data Store Bookmarking & Dconf State ([`scripts/setup_desktop_env.sh`](file:///home/rizz/dev/os-manager/scripts/setup_desktop_env.sh)).
 3. **Task 3:** Modern Terminal & Developer Experience Suite ([`scripts/setup_terminal_env.sh`](file:///home/rizz/dev/os-manager/scripts/setup_terminal_env.sh)).
 4. **Task 4:** CLI Router Integration (`osm tune`), Master Harness Registration, and Documentation Guide ([`docs/DEBIAN_13_CUSTOMIZATION_GUIDE.md`](file:///home/rizz/dev/os-manager/docs/DEBIAN_13_CUSTOMIZATION_GUIDE.md)).
