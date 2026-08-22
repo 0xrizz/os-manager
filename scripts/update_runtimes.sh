@@ -27,6 +27,7 @@ if [ -s "${NVM_DIR}/nvm.sh" ]; then
     source "${NVM_DIR}/nvm.sh"
 fi
 if command -v corepack &>/dev/null; then
+    corepack enable pnpm yarn 2>/dev/null || true
     corepack prepare pnpm@latest --activate 2>/dev/null || true
 fi
 
