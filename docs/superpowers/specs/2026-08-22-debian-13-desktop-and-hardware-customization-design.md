@@ -12,9 +12,10 @@
 
 Following the successful in-place distribution upgrade to Debian 13 (Trixie) and Linux Kernel 6.12, the objective of this specification is to establish an automated, idempotent, and test-driven customization suite for:
 1. **Hardware Power, Thermals & Hybrid Graphics Management:** Automated Lenovo IdeaPad battery conservation mode (60% charging threshold via ACPI `ideapad_laptop`), ACPI platform thermal profiles (`Fn+Q`), Fn-Lock control, Intel Ice Lake proactive thermal management (`thermald`), NVIDIA MX330 PCIe Runtime D3 Cold power-gating, Intel Iris Plus VA-API video decoding acceleration, and persistent `systemd` boot restoration.
-2. **GNOME 48 Desktop Aesthetics, Ergonomics & Developer Workflow:** Native typography integration (Inter & JetBrains Mono), subpixel font rendering, window management ergonomics (minimize/maximize, centered placement, window-based Alt+Tab), full dark theme & night light schedule, touchpad gestures/tap-to-click tuning, audio over-amplification, Nautilus list-view & terminal integration, Extension Manager deployment, and declarative `dconf` desktop state backup/restore.
-3. **Modern Terminal & Developer Experience (DX):** Modern Rust/Go CLI suite (`ripgrep`, `fd`, `bat`, `eza`, `fzf`, `zoxide`, `btop`, `duf`), Starship cross-shell prompt, FZF live syntax previews, Bash 5.2+ sensible defaults & infinite timestamped history, Git power shortcuts, and a preconfigured `tmux` developer profile.
-4. **CLI Control Plane Integration:** Consolidated management under `osm tune` (`battery`, `profile`, `fn-lock`, `thermals`, `gpu`, `vaapi`, `hardware-persist`, `desktop`, `terminal`, `all`) with full JSON telemetry and master harness validation.
+2. **System Kernel, Storage, Audio & Security Hardening:** Kernel performance sysctl tuning (`vm.swappiness=10`, `fs.inotify.max_user_watches=524288`, TCP BBR congestion control), NVMe SSD periodic maintenance (`fstrim.timer`), PipeWire & Bluetooth high-bitrate audio codecs (`pipewire-audio`, `wireplumber`), host firewall (`ufw`), and modern APT package management (`nala`).
+3. **GNOME 48 Desktop Aesthetics, Ergonomics & Developer Workflow:** Native typography integration (Inter & JetBrains Mono), subpixel font rendering, window management ergonomics (minimize/maximize, centered placement, window-based Alt+Tab), full dark theme & night light schedule, touchpad gestures/tap-to-click tuning, audio over-amplification, Nautilus list-view & terminal integration, Extension Manager deployment, and declarative `dconf` desktop state backup/restore.
+4. **Modern Terminal & Developer Experience (DX):** Modern Rust/Go CLI suite (`ripgrep`, `fd`, `bat`, `eza`, `fzf`, `zoxide`, `btop`, `duf`), Starship cross-shell prompt, FZF live syntax previews, Bash 5.2+ sensible defaults & infinite timestamped history, Git power shortcuts, and a preconfigured `tmux` developer profile.
+5. **CLI Control Plane Integration:** Consolidated management under `osm tune` (`battery`, `profile`, `fn-lock`, `thermals`, `gpu`, `vaapi`, `hardware-persist`, `system`, `desktop`, `terminal`, `all`) with full JSON telemetry and master harness validation.
 
 ---
 
@@ -23,8 +24,8 @@ Following the successful in-place distribution upgrade to Debian 13 (Trixie) and
 | Invariant ID | Name | Architectural Rule |
 | :--- | :--- | :--- |
 | **INV-01** | **Zero Data Loss on `/mnt/data`** | All operations strictly treat `/dev/nvme0n1p4` (`/mnt/data`) as persistent read/write storage. No partition, format, or mount disruption is permitted. |
-| **INV-02** | **Strict Idempotency** | Every script subroutine (`tune_hardware.sh`, `setup_desktop_env.sh`, `setup_terminal_env.sh`) must be safe to run repeatedly without creating duplicate entries in `~/.bashrc`, `~/.config/gtk-3.0/bookmarks`, `~/.tmux.conf`, or system configurations. |
-| **INV-03** | **Root vs User Boundary Separation** | System package installations (`apt-get`), daemon management (`systemd`), and sysfs writes (`/sys/...`) require root/sudo privileges. All user-space dotfiles and desktop configurations (`~/.config/starship.toml`, `~/.bashrc`, `~/.tmux.conf`, `bookmarks`, `gsettings`, `dconf`) must be executed under the active user's `$HOME` with non-root ownership. |
+| **INV-02** | **Strict Idempotency** | Every script subroutine (`tune_hardware.sh`, `tune_system.sh`, `setup_desktop_env.sh`, `setup_terminal_env.sh`) must be safe to run repeatedly without creating duplicate entries in `~/.bashrc`, `~/.config/gtk-3.0/bookmarks`, `~/.tmux.conf`, `/etc/sysctl.d/`, or system configurations. |
+| **INV-03** | **Root vs User Boundary Separation** | System package installations (`apt-get`), daemon management (`systemd`), firewall rules (`ufw`), and sysfs/sysctl writes require root/sudo privileges. All user-space dotfiles and desktop configurations (`~/.config/starship.toml`, `~/.bashrc`, `~/.tmux.conf`, `bookmarks`, `gsettings`, `dconf`) must be executed under the active user's `$HOME` with non-root ownership. |
 | **INV-04** | **Hybrid GPU & Wayland Decoupling** | All display rendering and VA-API hardware decoders prioritize Intel Iris Plus Graphics (`i915` / `/dev/dri/card0` / `/dev/dri/renderD128`) on Wayland. The discrete NVIDIA MX330 is power-gated into Runtime D3 Cold (`suspended`) when idle. |
 | **INV-05** | **Offline/Fallback Resilience** | Python CLI subcommands must provide graceful fallbacks (e.g. headless/no D-Bus detection for `gsettings`, `uv` fallback when `python3-venv` is missing, warnings on non-Lenovo hardware). |
 
@@ -35,8 +36,9 @@ Following the successful in-place distribution upgrade to Debian 13 (Trixie) and
 ```mermaid
 flowchart TD
     CLI["osm tune CLI Router (Python 3.13)"] --> SUB1["Hardware, Power & GPU Subsystem (scripts/tune_hardware.sh)"]
-    CLI --> SUB2["Desktop Aesthetics & Ergonomics Subsystem (scripts/setup_desktop_env.sh)"]
-    CLI --> SUB3["Terminal DX Subsystem (scripts/setup_terminal_env.sh)"]
+    CLI --> SUB2["Kernel, Storage & Security Subsystem (scripts/tune_system.sh)"]
+    CLI --> SUB3["Desktop Aesthetics & Ergonomics Subsystem (scripts/setup_desktop_env.sh)"]
+    CLI --> SUB4["Terminal DX Subsystem (scripts/setup_terminal_env.sh)"]
 
     SUB1 --> ACPI["Lenovo ACPI (Conservation Mode, Fn+Q Profile, Fn-Lock)"]
     SUB1 --> THERMAL["Intel Ice Lake Thermals (thermald & intel_pstate EPP)"]
@@ -44,17 +46,23 @@ flowchart TD
     SUB1 --> VAAPI["Intel VA-API Driver (intel-media-va-driver-non-free)"]
     SUB1 --> PERSIST["Boot Persistence Service (osm-hardware-tune.service)"]
 
-    SUB2 --> FONTS["Typography (Inter & JetBrains Mono) + Subpixel Rendering"]
-    SUB2 --> THEME["Dark Mode + Accent + Night Light + Window Ergonomics"]
-    SUB2 --> TOUCHPAD["Touchpad (Tap-to-click, Natural Scroll) + Audio Boost"]
-    SUB2 --> NAUTILUS["Nautilus List View + Bookmarks + Terminal Menu"]
-    SUB2 --> EXT["GNOME Extensions + Declarative dconf Backup/Restore"]
+    SUB2 --> SYSCTL["Kernel Sysctl (swappiness=10, inotify, TCP BBR)"]
+    SUB2 --> TRIM["NVMe Storage Maintenance (fstrim.timer)"]
+    SUB2 --> AUDIO["PipeWire & Bluetooth High-Bitrate Codecs"]
+    SUB2 --> SEC["UFW Firewall (deny in, allow out, SSH guard)"]
+    SUB2 --> NALA["Modern Package Management (Nala)"]
 
-    SUB3 --> CLI_TOOLS["Modern Toolchain (rg, fd, bat, eza, fzf, zoxide, btop, duf)"]
-    SUB3 --> STARSHIP["Starship Prompt (~/.config/starship.toml)"]
-    SUB3 --> FZF_PREVIEW["FZF Live Previews (bat & eza integrations)"]
-    SUB3 --> BASHRC["Bash 5.2+ Defaults, Infinite History & Aliases (~/.bashrc)"]
-    SUB3 --> TMUX["Tmux Developer Starter Profile (~/.tmux.conf)"]
+    SUB3 --> FONTS["Typography (Inter & JetBrains Mono) + Subpixel Rendering"]
+    SUB3 --> THEME["Dark Mode + Accent + Night Light + Window Ergonomics"]
+    SUB3 --> TOUCHPAD["Touchpad (Tap-to-click, Natural Scroll) + Audio Boost"]
+    SUB3 --> NAUTILUS["Nautilus List View + Bookmarks + Terminal Menu"]
+    SUB3 --> EXT["GNOME Extensions + Declarative dconf Backup/Restore"]
+
+    SUB4 --> CLI_TOOLS["Modern Toolchain (rg, fd, bat, eza, fzf, zoxide, btop, duf)"]
+    SUB4 --> STARSHIP["Starship Prompt (~/.config/starship.toml)"]
+    SUB4 --> FZF_PREVIEW["FZF Live Previews (bat & eza integrations)"]
+    SUB4 --> BASHRC["Bash 5.2+ Defaults, Infinite History & Aliases (~/.bashrc)"]
+    SUB4 --> TMUX["Tmux Developer Starter Profile (~/.tmux.conf)"]
 ```
 
 ---
@@ -120,7 +128,58 @@ flowchart TD
 
 ---
 
-### 3.2 Subsystem 2: GNOME 48 Desktop Aesthetics, Ergonomics & Developer Workflow
+### 3.2 Subsystem 2: System Kernel, Storage, Audio & Security Hardening
+
+#### 1. Kernel Sysctl Performance Tuning:
+* **Target File:** `/etc/sysctl.d/99-osm-performance.conf`
+* **Parameters Applied:**
+  ```ini
+  # Prioritize RAM retention for active applications, minimizing aggressive disk swapping
+  vm.swappiness = 10
+  vm.vfs_cache_pressure = 50
+
+  # Expand file watching descriptor limit for modern IDEs & development servers (VS Code, JetBrains, Docker)
+  fs.inotify.max_user_watches = 524288
+  fs.inotify.max_user_instances = 1024
+
+  # Mitigate I/O stuttering during heavy disk writes
+  vm.dirty_background_ratio = 5
+  vm.dirty_ratio = 10
+
+  # Enable TCP BBR congestion control for optimal network throughput and lower latency
+  net.core.default_qdisc = fq
+  net.ipv4.tcp_congestion_control = bbr
+  ```
+* **Verification Command:** `sysctl --system` and verifying `sysctl net.ipv4.tcp_congestion_control`.
+
+#### 2. NVMe SSD Health & Periodic Maintenance:
+* **Target Storage:** `/dev/nvme0n1` (Crucial/Micron NVMe SSD hosting root `/` and `/mnt/data`).
+* **Maintenance Strategy:**
+  * Avoid continuous synchronous `discard` mounts in `/etc/fstab` which degrade real-time I/O performance.
+  * Enable and verify the asynchronous weekly TRIM systemd timer:
+    `systemctl enable --now fstrim.timer`
+
+#### 3. PipeWire Audio & Bluetooth Codec Stack:
+* **System Packages:** `pipewire-audio`, `wireplumber`, `libspa-0.2-bluetooth`, `bluez`
+* **Enhancements:**
+  * Ensure WirePlumber is active as the default session manager for PipeWire.
+  * Enable high-bitrate Bluetooth codecs (`SBC-XQ`, `LDAC`) for wireless development headsets.
+
+#### 4. Host Security & Firewall Hardening:
+* **System Package:** `ufw`
+* **Configuration:**
+  * `ufw default deny incoming`
+  * `ufw default allow outgoing`
+  * `ufw allow 22/tcp` (Ensure SSH access is preserved if remote access is required)
+  * `ufw enable`
+
+#### 5. Modern Package Management Ergonomics:
+* **System Package:** `nala`
+* **Features:** Parallel package downloads, clean visual transaction diffs, and historical transaction undo (`nala history undo`).
+
+---
+
+### 3.3 Subsystem 3: GNOME 48 Desktop Aesthetics, Ergonomics & Developer Workflow
 
 #### 1. Modern Typography & Subpixel Font Rendering:
 * **System Packages:** `fonts-inter`, `fonts-jetbrains-mono`
@@ -178,7 +237,7 @@ flowchart TD
 
 ---
 
-### 3.3 Subsystem 3: Modern Terminal & Ultimate Developer Experience (DX)
+### 3.4 Subsystem 4: Modern Terminal & Ultimate Developer Experience (DX)
 
 #### 1. Modern CLI Suite (The Modern Unix Toolchain):
 * **Target Packages & Binaries:**
@@ -187,7 +246,7 @@ flowchart TD
   * `bat` (`batcat`): `cat` clone with syntax highlighting and Git gutter integration.
   * `eza`: Modern `ls` replacement with Nerd font icons, metadata, and Git status.
   * `fzf`: General-purpose command-line fuzzy finder.
-  * `zoxide`: Smarter directory jumper with learning frecency algorithm (`z`).
+  * `zoxide` (`z`): Smarter directory jumper with learning frecency algorithm.
   * `btop`: Interactive visual process and resource monitor (CPU, RAM, GPU, Disks).
   * `duf`: User-friendly, colorful disk usage utility.
   * `tmux`: Terminal multiplexer with custom developer profile.
@@ -269,7 +328,7 @@ flowchart TD
 The `osm tune` command group provides unified access to all customization features:
 
 ```bash
-# Audit all hardware power, media, thermal, desktop, and terminal tuning
+# Audit all hardware power, media, thermal, kernel, desktop, and terminal tuning
 osm tune audit
 
 # Manage Lenovo battery conservation mode (60% threshold)
@@ -305,6 +364,11 @@ osm tune hardware-persist status
 osm tune hardware-persist enable
 osm tune hardware-persist disable
 
+# Configure System Kernel sysctl, NVMe TRIM, PipeWire, and UFW Firewall
+osm tune system
+osm tune system apply
+osm tune system audit
+
 # Configure GNOME typography, dark theme, ergonomics, touchpad, bookmarks, and extensions
 osm tune desktop
 osm tune desktop apply
@@ -328,6 +392,7 @@ osm tune all
 | Test Suite | Scope | Target Assertions |
 | :--- | :--- | :--- |
 | `tests/test_tune_hardware.py` | Python unit tests for battery sysfs, platform profile, fn-lock, thermals, GPU D3 status, VA-API detection, and boot persistence service generation. | • Mock sysfs read `1` $\rightarrow$ `enabled`<br/>• Mock sysfs read `0` $\rightarrow$ `disabled`<br/>• Non-existent path $\rightarrow$ `unsupported`<br/>• `set_battery_conservation_mode` invokes `tee`<br/>• `set_platform_profile` validates choices and writes to sysfs<br/>• `audit_vaapi_acceleration` parses vainfo output<br/>• `audit_gpu_runtime_power` detects suspended/active state<br/>• `generate_hardware_persist_unit` produces valid systemd unit |
+| `tests/test_tune_system.py` | Python unit tests for sysctl configuration generation, NVMe TRIM timer verification, UFW rules audit, and PipeWire detection. | • Generates valid `/etc/sysctl.d/99-osm-performance.conf`<br/>• Detects TCP BBR and inotify parameters<br/>• Verifies `fstrim.timer` status parser<br/>• Parses UFW status and default policies |
 | `tests/test_desktop_customization.py` | Python unit tests for GTK 3 bookmarks, GSettings schema configuration, and Dconf backup/restore. | • Fresh bookmark creation writes `file:///mnt/data Data Store`<br/>• Subsequent calls do not duplicate entries<br/>• Respects custom bookmark path overrides<br/>• `apply_desktop_gsettings` executes expected `gsettings set` calls<br/>• `dconf_dump_desktop` and `dconf_load_desktop` export/import cleanly |
 | `tests/test_terminal_customization.py` | Python unit tests for Starship configuration generation, `.bashrc` alias injection, FZF preview variables, and `.tmux.conf` templating. | • TOML configuration contains directory, git, and python modules<br/>• `.bashrc` alias injection includes marker, modern tool aliases, and git shortcuts<br/>• FZF environment variables include syntax and tree preview options<br/>• `.tmux.conf` generates mouse mode, TrueColor, and Vi keybindings<br/>• Re-running is strictly idempotent |
 | `tests/test_harness.sh` | Master regression test suite integration. | • All new unit suites pass with exit code 0<br/>• Zero hardcoded path leaks<br/>• 100% clean harness execution |
@@ -337,6 +402,7 @@ osm tune all
 ## 6. Execution & Rollout Plan
 
 1. **Task 1:** Lenovo Hardware Power Tuning, ACPI Platform Profiles, `thermald`, Hybrid GPU Power-Gating, VA-API Video Acceleration & Systemd Boot Persistence ([`scripts/tune_hardware.sh`](file:///home/rizz/dev/os-manager/scripts/tune_hardware.sh)).
-2. **Task 2:** GNOME 48 Desktop Aesthetics, Ergonomics, Nautilus Data Store Bookmarking & Dconf State ([`scripts/setup_desktop_env.sh`](file:///home/rizz/dev/os-manager/scripts/setup_desktop_env.sh)).
-3. **Task 3:** Modern Terminal & Developer Experience Suite (Starship, Modern CLI, FZF Previews, Bash Defaults, Git Aliases, Tmux) ([`scripts/setup_terminal_env.sh`](file:///home/rizz/dev/os-manager/scripts/setup_terminal_env.sh)).
-4. **Task 4:** CLI Router Integration (`osm tune`), Master Harness Registration, and Documentation Guide ([`docs/DEBIAN_13_CUSTOMIZATION_GUIDE.md`](file:///home/rizz/dev/os-manager/docs/DEBIAN_13_CUSTOMIZATION_GUIDE.md)).
+2. **Task 2:** System Kernel Sysctl Tuning, NVMe TRIM, PipeWire Audio, UFW Security & Nala Package Manager ([`scripts/tune_system.sh`](file:///home/rizz/dev/os-manager/scripts/tune_system.sh)).
+3. **Task 3:** GNOME 48 Desktop Aesthetics, Ergonomics, Nautilus Data Store Bookmarking & Dconf State ([`scripts/setup_desktop_env.sh`](file:///home/rizz/dev/os-manager/scripts/setup_desktop_env.sh)).
+4. **Task 4:** Modern Terminal & Developer Experience Suite (Starship, Modern CLI, FZF Previews, Bash Defaults, Git Aliases, Tmux) ([`scripts/setup_terminal_env.sh`](file:///home/rizz/dev/os-manager/scripts/setup_terminal_env.sh)).
+5. **Task 5:** CLI Router Integration (`osm tune`), Master Harness Registration, and Documentation Guide ([`docs/DEBIAN_13_CUSTOMIZATION_GUIDE.md`](file:///home/rizz/dev/os-manager/docs/DEBIAN_13_CUSTOMIZATION_GUIDE.md)).
