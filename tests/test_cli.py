@@ -79,6 +79,54 @@ class TestOsmCli(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("Init", out)
 
+    def test_tune_command_help(self):
+        """Verify osm tune prints help and returns 0."""
+        code, out, _ = self.run_cli(["tune"])
+        self.assertEqual(code, 0)
+        self.assertIn("usage: osm tune", out.lower())
+
+    def test_tune_command_audit(self):
+        """Verify osm tune audit outputs diagnostics."""
+        code, out, _ = self.run_cli(["tune", "audit"])
+        self.assertEqual(code, 0)
+        self.assertIn("Debian 13 Hardware & Desktop Diagnostics", out)
+
+    def test_tune_battery_status(self):
+        """Verify osm tune battery status runs."""
+        code, out, _ = self.run_cli(["tune", "battery", "status"])
+        self.assertEqual(code, 0)
+        self.assertIn("Battery Conservation Mode", out)
+
+    def test_tune_profile_status(self):
+        """Verify osm tune profile status runs."""
+        code, out, _ = self.run_cli(["tune", "profile", "status"])
+        self.assertEqual(code, 0)
+        self.assertIn("Platform Profile", out)
+
+    def test_tune_fn_lock_status(self):
+        """Verify osm tune fn-lock status runs."""
+        code, out, _ = self.run_cli(["tune", "fn-lock", "status"])
+        self.assertEqual(code, 0)
+        self.assertIn("Fn-Lock", out)
+
+    def test_tune_gpu_status(self):
+        """Verify osm tune gpu status runs."""
+        code, out, _ = self.run_cli(["tune", "gpu", "status"])
+        self.assertEqual(code, 0)
+        self.assertIn("NVIDIA GPU", out)
+
+    def test_tune_desktop_audit(self):
+        """Verify osm tune desktop audit runs."""
+        code, out, _ = self.run_cli(["tune", "desktop", "audit"])
+        self.assertEqual(code, 0)
+        self.assertIn("GTK Bookmarks", out)
+
+    def test_tune_terminal_audit(self):
+        """Verify osm tune terminal audit runs."""
+        code, out, _ = self.run_cli(["tune", "terminal", "audit"])
+        self.assertEqual(code, 0)
+        self.assertIn("Terminal environment audit", out)
+
 
 if __name__ == "__main__":
     unittest.main()

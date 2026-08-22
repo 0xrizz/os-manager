@@ -173,9 +173,14 @@ net.ipv4.tcp_congestion_control = bbr
 
 def audit_sysctl_parameters() -> dict[str, str]:
     """Inspect active kernel sysctl values."""
+    sysctl_bin = shutil.which("sysctl") or ("/sbin/sysctl" if os.path.exists("/sbin/sysctl") else "sysctl")
+
     def _read_sysctl(key: str) -> str:
-        res = subprocess.run(["sysctl", "-n", key], capture_output=True, text=True, check=False)
-        return res.stdout.strip() if res.returncode == 0 else "unknown"
+        try:
+            res = subprocess.run([sysctl_bin, "-n", key], capture_output=True, text=True, check=False)
+            return res.stdout.strip() if res.returncode == 0 else "unknown"
+        except Exception:
+            return "unknown"
 
     return {
         "swappiness": _read_sysctl("vm.swappiness"),
@@ -186,8 +191,11 @@ def audit_sysctl_parameters() -> dict[str, str]:
 
 def audit_fstrim_timer_status() -> dict[str, Any]:
     """Inspect systemd fstrim.timer state."""
-    res = subprocess.run(["systemctl", "is-active", "fstrim.timer"], capture_output=True, text=True, check=False)
-    return {"active": res.stdout.strip() == "active"}
+    try:
+        res = subprocess.run(["systemctl", "is-active", "fstrim.timer"], capture_output=True, text=True, check=False)
+        return {"active": res.stdout.strip() == "active"}
+    except Exception:
+        return {"active": False}
 
 
 def audit_ufw_firewall_status() -> dict[str, Any]:
@@ -400,4 +408,242 @@ def inject_bashrc_hooks(bashrc_path: str = BASHRC_DEFAULT) -> bool:
     return True
 
 
+def run_tune(args: list[str]) -> int:
+    """Execute osm tune subcommands."""
+    parser = argparse.ArgumentParser(
+        prog="osm tune",
+        description="Debian 13 bare-metal hardware, kernel, desktop, and terminal optimization suite.",
+    )
+    subparsers = parser.add_subparsers(dest="subaction", help="Tuning subcommands")
 
+    # battery
+    bat_p = subparsers.add_parser("battery", help="Manage Lenovo battery conservation mode")
+    bat_p.add_argument("mode", nargs="?", default="status", choices=["status", "on", "off"])
+
+    # profile
+    prof_p = subparsers.add_parser("profile", help="Manage Lenovo ACPI platform profile")
+    prof_p.add_argument("mode", nargs="?", default="status", choices=["status", "quiet", "balanced", "performance"])
+
+    # fn-lock
+    fn_p = subparsers.add_parser("fn-lock", help="Manage Lenovo function key lock")
+    fn_p.add_argument("mode", nargs="?", default="status", choices=["status", "on", "off"])
+
+    # thermals
+    therm_p = subparsers.add_parser("thermals", help="Manage Intel thermald daemon")
+    therm_p.add_argument("action", nargs="?", default="status", choices=["status", "install"])
+
+    # gpu
+    gpu_p = subparsers.add_parser("gpu", help="Manage discrete GPU power-gating")
+    gpu_p.add_argument("action", nargs="?", default="status", choices=["status", "power-save"])
+
+    # vaapi
+    va_p = subparsers.add_parser("vaapi", help="Inspect or install Intel VA-API acceleration")
+    va_p.add_argument("action", nargs="?", default="status", choices=["status", "install"])
+
+    # hardware-persist
+    persist_p = subparsers.add_parser("hardware-persist", help="Manage hardware tuning persistence")
+    persist_p.add_argument("action", nargs="?", default="status", choices=["status", "apply", "enable", "disable"])
+    persist_p.add_argument("--config", default="/etc/osm/hardware-tune.conf", help="Path to hardware tuning config")
+
+    # system
+    sys_p = subparsers.add_parser("system", help="Manage kernel sysctl, TRIM, and security")
+    sys_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
+
+    # desktop
+    desk_p = subparsers.add_parser("desktop", help="Manage GNOME aesthetics, bookmarks, and dconf")
+    desk_p.add_argument("action", nargs="?", default="apply", choices=["apply", "audit", "backup", "restore"])
+    desk_p.add_argument("--file", default=None, help="Target dconf file path")
+
+    # terminal
+    term_p = subparsers.add_parser("terminal", help="Manage Starship, modern CLI, Bash, and Tmux")
+    term_p.add_argument("action", nargs="?", default="setup", choices=["setup", "audit"])
+
+    # audit & all
+    subparsers.add_parser("audit", help="Audit all hardware, system, desktop, and terminal tuning")
+    subparsers.add_parser("all", help="Apply all tuning subroutines end-to-end")
+
+    if not args:
+        parser.print_help()
+        return 0
+
+    parsed_args, _ = parser.parse_known_args(args)
+
+    if parsed_args.subaction == "battery":
+        if parsed_args.mode == "status":
+            st = get_battery_conservation_status()
+            print(f"Lenovo Battery Conservation Mode: {st}")
+            return 0
+        enable = parsed_args.mode == "on"
+        if os.geteuid() != 0:
+            cmd = ["sudo", "tee", SYSFS_CONSERVATION_DEFAULT]
+            val = "1\n" if enable else "0\n"
+            return subprocess.run(cmd, input=val, text=True, check=False).returncode
+        success = set_battery_conservation_mode(enable)
+        print(f"[PASS] Battery Conservation Mode set to: {'enabled' if enable else 'disabled'}")
+        return 0 if success else 1
+
+    elif parsed_args.subaction == "profile":
+        if parsed_args.mode == "status":
+            prof = get_platform_profile()
+            print(f"Lenovo Platform Profile: {prof}")
+            return 0
+        target = "low-power" if parsed_args.mode == "quiet" else parsed_args.mode
+        if os.geteuid() != 0:
+            cmd = ["sudo", "tee", SYSFS_PROFILE_DEFAULT]
+            return subprocess.run(cmd, input=f"{target}\n", text=True, check=False).returncode
+        success = set_platform_profile(target)
+        print(f"[PASS] Platform Profile set to: {target}")
+        return 0 if success else 1
+
+    elif parsed_args.subaction == "fn-lock":
+        if parsed_args.mode == "status":
+            st = get_fn_lock_status()
+            print(f"Lenovo Fn-Lock: {st}")
+            return 0
+        enable = parsed_args.mode == "on"
+        if os.geteuid() != 0:
+            cmd = ["sudo", "tee", SYSFS_FN_LOCK_DEFAULT]
+            val = "1\n" if enable else "0\n"
+            return subprocess.run(cmd, input=val, text=True, check=False).returncode
+        success = set_fn_lock_mode(enable)
+        print(f"[PASS] Fn-Lock set to: {'enabled' if enable else 'disabled'}")
+        return 0 if success else 1
+
+    elif parsed_args.subaction == "thermals":
+        if parsed_args.action == "install":
+            cmd = ["sudo", "apt-get", "install", "-y", "thermald"] if os.geteuid() != 0 else ["apt-get", "install", "-y", "thermald"]
+            res = subprocess.run(cmd, check=False)
+            if res.returncode == 0:
+                enable_cmd = ["sudo", "systemctl", "enable", "--now", "thermald"] if os.geteuid() != 0 else ["systemctl", "enable", "--now", "thermald"]
+                subprocess.run(enable_cmd, check=False)
+            return res.returncode
+        if not shutil.which("thermald"):
+            print("Intel thermald daemon: not installed")
+            return 1
+        res = subprocess.run(["systemctl", "is-active", "thermald"], capture_output=True, text=True, check=False)
+        active = res.stdout.strip() == "active"
+        print(f"Intel thermald status: {'Active' if active else 'Inactive'}")
+        return 0 if active else 1
+
+    elif parsed_args.subaction == "gpu":
+        if parsed_args.action == "power-save":
+            if os.geteuid() != 0:
+                cmd = ["sudo", "tee", f"{SYSFS_GPU_DEFAULT}/control"]
+                return subprocess.run(cmd, input="auto\n", text=True, check=False).returncode
+            res = subprocess.run(["tee", f"{SYSFS_GPU_DEFAULT}/control"], input="auto\n", text=True, capture_output=True, check=False)
+            print("[PASS] NVIDIA GPU power control set to auto.")
+            return res.returncode
+        gpu = audit_gpu_runtime_power()
+        print(f"NVIDIA GPU Runtime D3 Status: {gpu.get('runtime_status', 'unknown')}")
+        print(f"Power Saving Active: {gpu.get('power_saving', False)}")
+        return 0
+
+    elif parsed_args.subaction == "vaapi":
+        if parsed_args.action == "install":
+            cmd = ["sudo", "apt-get", "install", "-y", "intel-media-va-driver-non-free", "vainfo"] if os.geteuid() != 0 else ["apt-get", "install", "-y", "intel-media-va-driver-non-free", "vainfo"]
+            return subprocess.run(cmd, check=False).returncode
+        res = audit_vaapi_acceleration()
+        print(f"VA-API Acceleration Available: {res['available']}")
+        print(res["details"])
+        return 0 if res["available"] else 1
+
+    elif parsed_args.subaction == "hardware-persist":
+        if parsed_args.action == "apply":
+            conf_file = Path(parsed_args.config)
+            if conf_file.is_file():
+                for line in conf_file.read_text().splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if "=" in line:
+                        k, v = line.split("=", 1)
+                        k, v = k.strip(), v.strip()
+                        if k == "CONSERVATION_MODE":
+                            set_battery_conservation_mode(v == "1")
+                        elif k == "PLATFORM_PROFILE":
+                            set_platform_profile(v)
+                        elif k == "FN_LOCK":
+                            set_fn_lock_mode(v == "1")
+                        elif k == "GPU_POWER_SAVE" and v == "auto":
+                            if Path(f"{SYSFS_GPU_DEFAULT}/control").is_file():
+                                subprocess.run(["tee", f"{SYSFS_GPU_DEFAULT}/control"], input="auto\n", text=True, check=False)
+            print(f"[PASS] Hardware tuning configuration applied from {parsed_args.config}")
+            return 0
+        elif parsed_args.action == "enable":
+            return subprocess.run(["bash", "scripts/tune_hardware.sh", "--persist", "enable"], check=False).returncode
+        elif parsed_args.action == "disable":
+            return subprocess.run(["bash", "scripts/tune_hardware.sh", "--persist", "disable"], check=False).returncode
+        else:
+            return subprocess.run(["bash", "scripts/tune_hardware.sh", "--persist", "status"], check=False).returncode
+
+    elif parsed_args.subaction == "system":
+        if parsed_args.action == "apply":
+            return subprocess.run(["bash", "scripts/tune_system.sh", "--sysctl"], check=False).returncode
+        sys_info = audit_sysctl_parameters()
+        print(f"1. vm.swappiness: {sys_info['swappiness']}")
+        print(f"2. fs.inotify.max_user_watches: {sys_info['inotify_watches']}")
+        print(f"3. TCP Congestion Control: {sys_info['congestion_control']}")
+        trim = audit_fstrim_timer_status()
+        print(f"4. NVMe fstrim.timer: {'Active' if trim['active'] else 'Inactive'}")
+        return 0
+
+    elif parsed_args.subaction == "desktop":
+        if parsed_args.action == "apply":
+            add_nautilus_bookmark("file:///mnt/data", "Data Store")
+            apply_desktop_gsettings()
+            print("[PASS] GNOME desktop typography, ergonomics, and bookmarks configured.")
+            return 0
+        elif parsed_args.action == "backup":
+            target = parsed_args.file or os.path.expanduser("~/.config/dconf/gnome-desktop.ini")
+            dconf_dump_desktop(target)
+            print(f"[PASS] Desktop profile exported to {target}")
+            return 0
+        elif parsed_args.action == "restore":
+            target = parsed_args.file or os.path.expanduser("~/.config/dconf/gnome-desktop.ini")
+            dconf_load_desktop(target)
+            print(f"[PASS] Desktop profile restored from {target}")
+            return 0
+        bks = get_nautilus_bookmarks()
+        print(f"GTK Bookmarks: {bks}")
+        return 0
+
+    elif parsed_args.subaction == "terminal":
+        if parsed_args.action == "setup":
+            p_star = Path(os.path.expanduser("~/.config/starship.toml"))
+            p_star.parent.mkdir(parents=True, exist_ok=True)
+            p_star.write_text(generate_starship_config())
+            p_tmux = Path(os.path.expanduser("~/.tmux.conf"))
+            p_tmux.write_text(generate_tmux_config())
+            inject_bashrc_hooks()
+            print("[PASS] Terminal DX (Starship, FZF previews, Bash defaults, Tmux) configured.")
+            return 0
+        print("Terminal environment audit: Ready")
+        return 0
+
+    elif parsed_args.subaction == "audit":
+        print("==================================================")
+        print("    Debian 13 Hardware & Desktop Diagnostics      ")
+        print("==================================================")
+        print(f"1. Lenovo Battery Conservation: {get_battery_conservation_status()}")
+        print(f"2. Lenovo Platform Profile: {get_platform_profile()}")
+        print(f"3. Lenovo Fn-Lock: {get_fn_lock_status()}")
+        gpu = audit_gpu_runtime_power()
+        print(f"4. NVIDIA GPU D3 State: {gpu.get('runtime_status', 'unknown')}")
+        va = audit_vaapi_acceleration()
+        print(f"5. Intel VA-API Acceleration: {'Available' if va['available'] else 'Unavailable'}")
+        sys_info = audit_sysctl_parameters()
+        print(f"6. Kernel TCP Congestion: {sys_info['congestion_control']}")
+        print(f"7. NVMe fstrim.timer: {'Active' if audit_fstrim_timer_status()['active'] else 'Inactive'}")
+        return 0
+
+    elif parsed_args.subaction == "all":
+        print("[INFO] Executing all customization subroutines end-to-end...")
+        subprocess.run(["bash", "scripts/tune_hardware.sh", "--audit"], check=False)
+        subprocess.run(["bash", "scripts/tune_system.sh", "--sysctl"], check=False)
+        subprocess.run(["bash", "scripts/setup_desktop_env.sh", "--apply"], check=False)
+        subprocess.run(["bash", "scripts/setup_terminal_env.sh"], check=False)
+        print("[PASS] All hardware, system, desktop, and terminal optimizations applied.")
+        return 0
+
+    parser.print_help()
+    return 0

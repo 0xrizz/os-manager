@@ -10,6 +10,7 @@ from .commands.diag import run_diag
 from .commands.init import run_init
 from .commands.perf import run_perf
 from .commands.service import run_service
+from .commands.tune import run_tune
 from .commands.upgrade import run_upgrade
 
 
@@ -59,6 +60,9 @@ def build_parser() -> argparse.ArgumentParser:
     # upgrade
     subparsers.add_parser("upgrade", add_help=False, help="Debian 13 (Trixie) upgrade orchestration engine")
 
+    # tune
+    subparsers.add_parser("tune", add_help=False, help="Hardware, system, desktop, and terminal tuning engine")
+
     return parser
 
 
@@ -88,6 +92,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_service(argv[1:])
     elif args.command == "upgrade":
         return run_upgrade(argv[1:])
+    elif args.command == "tune":
+        return run_tune(argv[1:])
     else:
         parser.print_help()
         return 0

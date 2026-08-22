@@ -400,6 +400,19 @@ assert_exit_code "test_upgrade_pipeline.sh complete suite" 0 $?
 
 python3 -m unittest "${WORKSPACE_ROOT}/tests/test_upgrade_command.py" > /dev/null 2>&1
 assert_exit_code "test_upgrade_command.py unit suite" 0 $?
+
+echo "--- Testing Debian 13 Customization & Hardware Tuning Suite ---"
+python3 -m unittest "${WORKSPACE_ROOT}/tests/test_tune_hardware.py" > /dev/null 2>&1
+assert_exit_code "test_tune_hardware.py unit suite" 0 $?
+
+python3 -m unittest "${WORKSPACE_ROOT}/tests/test_tune_system.py" > /dev/null 2>&1
+assert_exit_code "test_tune_system.py unit suite" 0 $?
+
+python3 -m unittest "${WORKSPACE_ROOT}/tests/test_desktop_customization.py" > /dev/null 2>&1
+assert_exit_code "test_desktop_customization.py unit suite" 0 $?
+
+python3 -m unittest "${WORKSPACE_ROOT}/tests/test_terminal_customization.py" > /dev/null 2>&1
+assert_exit_code "test_terminal_customization.py unit suite" 0 $?
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
