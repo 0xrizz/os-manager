@@ -13,7 +13,7 @@
 Following the successful in-place distribution upgrade to Debian 13 (Trixie) and Linux Kernel 6.12, the objective of this specification is to establish an automated, idempotent, and test-driven customization suite for:
 1. **Hardware Power, Thermals & Hybrid Graphics Management:** Automated Lenovo IdeaPad battery conservation mode (60% charging threshold via ACPI `ideapad_laptop`), ACPI platform thermal profiles (`Fn+Q`), Fn-Lock control, Intel Ice Lake proactive thermal management (`thermald`), NVIDIA MX330 PCIe Runtime D3 Cold power-gating, Intel Iris Plus VA-API video decoding acceleration, and persistent `systemd` boot restoration.
 2. **GNOME 48 Desktop Aesthetics, Ergonomics & Developer Workflow:** Native typography integration (Inter & JetBrains Mono), subpixel font rendering, window management ergonomics (minimize/maximize, centered placement, window-based Alt+Tab), full dark theme & night light schedule, touchpad gestures/tap-to-click tuning, audio over-amplification, Nautilus list-view & terminal integration, Extension Manager deployment, and declarative `dconf` desktop state backup/restore.
-3. **Modern Terminal & Developer Experience (DX):** Starship cross-shell prompt, fuzzy file/history search (`fzf`), smart directory navigation (`zoxide`), syntax-highlighted paging (`bat`), and modern file listings (`eza`).
+3. **Modern Terminal & Developer Experience (DX):** Modern Rust/Go CLI suite (`ripgrep`, `fd`, `bat`, `eza`, `fzf`, `zoxide`, `btop`, `duf`), Starship cross-shell prompt, FZF live syntax previews, Bash 5.2+ sensible defaults & infinite timestamped history, Git power shortcuts, and a preconfigured `tmux` developer profile.
 4. **CLI Control Plane Integration:** Consolidated management under `osm tune` (`battery`, `profile`, `fn-lock`, `thermals`, `gpu`, `vaapi`, `hardware-persist`, `desktop`, `terminal`, `all`) with full JSON telemetry and master harness validation.
 
 ---
@@ -23,8 +23,8 @@ Following the successful in-place distribution upgrade to Debian 13 (Trixie) and
 | Invariant ID | Name | Architectural Rule |
 | :--- | :--- | :--- |
 | **INV-01** | **Zero Data Loss on `/mnt/data`** | All operations strictly treat `/dev/nvme0n1p4` (`/mnt/data`) as persistent read/write storage. No partition, format, or mount disruption is permitted. |
-| **INV-02** | **Strict Idempotency** | Every script subroutine (`tune_hardware.sh`, `setup_desktop_env.sh`, `setup_terminal_env.sh`) must be safe to run repeatedly without creating duplicate entries in `~/.bashrc`, `~/.config/gtk-3.0/bookmarks`, or system configurations. |
-| **INV-03** | **Root vs User Boundary Separation** | System package installations (`apt-get`), daemon management (`systemd`), and sysfs writes (`/sys/...`) require root/sudo privileges. All user-space dotfiles and desktop configurations (`~/.config/starship.toml`, `~/.bashrc`, `bookmarks`, `gsettings`, `dconf`) must be executed under the active user's `$HOME` with non-root ownership. |
+| **INV-02** | **Strict Idempotency** | Every script subroutine (`tune_hardware.sh`, `setup_desktop_env.sh`, `setup_terminal_env.sh`) must be safe to run repeatedly without creating duplicate entries in `~/.bashrc`, `~/.config/gtk-3.0/bookmarks`, `~/.tmux.conf`, or system configurations. |
+| **INV-03** | **Root vs User Boundary Separation** | System package installations (`apt-get`), daemon management (`systemd`), and sysfs writes (`/sys/...`) require root/sudo privileges. All user-space dotfiles and desktop configurations (`~/.config/starship.toml`, `~/.bashrc`, `~/.tmux.conf`, `bookmarks`, `gsettings`, `dconf`) must be executed under the active user's `$HOME` with non-root ownership. |
 | **INV-04** | **Hybrid GPU & Wayland Decoupling** | All display rendering and VA-API hardware decoders prioritize Intel Iris Plus Graphics (`i915` / `/dev/dri/card0` / `/dev/dri/renderD128`) on Wayland. The discrete NVIDIA MX330 is power-gated into Runtime D3 Cold (`suspended`) when idle. |
 | **INV-05** | **Offline/Fallback Resilience** | Python CLI subcommands must provide graceful fallbacks (e.g. headless/no D-Bus detection for `gsettings`, `uv` fallback when `python3-venv` is missing, warnings on non-Lenovo hardware). |
 
@@ -50,9 +50,11 @@ flowchart TD
     SUB2 --> NAUTILUS["Nautilus List View + Bookmarks + Terminal Menu"]
     SUB2 --> EXT["GNOME Extensions + Declarative dconf Backup/Restore"]
 
+    SUB3 --> CLI_TOOLS["Modern Toolchain (rg, fd, bat, eza, fzf, zoxide, btop, duf)"]
     SUB3 --> STARSHIP["Starship Prompt (~/.config/starship.toml)"]
-    SUB3 --> TOOLS["Modern CLI Suite (fzf, zoxide, bat, eza)"]
-    SUB3 --> BASHRC["Shell Hooks & Aliases (~/.bashrc)"]
+    SUB3 --> FZF_PREVIEW["FZF Live Previews (bat & eza integrations)"]
+    SUB3 --> BASHRC["Bash 5.2+ Defaults, Infinite History & Aliases (~/.bashrc)"]
+    SUB3 --> TMUX["Tmux Developer Starter Profile (~/.tmux.conf)"]
 ```
 
 ---
@@ -176,21 +178,86 @@ flowchart TD
 
 ---
 
-### 3.3 Subsystem 3: Modern Terminal & Developer Experience (DX)
+### 3.3 Subsystem 3: Modern Terminal & Ultimate Developer Experience (DX)
 
-#### 1. Starship Prompt Engine:
+#### 1. Modern CLI Suite (The Modern Unix Toolchain):
+* **Target Packages & Binaries:**
+  * `ripgrep` (`rg`): Blazingly fast multi-threaded regex search respecting `.gitignore`.
+  * `fd-find` (`fd`): Fast, intuitive filesystem search alternative to `find`.
+  * `bat` (`batcat`): `cat` clone with syntax highlighting and Git gutter integration.
+  * `eza`: Modern `ls` replacement with Nerd font icons, metadata, and Git status.
+  * `fzf`: General-purpose command-line fuzzy finder.
+  * `zoxide`: Smarter directory jumper with learning frecency algorithm (`z`).
+  * `btop`: Interactive visual process and resource monitor (CPU, RAM, GPU, Disks).
+  * `duf`: User-friendly, colorful disk usage utility.
+  * `tmux`: Terminal multiplexer with custom developer profile.
+
+#### 2. Starship Prompt Engine:
 * **Configuration:** `${HOME}/.config/starship.toml`
-* **Prompt Format:** Directory truncation (`3`), Git branch & status styling, Python virtual environment detection, and execution status symbol (`❯`).
-* **Installation:** Idempotent check for `starship` binary; downloads official prebuilt binary if uninstalled.
+* **Prompt Format:**
+  * Directory truncation (`3`), path icons, and git repository root detection.
+  * Git branch name, dirty state indicators, stash count, ahead/behind sync status.
+  * Runtime indicators: Python virtual environment (`.venv`), Node.js, Rust/Cargo, Docker context.
+  * Execution duration counter for long-running commands (> 2 seconds).
+  * Execution status symbol: `❯` (green on success, red on non-zero exit code).
 
-#### 2. Modern CLI Utilities:
-* **`fzf`:** Interactive fuzzy-finder for reverse command search (`Ctrl+R`) and file completion (`Ctrl+T`).
-* **`zoxide`:** Smart directory jumper with frecency algorithm (`alias cd="z"`).
-* **`bat` (`batcat`):** Cat clone with syntax highlighting and Git integration (`alias cat="bat --paging=never"`).
-* **`eza`:** Modern replacement for `ls` with icons, file metadata, and directory-first sorting (`alias ls="eza --icons"`).
+#### 3. FZF Live Preview & Interactive Keybindings:
+* **Shell Environment Setup (`~/.bashrc`):**
+  * `FZF_DEFAULT_COMMAND='fd --type f --strip-cwd-prefix --hidden --exclude .git'`
+  * `FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"`
+  * `FZF_ALT_C_COMMAND='fd --type d --strip-cwd-prefix --hidden --exclude .git'`
+  * `FZF_CTRL_T_OPTS="--preview 'bat --style=numbers --color=always --line-range :500 {}' --preview-window=right:60%:wrap"`
+  * `FZF_ALT_C_OPTS="--preview 'eza --tree --level=2 --color=always {}' --preview-window=right:50%"`
+  * `FZF_CTRL_R_OPTS="--preview 'echo {}' --preview-window=down:3:wrap --sort"`
 
-#### 3. Shell Hook Idempotency:
-* Configuration block encapsulated within a distinctive marker:
+#### 4. Bash 5.2+ Sensible Defaults & Infinite History:
+* **History Management:**
+  * `HISTSIZE=100000`
+  * `HISTFILESIZE=200000`
+  * `HISTCONTROL=ignoreboth:erasedups`
+  * `HISTTIMEFORMAT="%F %T "`
+* **Shell Ergonomics (`shopt`):**
+  * `shopt -s histappend` (append to history file, preventing multi-terminal overwrites).
+  * `shopt -s checkwinsize` (auto-update terminal geometry on window resize).
+  * `shopt -s globstar` (recursive `**` glob pattern support).
+  * `shopt -s cdspell` (autocorrect minor typing errors in directory paths).
+
+#### 5. Modern Unix & Git Developer Aliases:
+* **Modern CLI Aliases:**
+  ```bash
+  alias ls="eza --icons"
+  alias ll="eza -lh --icons --git"
+  alias la="eza -lah --icons --git"
+  alias lt="eza --tree --level=2 --icons"
+  alias cat="bat --paging=never"
+  alias grep="rg"
+  alias find="fd"
+  alias df="duf"
+  alias top="btop"
+  alias cd="z"
+  ```
+* **Git Power Aliases:**
+  ```bash
+  alias gst="git status"
+  alias gdiff="git diff"
+  alias glog="git log --oneline --graph --decorate"
+  alias gco="git checkout"
+  alias gbr="git branch"
+  alias gadd="git add"
+  alias gcm="git commit -m"
+  ```
+
+#### 6. Tmux Developer Starter Profile:
+* **Configuration:** `${HOME}/.tmux.conf`
+* **Features:**
+  * Full mouse support enabled (`set -g mouse on`).
+  * 24-bit TrueColor support (`set -ga terminal-overrides ",*256col*:Tc"`).
+  * Intuitive window splitting retaining current path (`|` horizontal, `-` vertical).
+  * Vi copy-mode keybindings (`setw -g mode-keys vi`).
+  * Clean dark status bar matching modern themes.
+
+#### 7. Shell Hook Idempotency:
+* All shell customizations are strictly wrapped within a distinctive marker:
   ```bash
   # --- os-manager Terminal Power-Up Hooks ---
   ```
@@ -202,7 +269,7 @@ flowchart TD
 The `osm tune` command group provides unified access to all customization features:
 
 ```bash
-# Audit all hardware power, media, thermal, and desktop tuning
+# Audit all hardware power, media, thermal, desktop, and terminal tuning
 osm tune audit
 
 # Manage Lenovo battery conservation mode (60% threshold)
@@ -245,8 +312,10 @@ osm tune desktop audit
 osm tune desktop backup [path/to/backup.ini]
 osm tune desktop restore [path/to/backup.ini]
 
-# Configure Starship prompt, fzf, zoxide, and modern CLI tools
+# Configure Starship prompt, modern CLI suite, FZF preview, Bash defaults, and Tmux
 osm tune terminal
+osm tune terminal setup
+osm tune terminal audit
 
 # Run all customization subroutines end-to-end
 osm tune all
@@ -260,7 +329,7 @@ osm tune all
 | :--- | :--- | :--- |
 | `tests/test_tune_hardware.py` | Python unit tests for battery sysfs, platform profile, fn-lock, thermals, GPU D3 status, VA-API detection, and boot persistence service generation. | • Mock sysfs read `1` $\rightarrow$ `enabled`<br/>• Mock sysfs read `0` $\rightarrow$ `disabled`<br/>• Non-existent path $\rightarrow$ `unsupported`<br/>• `set_battery_conservation_mode` invokes `tee`<br/>• `set_platform_profile` validates choices and writes to sysfs<br/>• `audit_vaapi_acceleration` parses vainfo output<br/>• `audit_gpu_runtime_power` detects suspended/active state<br/>• `generate_hardware_persist_unit` produces valid systemd unit |
 | `tests/test_desktop_customization.py` | Python unit tests for GTK 3 bookmarks, GSettings schema configuration, and Dconf backup/restore. | • Fresh bookmark creation writes `file:///mnt/data Data Store`<br/>• Subsequent calls do not duplicate entries<br/>• Respects custom bookmark path overrides<br/>• `apply_desktop_gsettings` executes expected `gsettings set` calls<br/>• `dconf_dump_desktop` and `dconf_load_desktop` export/import cleanly |
-| `tests/test_terminal_customization.py` | Python unit tests for Starship configuration generation and `.bashrc` alias injection. | • TOML configuration contains directory, git, and python modules<br/>• `.bashrc` alias injection includes marker and hooks<br/>• Re-running is strictly idempotent |
+| `tests/test_terminal_customization.py` | Python unit tests for Starship configuration generation, `.bashrc` alias injection, FZF preview variables, and `.tmux.conf` templating. | • TOML configuration contains directory, git, and python modules<br/>• `.bashrc` alias injection includes marker, modern tool aliases, and git shortcuts<br/>• FZF environment variables include syntax and tree preview options<br/>• `.tmux.conf` generates mouse mode, TrueColor, and Vi keybindings<br/>• Re-running is strictly idempotent |
 | `tests/test_harness.sh` | Master regression test suite integration. | • All new unit suites pass with exit code 0<br/>• Zero hardcoded path leaks<br/>• 100% clean harness execution |
 
 ---
@@ -269,5 +338,5 @@ osm tune all
 
 1. **Task 1:** Lenovo Hardware Power Tuning, ACPI Platform Profiles, `thermald`, Hybrid GPU Power-Gating, VA-API Video Acceleration & Systemd Boot Persistence ([`scripts/tune_hardware.sh`](file:///home/rizz/dev/os-manager/scripts/tune_hardware.sh)).
 2. **Task 2:** GNOME 48 Desktop Aesthetics, Ergonomics, Nautilus Data Store Bookmarking & Dconf State ([`scripts/setup_desktop_env.sh`](file:///home/rizz/dev/os-manager/scripts/setup_desktop_env.sh)).
-3. **Task 3:** Modern Terminal & Developer Experience Suite ([`scripts/setup_terminal_env.sh`](file:///home/rizz/dev/os-manager/scripts/setup_terminal_env.sh)).
+3. **Task 3:** Modern Terminal & Developer Experience Suite (Starship, Modern CLI, FZF Previews, Bash Defaults, Git Aliases, Tmux) ([`scripts/setup_terminal_env.sh`](file:///home/rizz/dev/os-manager/scripts/setup_terminal_env.sh)).
 4. **Task 4:** CLI Router Integration (`osm tune`), Master Harness Registration, and Documentation Guide ([`docs/DEBIAN_13_CUSTOMIZATION_GUIDE.md`](file:///home/rizz/dev/os-manager/docs/DEBIAN_13_CUSTOMIZATION_GUIDE.md)).
