@@ -293,3 +293,111 @@ def dconf_load_desktop(input_file: str) -> bool:
         return False
 
 
+STARSHIP_CONFIG_DEFAULT = os.path.expanduser("~/.config/starship.toml")
+TMUX_CONFIG_DEFAULT = os.path.expanduser("~/.tmux.conf")
+BASHRC_DEFAULT = os.path.expanduser("~/.bashrc")
+HOOK_MARKER = "# --- os-manager Terminal Power-Up Hooks ---"
+
+
+def generate_starship_config() -> str:
+    """Generate Starship prompt TOML content."""
+    return """add_newline = false
+
+format = \"\"\"
+$directory\\
+$git_branch\\
+$git_status\\
+$python\\
+$nodejs\\
+$rust\\
+$docker_context\\
+$cmd_duration\\
+$line_break\\
+$character\"\"\"
+
+[directory]
+truncation_length = 3
+truncate_to_repo = true
+style = "bold cyan"
+
+[git_branch]
+style = "bold purple"
+
+[git_status]
+style = "bold red"
+
+[cmd_duration]
+min_time = 2_000
+style = "bold yellow"
+
+[python]
+style = "bold yellow"
+
+[character]
+success_symbol = "[❯](bold green)"
+error_symbol = "[❯](bold red)"
+"""
+
+
+def generate_tmux_config() -> str:
+    """Generate Tmux starter profile content."""
+    return """set -g mouse on
+set -g default-terminal "xterm-256color"
+set -ga terminal-overrides ",*256col*:Tc"
+
+bind | split-window -h -c "#{pane_current_path}"
+bind - split-window -v -c "#{pane_current_path}"
+
+setw -g mode-keys vi
+set -g status-style bg=black,fg=white
+"""
+
+
+def generate_bash_hooks_block() -> str:
+    """Generate Bash power-up hooks block."""
+    return f"""\n{HOOK_MARKER}
+export HISTSIZE=100000
+export HISTFILESIZE=200000
+export HISTCONTROL=ignoreboth:erasedups
+export HISTTIMEFORMAT="%F %T "
+
+alias ls="eza --icons"
+alias ll="eza -lh --icons --git"
+alias la="eza -lah --icons --git"
+alias lt="eza --tree --level=2 --icons"
+alias cat="bat --paging=never"
+alias grep="rg"
+alias find="fd"
+alias df="duf"
+alias top="btop"
+alias cd="z"
+
+alias gst="git status"
+alias gdiff="git diff"
+alias glog="git log --oneline --graph --decorate"
+alias gco="git checkout"
+alias gbr="git branch"
+alias gadd="git add"
+alias gcm="git commit -m"
+# --- End os-manager Terminal Power-Up Hooks ---
+"""
+
+
+def inject_bashrc_hooks(bashrc_path: str = BASHRC_DEFAULT) -> bool:
+    """Idempotently inject terminal hooks into ~/.bashrc."""
+    p = Path(bashrc_path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if not p.is_file():
+        p.touch()
+
+    content = p.read_text(encoding="utf-8")
+    if HOOK_MARKER in content:
+        return True
+
+    block = generate_bash_hooks_block()
+    with open(p, "a", encoding="utf-8") as f:
+        f.write(block)
+    return True
+
+
+
