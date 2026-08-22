@@ -45,9 +45,21 @@ def rebuild_virtualenv(target_dir: str | None = None) -> int:
 
     print(f"[INFO] Creating fresh virtualenv using host Python: {sys.executable}")
     res = subprocess.run([sys.executable, "-m", "venv", str(venv_path)])
+    
     if res.returncode != 0:
-        print("[ERROR] Failed to create new virtualenv.", file=sys.stderr)
-        return res.returncode
+        uv_bin = shutil.which("uv") or str(Path.home() / ".local" / "bin" / "uv")
+        if shutil.which(uv_bin):
+            print(f"[INFO] python3-venv unavailable. Falling back to uv: {uv_bin}")
+            res = subprocess.run([uv_bin, "venv", "--clear", str(venv_path)])
+            if res.returncode == 0 and (workspace_root / "pyproject.toml").exists():
+                print("[INFO] Installing project dependencies into fresh virtualenv via uv...")
+                subprocess.run([uv_bin, "pip", "install", "-e", str(workspace_root)], env={**os.environ, "VIRTUAL_ENV": str(venv_path)}, check=False)
+                print("[PASS] Virtual environment rebuilt successfully via uv.")
+                return 0
+
+        if res.returncode != 0:
+            print("[ERROR] Failed to create new virtualenv. Please install python3-venv: sudo apt install -y python3-venv", file=sys.stderr)
+            return res.returncode
 
     pip_path = venv_path / "bin" / "pip"
     if pip_path.exists() and (workspace_root / "pyproject.toml").exists():
