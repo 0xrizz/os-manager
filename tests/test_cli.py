@@ -121,8 +121,10 @@ class TestOsmCli(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("GTK Bookmarks", out)
 
-    def test_tune_desktop_preset_macos(self):
+    @patch("os_manager.commands.tune_macos.run_macos_desktop_pipeline")
+    def test_tune_desktop_preset_macos(self, mock_pipeline):
         """Verify osm tune desktop --preset macos executes successfully."""
+        mock_pipeline.return_value = {"success": True, "snapshot": "/tmp/mock.dconf"}
         code, out, _ = self.run_cli(["tune", "desktop", "--preset", "macos"])
         self.assertEqual(code, 0)
         self.assertIn("macos", out.lower())

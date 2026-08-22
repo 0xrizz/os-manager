@@ -260,3 +260,31 @@ def apply_macos_gsettings(
     }
 
 
+def run_macos_desktop_pipeline(
+    accent: str = "default",
+    dark: bool = True,
+    full: bool = True,
+    dry_run: bool = False,
+    backup_dir: str | None = None,
+) -> dict[str, Any]:
+    """Execute complete end-to-end macOS desktop transformation."""
+    snapshot_path = None
+    if not dry_run:
+        snapshot_path = create_desktop_snapshot(backup_dir=backup_dir)
+
+    theme_res = install_upstream_themes(accent=accent, dark=dark, dry_run=dry_run)
+    font_res = setup_apple_fonts() if not dry_run else True
+    gsettings_res = apply_macos_gsettings(accent=accent, dark=dark, full=full, dry_run=dry_run)
+
+    return {
+        "status": "planned" if dry_run else "completed",
+        "dry_run": dry_run,
+        "snapshot": snapshot_path,
+        "theme": theme_res,
+        "fonts": font_res,
+        "gsettings": gsettings_res,
+        "success": (theme_res.get("success", False) or dry_run) and (gsettings_res.get("success", False) or dry_run),
+    }
+
+
+

@@ -465,10 +465,13 @@ def run_tune(args: list[str]) -> int:
     sys_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
 
     # desktop
-    desk_p = subparsers.add_parser("desktop", help="Manage GNOME aesthetics, bookmarks, and dconf")
-    desk_p.add_argument("action", nargs="?", default="apply", choices=["apply", "audit", "backup", "restore"])
-    desk_p.add_argument("--preset", default="standard", choices=["standard", "macos"], help="Visual aesthetic preset (standard or macos)")
-    desk_p.add_argument("--file", default=None, help="Target dconf file path")
+    desk_p = subparsers.add_parser("desktop", help="Manage GNOME 48 aesthetics, ergonomics, and macOS presets")
+    desk_p.add_argument("action", nargs="?", default="apply", choices=["audit", "apply", "backup", "restore"])
+    desk_p.add_argument("--preset", choices=["standard", "macos", "macos-full", "macos-core"], default="standard")
+    desk_p.add_argument("--accent", default="default", help="Accent color (blue, grey, purple, etc.)")
+    desk_p.add_argument("--mode", choices=["dark", "light"], default="dark", help="Color scheme mode")
+    desk_p.add_argument("--dry-run", action="store_true", help="Simulate actions without changes")
+    desk_p.add_argument("--file", help="Explicit dconf backup/restore file path")
 
     # terminal
     term_p = subparsers.add_parser("terminal", help="Manage Starship, modern CLI, Bash, and Tmux")
@@ -607,19 +610,51 @@ def run_tune(args: list[str]) -> int:
         if parsed_args.action == "apply":
             add_nautilus_bookmark("file:///mnt/data", "Data Store")
             preset_name = getattr(parsed_args, "preset", "standard")
-            apply_desktop_gsettings(preset=preset_name)
-            print(f"[PASS] GNOME desktop typography, ergonomics ({preset_name} preset), and bookmarks configured.")
-            return 0
+            if preset_name in ["macos", "macos-full", "macos-core"]:
+                from os_manager.commands.tune_macos import run_macos_desktop_pipeline
+
+                is_full = preset_name != "macos-core"
+                is_dark = getattr(parsed_args, "mode", "dark") == "dark"
+                accent_color = getattr(parsed_args, "accent", "default")
+                is_dry_run = getattr(parsed_args, "dry_run", False)
+
+                res = run_macos_desktop_pipeline(
+                    accent=accent_color,
+                    dark=is_dark,
+                    full=is_full,
+                    dry_run=is_dry_run,
+                )
+                if is_dry_run:
+                    print(f"[PLAN] macOS Desktop Transformation ({preset_name}) simulated successfully.")
+                else:
+                    status = "PASS" if res.get("success") else "WARN"
+                    print(f"[{status}] macOS Desktop Transformation ({preset_name}) completed. Snapshot: {res.get('snapshot')}")
+                return 0 if res.get("success") or is_dry_run else 1
+            else:
+                apply_desktop_gsettings(preset=preset_name)
+                print(f"[PASS] GNOME desktop typography, ergonomics ({preset_name} preset), and bookmarks configured.")
+                return 0
         elif parsed_args.action == "backup":
-            target = parsed_args.file or os.path.expanduser("~/.config/dconf/gnome-desktop.ini")
-            dconf_dump_desktop(target)
-            print(f"[PASS] Desktop profile exported to {target}")
+            if parsed_args.file:
+                dconf_dump_desktop(parsed_args.file)
+                print(f"[PASS] Desktop profile exported to {parsed_args.file}")
+            else:
+                from os_manager.commands.tune_macos import create_desktop_snapshot
+
+                snap = create_desktop_snapshot()
+                print(f"[PASS] Desktop profile snapshot created at {snap}")
             return 0
         elif parsed_args.action == "restore":
-            target = parsed_args.file or os.path.expanduser("~/.config/dconf/gnome-desktop.ini")
-            dconf_load_desktop(target)
-            print(f"[PASS] Desktop profile restored from {target}")
-            return 0
+            from os_manager.commands.tune_macos import restore_desktop_snapshot
+
+            target = parsed_args.file
+            success = restore_desktop_snapshot(snapshot_file=target) if target else restore_desktop_snapshot()
+            if success:
+                print(f"[PASS] Desktop profile restored from {target or 'latest snapshot'}")
+                return 0
+            else:
+                print(f"[FAIL] Desktop profile restoration failed.")
+                return 1
         bks = get_nautilus_bookmarks()
         print(f"GTK Bookmarks: {bks}")
         return 0

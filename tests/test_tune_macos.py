@@ -16,8 +16,10 @@ from os_manager.commands.tune_macos import (
     install_upstream_themes,
     list_desktop_snapshots,
     restore_desktop_snapshot,
+    run_macos_desktop_pipeline,
     setup_apple_fonts,
 )
+from os_manager.commands.tune import run_tune
 
 
 class TestMacOSSnapshotAndRollback(unittest.TestCase):
@@ -205,6 +207,108 @@ class TestMacOSGSettingsAndExtensions(unittest.TestCase):
         res = apply_macos_gsettings(dry_run=False)
         self.assertTrue(res["success"])
         self.assertGreater(mock_run.call_count, 5)
+
+
+class TestMacOSPipeline(unittest.TestCase):
+    @patch("os_manager.commands.tune_macos.create_desktop_snapshot")
+    @patch("os_manager.commands.tune_macos.install_upstream_themes")
+    @patch("os_manager.commands.tune_macos.setup_apple_fonts")
+    @patch("os_manager.commands.tune_macos.apply_macos_gsettings")
+    def test_run_macos_desktop_pipeline_dry_run(self, mock_apply, mock_font, mock_theme, mock_snap):
+        mock_snap.return_value = "/tmp/mock.dconf"
+        mock_theme.return_value = {"dry_run": True, "status": "planned"}
+        mock_apply.return_value = {"dry_run": True, "status": "planned"}
+
+        res = run_macos_desktop_pipeline(dry_run=True)
+        self.assertTrue(res["dry_run"])
+        self.assertEqual(res["status"], "planned")
+        mock_snap.assert_not_called()
+        mock_font.assert_not_called()
+
+    @patch("os_manager.commands.tune_macos.create_desktop_snapshot")
+    @patch("os_manager.commands.tune_macos.install_upstream_themes")
+    @patch("os_manager.commands.tune_macos.setup_apple_fonts")
+    @patch("os_manager.commands.tune_macos.apply_macos_gsettings")
+    def test_run_macos_desktop_pipeline_execution(self, mock_apply, mock_font, mock_theme, mock_snap):
+        mock_snap.return_value = "/tmp/mock.dconf"
+        mock_theme.return_value = {"dry_run": False, "success": True}
+        mock_apply.return_value = {"dry_run": False, "success": True}
+        mock_font.return_value = True
+
+        res = run_macos_desktop_pipeline(accent="blue", dark=False, full=False, dry_run=False, backup_dir="/tmp/b")
+        self.assertTrue(res["success"])
+        self.assertEqual(res["snapshot"], "/tmp/mock.dconf")
+        mock_snap.assert_called_once_with(backup_dir="/tmp/b")
+        mock_theme.assert_called_once_with(accent="blue", dark=False, dry_run=False)
+        mock_font.assert_called_once()
+        mock_apply.assert_called_once_with(accent="blue", dark=False, full=False, dry_run=False)
+
+    @patch("os_manager.commands.tune_macos.create_desktop_snapshot")
+    @patch("os_manager.commands.tune_macos.install_upstream_themes")
+    @patch("os_manager.commands.tune_macos.setup_apple_fonts")
+    @patch("os_manager.commands.tune_macos.apply_macos_gsettings")
+    def test_run_macos_desktop_pipeline_failure(self, mock_apply, mock_font, mock_theme, mock_snap):
+        mock_snap.return_value = "/tmp/mock.dconf"
+        mock_theme.return_value = {"dry_run": False, "success": False}
+        mock_apply.return_value = {"dry_run": False, "success": True}
+        mock_font.return_value = True
+
+        res = run_macos_desktop_pipeline(dry_run=False)
+        self.assertFalse(res["success"])
+        self.assertEqual(res["status"], "completed")
+
+
+class TestTuneDesktopCliIntegration(unittest.TestCase):
+    @patch("os_manager.commands.tune_macos.run_macos_desktop_pipeline")
+    @patch("os_manager.commands.tune.add_nautilus_bookmark")
+    def test_tune_desktop_preset_macos_full(self, mock_bookmark, mock_pipeline):
+        mock_pipeline.return_value = {"success": True, "snapshot": "/tmp/mock.dconf"}
+        code = run_tune(["desktop", "--preset", "macos-full", "--accent", "blue", "--mode", "dark"])
+        self.assertEqual(code, 0)
+        mock_bookmark.assert_called_once_with("file:///mnt/data", "Data Store")
+        mock_pipeline.assert_called_once_with(accent="blue", dark=True, full=True, dry_run=False)
+
+    @patch("os_manager.commands.tune_macos.run_macos_desktop_pipeline")
+    @patch("os_manager.commands.tune.add_nautilus_bookmark")
+    def test_tune_desktop_preset_macos_core_dry_run(self, mock_bookmark, mock_pipeline):
+        mock_pipeline.return_value = {"dry_run": True, "status": "planned"}
+        code = run_tune(["desktop", "--preset", "macos-core", "--mode", "light", "--dry-run"])
+        self.assertEqual(code, 0)
+        mock_pipeline.assert_called_once_with(accent="default", dark=False, full=False, dry_run=True)
+
+    @patch("os_manager.commands.tune_macos.create_desktop_snapshot")
+    def test_tune_desktop_backup_action(self, mock_snap):
+        mock_snap.return_value = "/home/user/.config/osm/backups/desktop-20260822-110000.dconf"
+        code = run_tune(["desktop", "backup"])
+        self.assertEqual(code, 0)
+        mock_snap.assert_called_once()
+
+    @patch("os_manager.commands.tune.dconf_dump_desktop")
+    def test_tune_desktop_backup_explicit_file(self, mock_dump):
+        mock_dump.return_value = True
+        code = run_tune(["desktop", "backup", "--file", "/tmp/custom.dconf"])
+        self.assertEqual(code, 0)
+        mock_dump.assert_called_once_with("/tmp/custom.dconf")
+
+    @patch("os_manager.commands.tune_macos.restore_desktop_snapshot")
+    def test_tune_desktop_restore_action(self, mock_restore):
+        mock_restore.return_value = True
+        code = run_tune(["desktop", "restore"])
+        self.assertEqual(code, 0)
+        mock_restore.assert_called_once_with()
+
+    @patch("os_manager.commands.tune_macos.restore_desktop_snapshot")
+    def test_tune_desktop_restore_explicit_file(self, mock_restore):
+        mock_restore.return_value = True
+        code = run_tune(["desktop", "restore", "--file", "/tmp/custom.dconf"])
+        self.assertEqual(code, 0)
+        mock_restore.assert_called_once_with(snapshot_file="/tmp/custom.dconf")
+
+    @patch("os_manager.commands.tune_macos.restore_desktop_snapshot")
+    def test_tune_desktop_restore_failure(self, mock_restore):
+        mock_restore.return_value = False
+        code = run_tune(["desktop", "restore", "--file", "/tmp/nonexistent.dconf"])
+        self.assertEqual(code, 1)
 
 
 if __name__ == "__main__":
