@@ -135,21 +135,39 @@ Kustomisasi tampilan dan workflow desktop dioptimalkan untuk produktivitas devel
 * **GTK Bookmark Otomatis**: Menambahkan `file:///mnt/data Data Store` ke file `~/.config/gtk-3.0/bookmarks` sehingga partisi data persistent selalu muncul di sidebar file manager Nautilus.
 * **Dconf Backup / Restore**: Menyediakan backup deklaratif status konfigurasi GNOME ke `~/.config/dconf/gnome-desktop.ini`.
 
-### 4.4 Preset Estetika Visual macOS Ver 3.0
+### 4.4 Suite Transformasi Desktop macOS Ver 3.0
 
-Preset estetika `macos` (`osm tune desktop --preset macos` atau `bash scripts/setup_desktop_env.sh --preset macos`) mentransformasi desktop GNOME 48 menjadi layout elegan terinspirasi macOS:
+Suite transformasi `macos` (`osm tune desktop --preset macos-full` atau `bash scripts/setup_desktop_env.sh --preset macos-full`) mentransformasi antarmuka GNOME 48 menjadi layout terinspirasi macOS yang elegan, modern, dan ergonomis:
 
-* **Tombol Jendela Kiri (Traffic Lights)**: Tombol Close, Minimize, dan Maximize diletakkan di sudut kiri atas jendela (`org.gnome.desktop.wm.preferences button-layout 'close,minimize,maximize:'`).
-* **Centered Bottom Dock (`dash-to-dock`)**:
-  * Posisi dock di bawah layar (`dock-position = 'BOTTOM'`)
-  * Dock terpusat / ukuran dinamis tanpa bar layar penuh (`extend-height = false`)
-  * Ukuran ikon dock 48px (`dash-max-icon-size = 48`)
-  * Mode cerdas Autohide & Intellihide (`autohide = true`, `intellihide = true`, `dock-fixed = false`)
-  * Dock shrink theme adaptif (`custom-theme-shrink = true`)
-  * Kebersihan visual: Sembunyikan ikon trash dan mounted storage (`show-trash-icon = false`, `show-mounts = false`)
-* **Tipografi & Tampilan Subpixel**: Font `Inter` untuk antarmuka/dokumen dan `JetBrains Mono` untuk terminal, dilengkapi subpixel antialiasing `rgba` dan hinting `slight`.
-* **Dark Mode & Night Light**: Dark mode preferensial global (`color-scheme = 'prefer-dark'`) dan jadwal Night Light otomatis.
-* **WhiteSur Theme & Extensions Guidance**: Panduan interaktif pemasangan tema GTK WhiteSur, ikon WhiteSur, kursor WhiteSur, serta GNOME extensions melalui perintah `bash scripts/setup_desktop_env.sh --install-macos-theme`.
+* **Preset Tersedia**:
+  * `macos-full` (alias: `macos`): Transformasi menyeluruh yang mengintegrasikan tema WhiteSur (GTK, Icon, Cursor), Apple SF Pro & SF Mono typography, konfigurasi floating bottom dock (`dash-to-dock`), efek transparansi panel (`blur-my-shell`), dan animasi jendela (`magic-lamp`).
+  * `macos-core`: Transformasi esensial visual macOS (tombol window traffic lights kiri, floating centered dock, SF fonts) tanpa efek animasi berat.
+  * `standard`: Konfigurasi standar GNOME 48 dengan tombol jendela di sebelah kanan dan font Inter / JetBrains Mono.
+* **Fitur & Tata Letak Visual**:
+  * **Tombol Jendela Kiri (Traffic Lights)**: Tombol Close, Minimize, dan Maximize diletakkan di sudut kiri atas jendela (`org.gnome.desktop.wm.preferences button-layout 'close,minimize,maximize:'`).
+  * **Centered Bottom Dock (`dash-to-dock`)**:
+    * Posisi dock di bawah layar (`dock-position = 'BOTTOM'`)
+    * Dock terpusat / ukuran dinamis tanpa bar layar penuh (`extend-height = false`)
+    * Ukuran ikon dock 48px (`dash-max-icon-size = 48`)
+    * Mode cerdas Autohide & Intellihide (`autohide = true`, `intellihide = true`, `dock-fixed = false`)
+    * Dock shrink theme adaptif (`custom-theme-shrink = true`)
+    * Kebersihan visual: Sembunyikan ikon trash dan mounted storage (`show-trash-icon = false`, `show-mounts = false`)
+  * **Tipografi Apple SF Pro & SF Mono**: Antarmuka menggunakan `SF Pro Text 10.5`, dokumen `SF Pro Text 11`, monospace terminal `SF Mono 10`, dan titlebar `SF Pro Display Bold 10.5` dengan fontconfig subpixel antialiasing `rgba` dan hinting `slight` (dengan fallback otomatis ke `Inter` & `JetBrains Mono`).
+  * **Mode Warna & Variasi Aksen**:
+    * Opsi `--mode dark` (default) atau `--mode light` untuk tema GTK, ikon, dan preferensi skema warna.
+    * Opsi `--accent [default|blue|purple|pink|red|orange|yellow|green|grey]` untuk kustomisasi warna aksen WhiteSur.
+  * **Simulasi Tanpa Efek Samping (`--dry-run`)**: Memvalidasi seluruh pipeline rencana instalasi dan matriks gsettings tanpa mengubah sistem.
+
+### 4.5 Sistem Snapshot & Rollback Otomatis
+
+Untuk menjamin keandalan dan mencegah rusaknya konfigurasi desktop pengguna:
+* **Lokasi Snapshot**: Seluruh backup dconf otomatis disimpan di direktori `~/.config/osm/backups/` dengan penamaan `desktop-YYYYMMDD-HHMMSS.dconf`.
+* **Automated Safety Net**: Setiap pemanggilan `osm tune desktop --preset ...` atau `setup_desktop_env.sh --preset ...` secara otomatis membuat snapshot konfigurasi GNOME sebelum modifikasi diterapkan.
+* **Manual Backup & Restore**:
+  * Backup manual: `osm tune desktop backup` (atau `--file /path/to/backup.dconf`)
+  * Rollback instan: `osm tune desktop restore` secara otomatis mencari snapshot terbaru di `~/.config/osm/backups/` dan memulihkan seluruh state GNOME dconf secara instan.
+  * Rollback dari file spesifik: `osm tune desktop restore --file /path/to/backup.dconf`
+
 
 ---
 
@@ -268,14 +286,19 @@ osm tune system audit         # Memeriksa nilai sysctl (swappiness, inotify, BBR
 osm tune system apply         # Menerapkan konfigurasi sysctl kernel performa tinggi
 
 # ----------------------------------------------------
-# 4. DESKTOP GNOME 48 TUNING
+# 4. DESKTOP GNOME 48 & MACOS TRANSFORMATION
 # ----------------------------------------------------
 osm tune desktop audit                    # Memeriksa daftar bookmark GTK Nautilus
 osm tune desktop apply                    # Menerapkan preset standar (tombol kanan, tipografi, bookmark)
 osm tune desktop --preset standard        # Menerapkan preset GNOME standar
-osm tune desktop --preset macos           # Menerapkan preset estetika macOS Ver 3.0 (traffic lights kiri, centered dock)
-osm tune desktop backup                   # Mengekspor dconf settings ke ~/.config/dconf/gnome-desktop.ini
-osm tune desktop restore                  # Mengimpor dconf settings dari ~/.config/dconf/gnome-desktop.ini
+osm tune desktop --preset macos-full      # Transformasi penuh macOS (WhiteSur GTK/icons/cursors, SF fonts, Blur, Magic Lamp, Dock)
+osm tune desktop --preset macos-core      # Kustomisasi inti macOS (tombol kiri traffic lights, centered bottom dock, SF fonts)
+osm tune desktop --preset macos-full --mode dark --accent blue  # Kustomisasi preset dengan mode dan aksen warna spesifik
+osm tune desktop --preset macos-full --dry-run                  # Simulasi eksekusi transformasi tanpa modifikasi sistem
+osm tune desktop backup                   # Membuat snapshot dconf otomatis ke ~/.config/osm/backups/desktop-<timestamp>.dconf
+osm tune desktop backup --file /tmp/backup.dconf  # Ekspor dconf settings ke file spesifik
+osm tune desktop restore                  # Memulihkan konfigurasi desktop dari snapshot terbaru di ~/.config/osm/backups/
+osm tune desktop restore --file /tmp/backup.dconf # Memulihkan konfigurasi desktop dari file spesifik
 
 # ----------------------------------------------------
 # 5. TERMINAL & DEVELOPER EXPERIENCE
@@ -308,13 +331,16 @@ bash scripts/tune_system.sh --trim enable
 bash scripts/tune_system.sh --firewall enable
 bash scripts/tune_system.sh --audit
 
-# GNOME Desktop
+# GNOME Desktop & macOS Transformation
 bash scripts/setup_desktop_env.sh --apply
 bash scripts/setup_desktop_env.sh --preset standard
-bash scripts/setup_desktop_env.sh --preset macos
+bash scripts/setup_desktop_env.sh --preset macos-full
+bash scripts/setup_desktop_env.sh --preset macos-core
+bash scripts/setup_desktop_env.sh --backup
+bash scripts/setup_desktop_env.sh --restore
 bash scripts/setup_desktop_env.sh --install-macos-theme
-bash scripts/setup_desktop_env.sh --dconf-dump
-bash scripts/setup_desktop_env.sh --dconf-load
+bash scripts/setup_desktop_env.sh --dconf-dump ~/.config/dconf/gnome-desktop.ini
+bash scripts/setup_desktop_env.sh --dconf-load ~/.config/dconf/gnome-desktop.ini
 
 # Terminal DX
 bash scripts/setup_terminal_env.sh --setup
@@ -328,11 +354,12 @@ bash scripts/setup_terminal_env.sh --audit
 Seluruh modul kustomisasi diuji oleh rangkaian tes otomatis unittests dan master harness:
 
 ```bash
-# Menjalankan 4 unit test suite kustomisasi Debian 13:
+# Menjalankan 5 unit test suite kustomisasi Debian 13:
 python3 -m unittest tests/test_tune_hardware.py
 python3 -m unittest tests/test_tune_system.py
 python3 -m unittest tests/test_desktop_customization.py
 python3 -m unittest tests/test_terminal_customization.py
+python3 -m unittest tests/test_tune_macos.py
 
 # Menjalankan verifikasi CLI router:
 python3 -m unittest tests/test_cli.py

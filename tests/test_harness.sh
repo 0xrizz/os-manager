@@ -413,6 +413,9 @@ assert_exit_code "test_desktop_customization.py unit suite" 0 $?
 
 python3 -m unittest "${WORKSPACE_ROOT}/tests/test_terminal_customization.py" > /dev/null 2>&1
 assert_exit_code "test_terminal_customization.py unit suite" 0 $?
+
+python3 -m unittest "${WORKSPACE_ROOT}/tests/test_tune_macos.py" > /dev/null 2>&1
+assert_exit_code "test_tune_macos.py unit suite" 0 $?
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
