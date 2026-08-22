@@ -345,30 +345,45 @@ def migrate_ntfs_driver(fstab_path: str = "/etc/fstab", mount_point: str = "/mnt
     except Exception as e:
         return {"success": False, "error": f"Failed to write updated fstab to {fstab_path}: {e}"}
 
-    # Attempt remount
-    res = subprocess.run(["mount", "-o", "remount", mount_point], capture_output=True, text=True, check=False)
-    if res.returncode != 0:
-        # Rollback on remount failure
-        try:
-            shutil.copy2(backup_path, fstab_path)
-            subprocess.run(["mount", "-o", "remount", mount_point], capture_output=True, text=True, check=False)
-        except Exception:
-            pass
-        return {
-            "success": False,
-            "status": "failed",
-            "error": f"Remount failed, rolled back: {res.stderr.strip() or res.stdout.strip()}",
-            "backup": backup_path,
-            "rolled_back": True,
-        }
+    # Attempt unmount and mount if not busy, or keep updated for boot
+    umount_cmd = ["umount", mount_point] if os.geteuid() == 0 else ["sudo", "umount", mount_point]
+    mount_cmd = ["mount", mount_point] if os.geteuid() == 0 else ["sudo", "mount", mount_point]
 
-    return {
-        "success": True,
-        "status": "migrated",
-        "driver": "ntfs3",
-        "backup": backup_path,
-        "mount_point": mount_point,
-    }
+    res_umount = subprocess.run(umount_cmd, capture_output=True, text=True, check=False)
+    if res_umount.returncode == 0:
+        # Unmount succeeded, now mount with new fstab ntfs3 config
+        res_mount = subprocess.run(mount_cmd, capture_output=True, text=True, check=False)
+        if res_mount.returncode != 0:
+            # Rollback to ntfs-3g backup
+            try:
+                shutil.copy2(backup_path, fstab_path)
+                subprocess.run(mount_cmd, capture_output=True, text=True, check=False)
+            except Exception:
+                pass
+            return {
+                "success": False,
+                "status": "failed",
+                "error": f"Mount failed, rolled back: {res_mount.stderr.strip() or res_mount.stdout.strip()}",
+                "backup": backup_path,
+                "rolled_back": True,
+            }
+        return {
+            "success": True,
+            "status": "migrated",
+            "driver": "ntfs3",
+            "backup": backup_path,
+            "mount_point": mount_point,
+        }
+    else:
+        # Volume is in active use (e.g. open shell or GUI app); fstab is updated safely for next reboot / unmount
+        return {
+            "success": True,
+            "status": "fstab_updated_pending_reboot",
+            "driver": "ntfs3",
+            "backup": backup_path,
+            "mount_point": mount_point,
+            "note": "fstab updated to ntfs3; live unmount deferred because partition is in active use.",
+        }
 
 
 def audit_fstrim_timer_status() -> dict[str, Any]:
@@ -509,7 +524,7 @@ def collect_tune_telemetry() -> dict[str, Any]:
     # Hardware subsystem
     gpu_audit = audit_gpu_runtime_power()
     therm_active = False
-    if shutil.which("thermald"):
+    if shutil.which("thermald") or Path("/usr/sbin/thermald").is_file() or Path("/sbin/thermald").is_file():
         try:
             res_therm = subprocess.run(
                 ["systemctl", "is-active", "thermald"], capture_output=True, text=True, check=False

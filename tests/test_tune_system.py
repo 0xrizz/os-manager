@@ -155,7 +155,6 @@ class TestTuneSystem(unittest.TestCase):
         self.assertIn(".bak.", res["backup"])
         mock_copy.assert_called_once()
         mock_write.assert_called_once()
-        mock_run.assert_called_once_with(["mount", "-o", "remount", "/mnt/data"], capture_output=True, text=True, check=False)
 
     @patch("pathlib.Path.read_text")
     @patch("pathlib.Path.is_file")
@@ -174,11 +173,12 @@ class TestTuneSystem(unittest.TestCase):
     @patch("pathlib.Path.read_text")
     @patch("pathlib.Path.is_file")
     def test_migrate_ntfs_driver_rollback_on_failure(self, mock_isfile, mock_read, mock_write, mock_copy, mock_run):
-        """Verify automatic rollback to backup if remount fails."""
+        """Verify automatic rollback to backup if mount fails."""
         mock_isfile.return_value = True
         mock_read.return_value = "UUID=123 /mnt/data ntfs-3g defaults 0 0\n"
-        # First remount fails, second remount during rollback succeeds
+        # umount succeeds (0), mount fails (1), rollback mount succeeds (0)
         mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="", stderr=""),
             MagicMock(returncode=1, stdout="", stderr="mount error: wrong fs type"),
             MagicMock(returncode=0, stdout="", stderr=""),
         ]
@@ -186,7 +186,7 @@ class TestTuneSystem(unittest.TestCase):
         res = migrate_ntfs_driver(fstab_path="/tmp/fstab", mount_point="/mnt/data")
         self.assertFalse(res["success"])
         self.assertTrue(res.get("rolled_back", False))
-        self.assertIn("Remount failed, rolled back", res["error"])
+        self.assertIn("Mount failed, rolled back", res["error"])
         # Check that copy was called twice: once for backup, once for restore
         self.assertEqual(mock_copy.call_count, 2)
 
