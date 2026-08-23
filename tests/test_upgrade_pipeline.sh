@@ -127,7 +127,7 @@ echo "=================================================="
 
 # 1. Standard verification execution
 set +e
-VERIFY_OUT="$(OSM_MOCK_ROOT=1 OSM_MOCK_TMUX=1 "${UPGRADE_SCRIPT}" --verify 2>&1)"
+VERIFY_OUT="$(OSM_MOCK_ROOT=1 OSM_MOCK_TMUX=1 OSM_MOCK_SYSTEMD_CLEAN=1 "${UPGRADE_SCRIPT}" --verify 2>&1)"
 VERIFY_RC=$?
 set -e
 

@@ -416,6 +416,19 @@ assert_exit_code "test_terminal_customization.py unit suite" 0 $?
 
 python3 -m unittest "${WORKSPACE_ROOT}/tests/test_tune_macos.py" > /dev/null 2>&1
 assert_exit_code "test_tune_macos.py unit suite" 0 $?
+
+echo "--- Testing AI Gateway Control Plane & CLI Suite ---"
+python3 -m unittest "${WORKSPACE_ROOT}/tests/test_ai_command.py" > /dev/null 2>&1
+assert_exit_code "test_ai_command.py unit suite" 0 $?
+
+python3 -m unittest "${WORKSPACE_ROOT}/tests/test_ai_claude.py" > /dev/null 2>&1
+assert_exit_code "test_ai_claude.py unit suite" 0 $?
+
+PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli ai --help > /dev/null 2>&1
+assert_exit_code "osm ai --help execution" 0 $?
+
+PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli ai status --json > /dev/null 2>&1
+assert_exit_code "osm ai status --json execution" 0 $?
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"

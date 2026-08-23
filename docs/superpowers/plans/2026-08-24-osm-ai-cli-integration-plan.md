@@ -28,7 +28,7 @@
 **Interfaces:**
 - Produces: `check_gateway_health() -> dict`, `get_telemetry_summary() -> dict`, `open_dashboards(headroom: bool, router: bool) -> int`, `manage_services(action: str) -> int`, `run_ai(argv: list[str]) -> int`.
 
-- [ ] **Step 1: Write the failing unit tests for `ai.py`**
+- [x] **Step 1: Write the failing unit tests for `ai.py`**
 
 Write `tests/test_ai_command.py`:
 ```python
@@ -131,12 +131,12 @@ class TestAiCommand(unittest.TestCase):
         self.assertIn("telemetry", data)
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run: `pytest tests/test_ai_command.py -v`
 Expected output: ModuleNotFoundError or FAIL (`No module named 'os_manager.commands.ai'`).
 
-- [ ] **Step 3: Implement `os_manager/commands/ai.py`**
+- [x] **Step 3: Implement `os_manager/commands/ai.py`**
 
 Write `os_manager/commands/ai.py`:
 ```python
@@ -352,12 +352,12 @@ def run_ai(argv: list[str]) -> int:
         return 0
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_ai_command.py -v`
 Expected output: 5 passed in <1s.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 ```bash
 git add os_manager/commands/ai.py tests/test_ai_command.py
@@ -376,7 +376,7 @@ git commit -m "feat(ai): add unified AI gateway control plane module and tests"
 - Consumes: `run_ai` from `os_manager.commands.ai`.
 - Produces: Registered `osm ai` subcommand in `build_parser()`.
 
-- [ ] **Step 1: Write test for `osm ai` dispatch in `tests/test_cli.py`**
+- [x] **Step 1: Write test for `osm ai` dispatch in `tests/test_cli.py`**
 
 Add to `tests/test_cli.py`:
 ```python
@@ -397,12 +397,12 @@ Add to `tests/test_cli.py`:
         mock_run_ai.assert_called_once_with(["status"])
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run: `pytest tests/test_cli.py -k test_ai -v`
 Expected output: FAIL.
 
-- [ ] **Step 3: Update `os_manager/cli.py`**
+- [x] **Step 3: Update `os_manager/cli.py`**
 
 Modify `os_manager/cli.py` to register `ai`:
 ```python
@@ -416,12 +416,12 @@ And inside `main()`:
         return run_ai(argv[1:])
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_cli.py -k test_ai -v`
 Expected output: PASS.
 
-- [ ] **Step 5: Commit Task 2**
+- [x] **Step 5: Commit Task 2**
 
 ```bash
 git add os_manager/cli.py tests/test_cli.py
@@ -440,7 +440,7 @@ git commit -m "feat(cli): register osm ai subcommand in main CLI router"
 - Consumes: `check_gateway_health`, `manage_services` from `os_manager.commands.ai`.
 - Produces: `launch_claude(args: list[str]) -> int`.
 
-- [ ] **Step 1: Write unit tests for `ai_claude.py`**
+- [x] **Step 1: Write unit tests for `ai_claude.py`**
 
 Write `tests/test_ai_claude.py`:
 ```python
@@ -487,12 +487,12 @@ class TestAiClaudeLauncher(unittest.TestCase):
         mock_manage.assert_called_once_with("start")
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run: `pytest tests/test_ai_claude.py -v`
 Expected output: FAIL (`No module named 'os_manager.commands.ai_claude'`).
 
-- [ ] **Step 3: Implement `os_manager/commands/ai_claude.py`**
+- [x] **Step 3: Implement `os_manager/commands/ai_claude.py`**
 
 Write `os_manager/commands/ai_claude.py`:
 ```python
@@ -544,12 +544,12 @@ def launch_claude(claude_args: list[str]) -> int:
         return 1
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_ai_claude.py -v`
 Expected output: PASS.
 
-- [ ] **Step 5: Commit Task 3**
+- [x] **Step 5: Commit Task 3**
 
 ```bash
 git add os_manager/commands/ai_claude.py tests/test_ai_claude.py
@@ -568,11 +568,11 @@ git commit -m "feat(ai): add on-demand claude launcher with automatic gateway ve
 - Consumes: All `osm ai` commands.
 - Produces: 100% clean test suite passes across the entire repository.
 
-- [ ] **Step 1: Add `osm ai` test assertion to `tests/test_harness.sh`**
+- [x] **Step 1: Add `osm ai` test assertion to `tests/test_harness.sh`**
 
 Modify `tests/test_harness.sh` to include `osm ai --help` and `osm ai status --json` health assertion.
 
-- [ ] **Step 2: Run full repository test suite**
+- [x] **Step 2: Run full repository test suite**
 
 Run:
 ```bash
@@ -581,7 +581,7 @@ bash tests/test_harness.sh
 ```
 Expected output: 100% test pass.
 
-- [ ] **Step 3: Execute live CLI verification on the host**
+- [x] **Step 3: Execute live CLI verification on the host**
 
 Run:
 ```bash
@@ -590,7 +590,7 @@ python3 -m os_manager.cli ai status --json
 ```
 Expected output: Valid terminal table and valid JSON output showing online status and token savings.
 
-- [ ] **Step 4: Commit Task 4**
+- [x] **Step 4: Commit Task 4**
 
 ```bash
 git add tests/test_harness.sh docs/superpowers/plans/2026-08-24-osm-ai-cli-integration-plan.md

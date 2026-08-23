@@ -936,6 +936,8 @@ verify_system_and_hardware() {
     if [[ "${OSM_MOCK_SYSTEMD_FAILED:-0}" == "1" ]]; then
         log_error "Degraded or failed systemd units detected (mocked failure)."
         failures=$((failures + 1))
+    elif [[ "${OSM_MOCK_SYSTEMD_CLEAN:-0}" == "1" ]]; then
+        log_pass "Zero failed systemd units reported (100% healthy)."
     elif command -v systemctl >/dev/null 2>&1; then
         local failed_units
         failed_units="$(systemctl --failed --no-legend --no-pager 2>/dev/null || true)"
