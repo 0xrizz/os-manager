@@ -1,7 +1,7 @@
 """tests/test_ai_claude.py - Unit tests for osm ai claude launcher."""
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from os_manager.commands.ai import run_ai
 from os_manager.commands.ai_claude import launch_claude

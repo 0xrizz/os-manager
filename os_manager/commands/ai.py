@@ -5,8 +5,6 @@ import json
 import os
 import sqlite3
 import subprocess
-import sys
-import urllib.error
 import urllib.request
 import webbrowser
 
@@ -117,19 +115,30 @@ def manage_services(action: str) -> int:
     print(f"=== AI Gateway Service Manager ({action}) ===")
     if action == "start":
         print("-> Starting 9Router gateway...")
-        subprocess.run(["systemctl", "--user", "start", "app-9router@autostart.service"], check=False)
+        res_r = subprocess.run(["systemctl", "--user", "start", "app-9router@autostart.service"], check=False)
         print("-> Starting Headroom proxy...")
-        subprocess.run(["systemctl", "--user", "start", "headroom-default.service"], check=False)
-        print("[OK] Services start signal dispatched.")
+        res_h = subprocess.run(["systemctl", "--user", "start", "headroom-default.service"], check=False)
+        if res_r.returncode != 0 or res_h.returncode != 0:
+            print("[Warning] One or more service start commands returned non-zero exit status.")
+        else:
+            print("[OK] Services start signal dispatched.")
     elif action == "stop":
         print("-> Stopping Headroom proxy...")
-        subprocess.run(["systemctl", "--user", "stop", "headroom-default.service"], check=False)
+        res_h = subprocess.run(["systemctl", "--user", "stop", "headroom-default.service"], check=False)
         print("-> Stopping 9Router gateway...")
-        subprocess.run(["systemctl", "--user", "stop", "app-9router@autostart.service"], check=False)
-        print("[OK] Services stopped.")
+        res_r = subprocess.run(["systemctl", "--user", "stop", "app-9router@autostart.service"], check=False)
+        if res_h.returncode != 0 or res_r.returncode != 0:
+            print("[Warning] One or more service stop commands returned non-zero exit status.")
+        else:
+            print("[OK] Services stopped.")
     elif action == "restart":
-        manage_services("stop")
-        manage_services("start")
+        print("-> Restarting Headroom proxy & 9Router gateway...")
+        res_h = subprocess.run(["systemctl", "--user", "restart", "headroom-default.service"], check=False)
+        res_r = subprocess.run(["systemctl", "--user", "restart", "app-9router@autostart.service"], check=False)
+        if res_h.returncode != 0 or res_r.returncode != 0:
+            print("[Warning] One or more service restart commands returned non-zero exit status.")
+        else:
+            print("[OK] Services restarted.")
     elif action == "logs":
         print("-> Tailing unified service logs (Ctrl+C to exit)...")
         try:
