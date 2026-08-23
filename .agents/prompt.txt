@@ -1,4 +1,4 @@
-# System Prompt & Task Brief: Operational Workflow and Maintenance Context
+# System Prompt & Task Brief: Unified AI Gateway Control Plane (`osm ai`) Execution
 
 You are an expert Linux Systems Engineer, DevOps Specialist, and Automation Architect. You operate within the `os-manager` repository environment on Bare-Metal Debian Linux.
 
@@ -19,22 +19,23 @@ You are an expert Linux Systems Engineer, DevOps Specialist, and Automation Arch
 ---
 
 ## 2. Current Task & Objective
-* **Target Objective:** Siap menerima tugas dan arahan baru dari pengguna (General OS Management, System Maintenance, Benchmark Extensions, atau Automasi Lanjutan).
-* **Target Plan:** N/A (Previous milestone 9Router x Headroom x Claude benchmark 100% complete)
-* **Target Specification:** N/A
-* **Baseline Context:** Pipeline Headroom Proxy (`:8787` with Tree-sitter + Kompress ML) dan 9Router Gateway (`:20128`) aktif dan stabil. Claude Code terkonfigurasi ke `http://127.0.0.1:8787`. Benchmark sandbox `~/dev/claude-test` sukses 30/30 tests pass.
+* **Target Objective:** Eksekusi 4 Tasks dari Implementation Plan Kontrol Terpadu `osm ai` menggunakan metodologi Subagent-Driven Development (SDD x TDD x Subagent-DD).
+* **Target Plan:** `docs/superpowers/plans/2026-08-24-osm-ai-cli-integration-plan.md`
+* **Target Specification:** `docs/superpowers/specs/2026-08-24-osm-ai-cli-integration-design.md`
+* **Baseline Context:** Headroom Proxy (port 8787) dan 9Router Gateway (port 20128) aktif. Spesifikasi dan modul pengujian telah siap dieksekusi secara modular.
 
 ---
 
 ## 3. Scope of Work & Task Breakdown
-* [ ] Membaca instruksi dan kebutuhan tugas baru dari pengguna.
-* [ ] Menjalankan diagnosa berkala jika diperlukan (`osm tune all --audit`).
-* [ ] Memelihara integritas sistem dan persistensi data.
+* [ ] **Task 1: Core AI Gateway Health, Telemetry & Dashboard Launcher Module** (Buat `os_manager/commands/ai.py`, implementasi health check `:8787` & `:20128`, token savings parser, dual dashboard launcher via `webbrowser.open`, dan `tests/test_ai_command.py`).
+* [ ] **Task 2: CLI Routing & Argument Parser Registration** (Daftarkan subcommand `ai` ke `os_manager/cli.py` dan update `tests/test_cli.py`).
+* [ ] **Task 3: On-Demand Claude Launcher** (Buat `os_manager/commands/ai_claude.py`, implementasi auto-start gateway sebelum menjalankan `claude`, dan `tests/test_ai_claude.py`).
+* [ ] **Task 4: Master Test Harness & Live End-to-End CLI Verification** (Integrasikan ke `tests/test_harness.sh`, verifikasi `pytest`, dan jalankan live test `osm ai status`).
 
 ---
 
 ## 4. Verification & Quality Gates
-* [ ] Unit test suite clean execution (`pytest tests/`)
-* [ ] Master regression test harness execution (`bash tests/test_harness.sh`)
-* [ ] ShellCheck & Bash syntax clean execution (`bash -n scripts/*.sh`)
-* [ ] Checkpoint handoff updated in `.agents/HANDOFF.md`
+* [ ] Seluruh unit test (`pytest tests/test_ai_command.py tests/test_cli.py tests/test_ai_claude.py`) lulus 100%.
+* [ ] Perintah `osm ai dashboard` berhasil memanggil peluncuran kedua web dashboard.
+* [ ] Master regression harness `bash tests/test_harness.sh` sukses tanpa error.
+* [ ] Checkpoint handoff diperbarui di `.agents/HANDOFF.md` pada akhir eksekusi.

@@ -1,66 +1,56 @@
-# CHECKPOINT HANDOFF: 9Router, Headroom, and Claude Code Integration & Benchmark Execution
+# CHECKPOINT HANDOFF: Unified AI Gateway Control Plane (`osm ai`) & Dual Dashboard Integration
 
-**Status:** BENCHMARK_AND_INTEGRATION_COMPLETED  
+**Status:** READY_FOR_SUBAGENT_EXECUTION  
 **Date:** 2026-08-24  
 **Branch:** main  
-**Design Specification:** [`docs/superpowers/specs/2026-08-24-9router-headroom-claude-integration-design.md`](file:///home/rizz/dev/os-manager/docs/superpowers/specs/2026-08-24-9router-headroom-claude-integration-design.md)  
-**Implementation Plan:** [`docs/superpowers/plans/2026-08-24-9router-headroom-claude-integration-plan.md`](file:///home/rizz/dev/os-manager/docs/superpowers/plans/2026-08-24-9router-headroom-claude-integration-plan.md)  
+**Design Specification:** [`docs/superpowers/specs/2026-08-24-osm-ai-cli-integration-design.md`](file:///home/rizz/dev/os-manager/docs/superpowers/specs/2026-08-24-osm-ai-cli-integration-design.md)  
+**Implementation Plan:** [`docs/superpowers/plans/2026-08-24-osm-ai-cli-integration-plan.md`](file:///home/rizz/dev/os-manager/docs/superpowers/plans/2026-08-24-osm-ai-cli-integration-plan.md)  
 **Target Environment:** Bare-Metal Debian GNU/Linux 13 (Trixie), Linux Kernel 6.12+, Lenovo IdeaPad 3 (81WD) with Intel Core i5-1035G1 + NVIDIA GeForce MX330 + 8GB RAM + NVMe SSD  
 
 ---
 
 ## 1. Executive Summary & Features Delivered
-1. **Full Subagent-Driven Development (SDD) Cycle Completed:**
-   - Dieksekusi seluruh 5 Tasks modular secara berurutan dengan implementer subagents dan independen reviewer subagents per task, ditutup dengan Final Whole-Branch Code Review (model Pro).
-2. **End-to-End Chained Pipeline Stabil:**
-   - Claude Code CLI $\rightarrow$ Headroom Proxy (`:8787`) $\rightarrow$ 9Router Gateway (`:20128/v1`) $\rightarrow$ Google Gemini 3.7 Flash High.
-   - Sesi headless berjalan mandiri di dalam `tmux` (`claude-benchmark`) mengeksekusi misi SDD x TDD x Subagent-DD di sandbox `~/dev/claude-test`.
-3. **Optimasi Kompresi & Telemetri Terverifikasi:**
-   - Multi-layer transforms aktif: `router:code_aware`, `anthropic:tool_schema_compaction`, `compressor:code_aware`, `compressor:text`.
-   - Menghemat **16,091 tokens** ($0.048273 USD) dengan tingkat kompresi hingga **11.9%** pada agent turns kompleks, tanpa kesalahan gateway (100% OK responses across 27 requests).
-4. **Hasil Benchmark Sandbox TypeScript Stream Engine:**
-   - 5 Modul TypeScript terbangun lengkap dengan strict types dan build output di `~/dev/claude-test/dist/`.
-   - **30/30 Unit & Integration Tests PASS (100% Green)** via Vitest.
+1. **Spesifikasi & Rencana Implementasi Siap Eksekusi:**
+   * Dokumen Desain Spesifikasi telah selesai dan di-commit ke `docs/superpowers/specs/2026-08-24-osm-ai-cli-integration-design.md`.
+   * Dokumen Implementation Plan 4-Task modular telah selesai dan di-commit ke `docs/superpowers/plans/2026-08-24-osm-ai-cli-integration-plan.md`.
+2. **Fitur Utama yang Akan Dibangun:**
+   * **`osm ai status` (`--json`):** Memeriksa health status `:8787` (Headroom) dan `:20128` (9Router), provider aktif, dan rekapitulasi token savings.
+   * **`osm ai dashboard`:** Membuka **kedua web dashboard** (`http://127.0.0.1:8787/dashboard` & `http://127.0.0.1:20128/dashboard`) secara instan di browser default.
+   * **`osm ai start` / `stop` / `restart` / `logs`:** Orkestrasi background daemon & journalctl logs.
+   * **`osm ai claude`:** On-demand launcher dengan auto-start gateway sebelum mengeksekusi Claude Code.
+3. **Pondasi Sistem yang Tersedia:**
+   * Unit service `headroom-default.service` (port 8787) dan biner `9router` (port 20128) aktif dan siap diintegrasikan.
 
 ---
 
 ## 2. Test Verification & Master Suite Results
 ```text
-Tree-sitter AST [code] available : True (8 languages: Python, JS, TS, Go, Rust, Java, C, C++)
-Kompress ML [ml] available       : True (chopratejas/kompress-v2-base prefetch complete)
-Headroom Proxy Health Check      : 200 OK (http://127.0.0.1:8787/health)
-9Router Gateway Health Check     : 200 OK (http://127.0.0.1:20128/api/health)
-Vitest Sandbox Test Suite        : 30 passed / 30 total (100% pass across 5 test suites)
-TypeScript Clean Build           : Exit 0 (dist/ artifacts generated cleanly)
-Cumulative Headroom Tokens Saved : 16,091 tokens ($0.048273 USD savings)
-Upstream Request Success Rate    : 100% (27/27 requests status ok in 9Router SQLite)
-Final Whole-Branch Review        : APPROVED (READY TO MERGE)
+Existing Master Test Harness     : PASS (tests/test_harness.sh)
+Baseline Unit Test Suite         : PASS (pytest tests/)
+Target Unit Test Suites (Plan)   :
+  - tests/test_ai_command.py     : 5 tests (Health, Telemetry, Dual Dashboard, CLI Status)
+  - tests/test_cli.py            : 2 tests (Parser Dispatching & Help)
+  - tests/test_ai_claude.py      : 2 tests (On-Demand Execution & Auto-Start)
 ```
 
 ---
 
 ## 3. Quick Reference Commands
 ```bash
-# Cek status kesehatan & dashboard Headroom
+# Cek spesifikasi dan rencana implementasi
+cat docs/superpowers/specs/2026-08-24-osm-ai-cli-integration-design.md
+cat docs/superpowers/plans/2026-08-24-osm-ai-cli-integration-plan.md
+
+# Cek status kesehatan Headroom & 9Router saat ini
 curl -s http://127.0.0.1:8787/health
-curl -s http://127.0.0.1:8787/stats | jq '.request_logs | length'
-# Dashboard URL: http://127.0.0.1:8787/dashboard
-
-# Cek status 9Router
 curl -s http://127.0.0.1:20128/api/health
-
-# Jalankan unit test di sandbox
-cd /home/rizz/dev/claude-test && npx vitest run
-
-# Inspect atau attach ke sesi tmux benchmark
-tmux list-sessions
-tmux attach-session -t claude-benchmark
 ```
 
 ---
 
 ## 4. Next Session Context & Recommendations
-* **Status Proyek:** Integrasi 9Router, Headroom, dan Claude Code telah terverifikasi secara penuh dan stabil.
-* **Rekomendasi Sesi Berikutnya:**
-  - Melanjutkan optimasi atau workflow operasional `os-manager` berikutnya.
-  - Memanfaatkan konfigurasi pipeline Headroom (`:8787`) sebagai default endpoint harian untuk Claude Code guna menghemat token dan kuota secara berkelanjutan.
+* **Tujuan Sesi Baru:** Menjalankan eksekusi 4 Tasks pada Implementation Plan menggunakan metodologi Subagent-Driven Development (SDD x TDD):
+  * **Task 1:** Core AI Gateway Health, Telemetry & Dashboard Launcher Module (`os_manager/commands/ai.py` + `tests/test_ai_command.py`).
+  * **Task 2:** CLI Routing & Argument Parser Registration (`os_manager/cli.py` + `tests/test_cli.py`).
+  * **Task 3:** On-Demand Claude Launcher (`os_manager/commands/ai_claude.py` + `tests/test_ai_claude.py`).
+  * **Task 4:** Master Test Harness & Live End-to-End CLI Verification (`tests/test_harness.sh` + live run).
