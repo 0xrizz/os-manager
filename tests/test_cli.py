@@ -244,6 +244,22 @@ class TestOsmCli(unittest.TestCase):
             self.assertEqual(code, 0)
             mock_hsi.assert_called_once_with(["audit"])
 
+    def test_ai_command_help(self):
+        """Verify osm ai --help displays available AI actions."""
+        code, out, _ = self.run_cli(["ai", "--help"])
+        self.assertEqual(code, 0)
+        self.assertIn("status", out)
+        self.assertIn("dashboard", out)
+        self.assertIn("start", out)
+
+    @patch("os_manager.commands.ai.run_ai")
+    def test_ai_command_dispatch(self, mock_run_ai):
+        """Verify osm ai routes properly to run_ai dispatcher."""
+        mock_run_ai.return_value = 0
+        code, _, _ = self.run_cli(["ai", "status"])
+        self.assertEqual(code, 0)
+        mock_run_ai.assert_called_once_with(["status"])
+
 
 if __name__ == "__main__":
     unittest.main()

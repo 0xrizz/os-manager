@@ -67,6 +67,9 @@ def build_parser() -> argparse.ArgumentParser:
     # hsi
     subparsers.add_parser("hsi", add_help=False, help="Host Security ID (HSI) hardware & firmware hardening engine")
 
+    # ai
+    subparsers.add_parser("ai", add_help=False, help="Unified AI gateway control plane (Headroom & 9Router)")
+
     return parser
 
 
@@ -101,6 +104,9 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "hsi":
         from .commands.hsi import run_hsi
         return run_hsi(argv[1:])
+    elif args.command == "ai":
+        from .commands.ai import run_ai
+        return run_ai(argv[1:])
     else:
         parser.print_help()
         return 0
