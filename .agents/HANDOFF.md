@@ -1,76 +1,59 @@
-# CHECKPOINT HANDOFF: HSI Device Security Hardening Engine
+# CHECKPOINT HANDOFF: 9Router, Headroom, and Claude Code Integration & Benchmark Preparation
 
-**Status:** Completed & Verified (100% Passing)  
-**Date:** 2026-08-22  
-**Branch:** `main`  
-**Design Specification:** [docs/superpowers/specs/2026-08-22-hsi-device-security-hardening-design.md](file:///home/rizz/dev/os-manager/docs/superpowers/specs/2026-08-22-hsi-device-security-hardening-design.md)  
-**Implementation Plan:** [docs/superpowers/plans/2026-08-22-hsi-device-security-hardening.md](file:///home/rizz/dev/os-manager/docs/superpowers/plans/2026-08-22-hsi-device-security-hardening.md)  
+**Status:** READY_FOR_SUBAGENT_EXECUTION  
+**Date:** 2026-08-24  
+**Branch:** main  
+**Design Specification:** [`docs/superpowers/specs/2026-08-24-9router-headroom-claude-integration-design.md`](file:///home/rizz/dev/os-manager/docs/superpowers/specs/2026-08-24-9router-headroom-claude-integration-design.md)  
+**Implementation Plan:** [`docs/superpowers/plans/2026-08-24-9router-headroom-claude-integration-plan.md`](file:///home/rizz/dev/os-manager/docs/superpowers/plans/2026-08-24-9router-headroom-claude-integration-plan.md)  
 **Target Environment:** Bare-Metal Debian GNU/Linux 13 (Trixie), Linux Kernel 6.12+, Lenovo IdeaPad 3 (81WD) with Intel Core i5-1035G1 + NVIDIA GeForce MX330 + 8GB RAM + NVMe SSD  
 
 ---
 
 ## 1. Executive Summary & Features Delivered
-
-- **`osm hsi audit` & `osm hsi apply` Modules (`os_manager/commands/hsi.py`):** Added a dedicated command subsystem to audit and remediate Host Security ID findings, including sleep state analysis (`s2idle` vs `deep`), zRAM swap vs unencrypted storage detection, and `fwupdmgr` integration.
-- **Standalone Hardening Playbook (`scripts/hsi-harden.sh`):** Provides an idempotent script for non-interactive execution, atomic configuration backups (`/etc/fstab.bak.*`, `/etc/default/grub.bak.*`), volatile zRAM installation (`systemd-zram-generator` with `zstd`), kernel sleep state (`mem_sleep_default=s2idle`), and Secure Boot DBX updates via `fwupd`.
-- **Zero-Data-Loss & Sudo Resilience:** Enforced strict `/dev/nvme0n1p4` exclusion guardrails and `.env` / `SUDO_PASSWORD` non-interactive execution support.
-- **Documentation:** Updated `README.md` with full usage instructions for the HSI security command suite.
+1. **Diagnosis & Root Cause Resolution:**
+   * Diperbaiki konflik *double path* (`POST /v1/v1/messages`) di `~/.claude/settings.json` dengan mengubah `ANTHROPIC_BASE_URL` menjadi `http://127.0.0.1:8787` (tanpa akhiran `/v1`).
+   * Menginstal paket lengkap `headroom-ai[all]` (v0.36.5) via UV toolchain, mengaktifkan **Tree-sitter AST Code Compressor** (`[code]`) dan **Kompress-v2 ML Engine** (`[ml]`).
+   * Memverifikasi layanan persistent `headroom-default.service` aktif di port `8787` dan 9Router aktif di port `20128`.
+2. **Spesifikasi & Rencana Implementasi Terpadu:**
+   * Dokumen Desain Spesifikasi telah selesai dan di-commit ke `docs/superpowers/specs/2026-08-24-9router-headroom-claude-integration-design.md`.
+   * Dokumen Implementation Plan 5-Task modular telah selesai dan di-commit ke `docs/superpowers/plans/2026-08-24-9router-headroom-claude-integration-plan.md`.
 
 ---
 
 ## 2. Test Verification & Master Suite Results
-
 ```text
-============================= test session starts ==============================
-platform linux -- Python 3.14.7, pytest-9.1.1, pluggy-1.6.0
-rootdir: /home/rizz/dev/os-manager
-configfile: pyproject.toml
-collected 156 items
-
-tests/test_agent_bus.py ..........                                       [  6%]
-tests/test_cli.py ...............................                        [ 26%]
-tests/test_desktop_customization.py ..........                           [ 32%]
-tests/test_hsi_hardening.py ...............                              [ 42%]
-tests/test_metrics_exporter.py ...........                               [ 49%]
-tests/test_terminal_customization.py ...                                 [ 51%]
-tests/test_tune_hardware.py ................                             [ 61%]
-tests/test_tune_macos.py ...............................                 [ 81%]
-tests/test_tune_system.py .......................                        [ 96%]
-tests/test_upgrade_command.py ......                                     [100%]
-
-============================= 156 passed in 1.89s ==============================
-=== Running HSI Hardening Test Suite ===
-[PASS] Bash syntax check
-[PASS] Dry-run execution
-[PASS] Zero-Data-Loss guardrail verified
-[PASS] Fstab sed Zero-Data-Loss guardrail test
-=== All HSI Hardening Tests Passed Successfully ===
+Tree-sitter AST [code] available: True (8 languages: Python, JS, TS, Go, Rust, Java, C, C++)
+Kompress ML [ml] available      : True (chopratejas/kompress-v2-base prefetch complete)
+Magika Content Detection        : ENABLED
+Headroom Proxy Health Check     : 200 OK (http://127.0.0.1:8787/health)
+9Router Gateway Health Check    : 200 OK (http://127.0.0.1:20128/api/health)
+End-to-End Live Request Test    : PASS (Claude -> Headroom :8787 -> 9Router :20128 -> Gemini 3.7 Flash)
 ```
 
 ---
 
 ## 3. Quick Reference Commands
-
 ```bash
-# Audit current HSI security posture
-osm hsi audit
+# Cek status kesehatan Headroom
+headroom doctor
+curl -s http://127.0.0.1:8787/health
 
-# Audit HSI security posture in JSON telemetry format
-osm hsi audit --json
+# Cek dashboard Headroom
+# Buka di browser: http://127.0.0.1:8787/dashboard
 
-# Simulate hardening remediation without touching system files
-osm hsi apply --dry-run
+# Cek status 9Router
+curl -s http://127.0.0.1:20128/api/health
 
-# Apply hardening remediations (zRAM, s2idle sleep, Secure Boot dbx)
-osm hsi apply
-# atau langsung via sudo:
-sudo osm hsi apply
+# Attach ke sesi tmux pengujian jika sudah diluncurkan
+tmux attach-session -t claude-benchmark
 ```
 
 ---
 
 ## 4. Next Session Context & Recommendations
-
-- The system now possesses end-to-end tooling to address the `fwupdmgr security` audit report.
-- Users can run `osm hsi apply` to activate volatile zRAM swap, transition sleep state to `s2idle`, and refresh UEFI DBX.
-- For `Intel Management Engine Version`, monitor future Lenovo firmware releases on LVFS or Lenovo Support portal.
+* **Tujuan Sesi Baru:** Menjalankan eksekusi 5 Tasks pada Implementation Plan menggunakan subagent-driven development:
+  * Task 1: Pre-Flight Pipeline & Health Verification.
+  * Task 2: Sandbox Workspace Setup & Prompt Engineering (`~/dev/claude-test/PROMPT.md`).
+  * Task 3: Tmux Harness Provisioning & Claude Code Execution Launch (`claude-benchmark`).
+  * Task 4: Live Telemetry Assertion & Dashboard Metrics Verification (`:8787/dashboard`).
+  * Task 5: Post-Execution Quality Gate & Final Audit (`vitest run` 100% pass).
