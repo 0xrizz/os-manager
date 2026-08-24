@@ -38,22 +38,24 @@ if [ ! -x "${PYTHON_BIN}" ]; then
     PYTHON_BIN="python3"
 fi
 
-if "${PYTHON_BIN}" -c "import os_manager.security.ast_guard" 2>/dev/null; then
-    AST_OUTPUT="$(echo "${INPUT_JSON}" | "${PYTHON_BIN}" -m os_manager.security.ast_guard 2>&1)" || {
-        RC=$?
-        echo "${AST_OUTPUT}" >&2
-        notify_security_violation "${AST_OUTPUT}"
-        exit "${RC}"
-    }
+AST_RUN_OUTPUT=""
+AST_RC=0
+AST_RUN_OUTPUT="$("${PYTHON_BIN}" -m os_manager.security.ast_guard <<< "${INPUT_JSON}" 2>&1)" || AST_RC=$?
 
-    # If sandbox recommended, notify telemetry
-    if echo "${AST_OUTPUT}" | grep -q "\[SANDBOX_RECOMMENDED\]"; then
+if [ "${AST_RC}" -eq 0 ]; then
+    if echo "${AST_RUN_OUTPUT}" | grep -q "\[SANDBOX_RECOMMENDED\]"; then
         if command -v bwrap >/dev/null 2>&1 || command -v podman >/dev/null 2>&1; then
             echo "[SANDBOXED EXECUTION - Changes isolated to ephemeral jail]"
         fi
     fi
     exit 0
+elif [ "${AST_RC}" -eq 2 ]; then
+    # Invariant or syntax violation deterministically blocked by AST guard
+    echo "${AST_RUN_OUTPUT}" >&2
+    notify_security_violation "${AST_RUN_OUTPUT}"
+    exit 2
 fi
+# If AST module was missing (e.g. RC=1) or Python failed to load module, fall through to fallback regex guard
 
 # 2. Fallback: Legacy Path & Regex Evaluator (used if python environment uninitialized)
 if [[ "${TOOL_NAME}" =~ ^(Edit|Write|Read)$ ]]; then

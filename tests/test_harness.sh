@@ -429,6 +429,19 @@ assert_exit_code "osm ai --help execution" 0 $?
 
 PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli ai status --json > /dev/null 2>&1
 assert_exit_code "osm ai status --json execution" 0 $?
+
+echo "--- Testing Declarative Config & AST Security Pytest Suite ---"
+if command -v "${WORKSPACE_ROOT}/.venv/bin/python" >/dev/null 2>&1; then
+    "${WORKSPACE_ROOT}/.venv/bin/python" -m unittest discover -s "${WORKSPACE_ROOT}/tests" -p "test_*.py" > /dev/null 2>&1
+    assert_exit_code "full python discovery test suite (.venv)" 0 $?
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHONPATH="${WORKSPACE_ROOT}" python3 -m unittest discover -s "${WORKSPACE_ROOT}/tests" -p "test_*.py" > /dev/null 2>&1
+    assert_exit_code "full python discovery test suite (python3)" 0 $?
+fi
+
+echo "--- Testing Sandbox Bubblewrap Isolation Suite ---"
+"${WORKSPACE_ROOT}/tests/security/test_sandbox_bwrap.sh" > /dev/null 2>&1
+assert_exit_code "test_sandbox_bwrap.sh execution" 0 $?
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
