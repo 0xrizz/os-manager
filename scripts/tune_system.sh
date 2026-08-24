@@ -254,8 +254,98 @@ audit_swap() {
     fi
 }
 
+apply_memory_tuning() {
+    log_info "Applying Linux memory & VM parameters (MGLRU, zRAM swappiness=180, THP madvise)..."
+    local mglru_conf="/etc/tmpfiles.d/00-osm-mglru.conf"
+    local thp_conf="/etc/tmpfiles.d/00-osm-thp.conf"
+    local vm_conf="/etc/sysctl.d/99-osm-memory.conf"
+
+    if [[ $EUID -ne 0 ]]; then
+        cat <<EOF | sudo tee "${mglru_conf}" >/dev/null
+# /etc/tmpfiles.d/00-osm-mglru.conf - Managed by os-manager
+w /sys/kernel/mm/lru_gen/enabled - - - - 7
+w /sys/kernel/mm/lru_gen/min_ttl_ms - - - - 1000
+EOF
+        cat <<EOF | sudo tee "${thp_conf}" >/dev/null
+# /etc/tmpfiles.d/00-osm-thp.conf - Managed by os-manager
+w /sys/kernel/mm/transparent_hugepage/enabled - - - - madvise
+w /sys/kernel/mm/transparent_hugepage/defrag - - - - defer+madvise
+EOF
+        cat <<EOF | sudo tee "${vm_conf}" >/dev/null
+# /etc/sysctl.d/99-osm-memory.conf - Managed by os-manager
+vm.swappiness = 180
+vm.page-cluster = 0
+vm.watermark_boost_factor = 0
+vm.watermark_scale_factor = 125
+vm.vfs_cache_pressure = 50
+vm.dirty_ratio = 10
+vm.dirty_background_ratio = 5
+vm.dirty_expire_centisecs = 3000
+vm.dirty_writeback_centisecs = 500
+fs.inotify.max_user_watches = 524288
+fs.inotify.max_user_instances = 1024
+EOF
+        sudo systemd-tmpfiles --create "${mglru_conf}" "${thp_conf}" 2>/dev/null || true
+        sudo sysctl --system >/dev/null 2>&1 || sudo sysctl -p "${vm_conf}" 2>/dev/null || true
+    else
+        cat <<EOF | tee "${mglru_conf}" >/dev/null
+# /etc/tmpfiles.d/00-osm-mglru.conf - Managed by os-manager
+w /sys/kernel/mm/lru_gen/enabled - - - - 7
+w /sys/kernel/mm/lru_gen/min_ttl_ms - - - - 1000
+EOF
+        cat <<EOF | tee "${thp_conf}" >/dev/null
+# /etc/tmpfiles.d/00-osm-thp.conf - Managed by os-manager
+w /sys/kernel/mm/transparent_hugepage/enabled - - - - madvise
+w /sys/kernel/mm/transparent_hugepage/defrag - - - - defer+madvise
+EOF
+        cat <<EOF | tee "${vm_conf}" >/dev/null
+# /etc/sysctl.d/99-osm-memory.conf - Managed by os-manager
+vm.swappiness = 180
+vm.page-cluster = 0
+vm.watermark_boost_factor = 0
+vm.watermark_scale_factor = 125
+vm.vfs_cache_pressure = 50
+vm.dirty_ratio = 10
+vm.dirty_background_ratio = 5
+vm.dirty_expire_centisecs = 3000
+vm.dirty_writeback_centisecs = 500
+fs.inotify.max_user_watches = 524288
+fs.inotify.max_user_instances = 1024
+EOF
+        systemd-tmpfiles --create "${mglru_conf}" "${thp_conf}" 2>/dev/null || true
+        sysctl --system >/dev/null 2>&1 || sysctl -p "${vm_conf}" 2>/dev/null || true
+    fi
+
+    enable_earlyoom
+    log_pass "Memory subsystem tuning applied (MGLRU, zRAM swappiness=180, THP madvise, EarlyOOM)."
+}
+
+audit_mglru() {
+    log_info "Auditing MGLRU parameters..."
+    if [[ -f "/sys/kernel/mm/lru_gen/enabled" ]]; then
+        local mglru_en
+        mglru_en="$(cat /sys/kernel/mm/lru_gen/enabled 2>/dev/null || echo "unknown")"
+        log_info "MGLRU enabled: ${mglru_en} (target: 7/0x0007)"
+    else
+        log_warn "MGLRU not supported by current kernel (/sys/kernel/mm/lru_gen/enabled missing)"
+    fi
+}
+
+audit_thp() {
+    log_info "Auditing Transparent Huge Pages..."
+    if [[ -f "/sys/kernel/mm/transparent_hugepage/enabled" ]]; then
+        local thp_en
+        thp_en="$(cat /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null || echo "unknown")"
+        log_info "THP enabled: ${thp_en} (target: [madvise])"
+    else
+        log_warn "THP sysfs not found (/sys/kernel/mm/transparent_hugepage/enabled missing)"
+    fi
+}
+
 audit_memory() {
     log_info "Auditing memory & resilience subsystems..."
+    audit_mglru
+    audit_thp
     status_earlyoom
     audit_swap
 }
@@ -370,7 +460,7 @@ main() {
             ;;
         --memory)
             if [[ "${subaction}" == "apply" ]]; then
-                enable_earlyoom
+                apply_memory_tuning
             else
                 audit_memory
             fi

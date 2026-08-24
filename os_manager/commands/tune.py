@@ -16,6 +16,13 @@ SYSFS_PROFILE_CHOICES_DEFAULT = "/sys/firmware/acpi/platform_profile_choices"
 SYSFS_FN_LOCK_DEFAULT = "/sys/bus/platform/drivers/ideapad_acpi/VPC2004:00/fn_lock"
 SYSFS_GPU_DEFAULT = "/sys/bus/pci/devices/0000:01:00.0/power"
 SNAPSHOT_BASE_DIR = "/var/backups/osm/snapshots"
+SYSFS_MGLRU_ENABLED = "/sys/kernel/mm/lru_gen/enabled"
+SYSFS_MGLRU_TTL = "/sys/kernel/mm/lru_gen/min_ttl_ms"
+SYSFS_THP_ENABLED = "/sys/kernel/mm/transparent_hugepage/enabled"
+SYSFS_THP_DEFRAG = "/sys/kernel/mm/transparent_hugepage/defrag"
+SYSCTL_MEMORY_PATH = "/etc/sysctl.d/99-osm-memory.conf"
+TMPFILES_MGLRU_PATH = "/etc/tmpfiles.d/00-osm-mglru.conf"
+TMPFILES_THP_PATH = "/etc/tmpfiles.d/00-osm-thp.conf"
 
 
 def create_system_snapshot(
@@ -538,6 +545,93 @@ def audit_pipewire_audio_status() -> dict[str, Any]:
         "available": bool(pw_bin),
         "pipewire": pw_bin or "missing",
         "wireplumber": wp_bin or "missing",
+    }
+
+
+def generate_mglru_config(enabled: int = 7, min_ttl_ms: int = 1000) -> str:
+    """Generate systemd tmpfiles.d definition for MGLRU parameters."""
+    return (
+        f"# /etc/tmpfiles.d/00-osm-mglru.conf - Managed by os-manager\n"
+        f"w {SYSFS_MGLRU_ENABLED} - - - - {enabled}\n"
+        f"w {SYSFS_MGLRU_TTL} - - - - {min_ttl_ms}\n"
+    )
+
+
+def generate_thp_config(mode: str = "madvise", defrag: str = "defer+madvise") -> str:
+    """Generate systemd tmpfiles.d definition for Transparent Huge Pages."""
+    return (
+        f"# /etc/tmpfiles.d/00-osm-thp.conf - Managed by os-manager\n"
+        f"w {SYSFS_THP_ENABLED} - - - - {mode}\n"
+        f"w {SYSFS_THP_DEFRAG} - - - - {defrag}\n"
+    )
+
+
+def generate_vm_sysctl_config(swappiness: int = 180, vfs_cache_pressure: int = 50) -> str:
+    """Generate sysctl virtual memory configuration for 8GB RAM + zRAM."""
+    return (
+        "# /etc/sysctl.d/99-osm-memory.conf - Managed by os-manager\n"
+        f"vm.swappiness = {swappiness}\n"
+        "vm.page-cluster = 0\n"
+        "vm.watermark_boost_factor = 0\n"
+        "vm.watermark_scale_factor = 125\n"
+        f"vm.vfs_cache_pressure = {vfs_cache_pressure}\n"
+        "vm.dirty_ratio = 10\n"
+        "vm.dirty_background_ratio = 5\n"
+        "vm.dirty_expire_centisecs = 3000\n"
+        "vm.dirty_writeback_centisecs = 500\n"
+        "fs.inotify.max_user_watches = 524288\n"
+        "fs.inotify.max_user_instances = 1024\n"
+    )
+
+
+def audit_memory_subsystem() -> dict[str, Any]:
+    """Inspect active MGLRU, zRAM, THP, and sysctl VM parameters."""
+    mglru_en = "unsupported"
+    mglru_ttl = "unsupported"
+    if Path(SYSFS_MGLRU_ENABLED).is_file():
+        try:
+            mglru_en = Path(SYSFS_MGLRU_ENABLED).read_text().strip()
+        except Exception:
+            pass
+    if Path(SYSFS_MGLRU_TTL).is_file():
+        try:
+            mglru_ttl = Path(SYSFS_MGLRU_TTL).read_text().strip()
+        except Exception:
+            pass
+
+    thp_mode = "unknown"
+    if Path(SYSFS_THP_ENABLED).is_file():
+        try:
+            raw = Path(SYSFS_THP_ENABLED).read_text().strip()
+            for token in raw.split():
+                if token.startswith("[") and token.endswith("]"):
+                    thp_mode = token.strip("[]")
+        except Exception:
+            pass
+
+    sysctl_bin = shutil.which("sysctl") or "/sbin/sysctl"
+
+    def _read_s(k: str) -> str:
+        try:
+            res = subprocess.run([sysctl_bin, "-n", k], capture_output=True, text=True, check=False)
+            return res.stdout.strip() if res.returncode == 0 else "unknown"
+        except Exception:
+            return "unknown"
+
+    oom = audit_earlyoom_status()
+    swap = audit_dual_tier_swap_status()
+
+    return {
+        "mglru_enabled": mglru_en,
+        "mglru_min_ttl_ms": mglru_ttl,
+        "thp_mode": thp_mode,
+        "swappiness": _read_s("vm.swappiness"),
+        "page_cluster": _read_s("vm.page-cluster"),
+        "watermark_boost_factor": _read_s("vm.watermark_boost_factor"),
+        "watermark_scale_factor": _read_s("vm.watermark_scale_factor"),
+        "vfs_cache_pressure": _read_s("vm.vfs_cache_pressure"),
+        "earlyoom_active": oom.get("active", False),
+        "zram_active": swap.get("has_zram", False),
     }
 
 
