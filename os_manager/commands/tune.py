@@ -15,6 +15,129 @@ SYSFS_PROFILE_DEFAULT = "/sys/firmware/acpi/platform_profile"
 SYSFS_PROFILE_CHOICES_DEFAULT = "/sys/firmware/acpi/platform_profile_choices"
 SYSFS_FN_LOCK_DEFAULT = "/sys/bus/platform/drivers/ideapad_acpi/VPC2004:00/fn_lock"
 SYSFS_GPU_DEFAULT = "/sys/bus/pci/devices/0000:01:00.0/power"
+SNAPSHOT_BASE_DIR = "/var/backups/osm/snapshots"
+
+
+def create_system_snapshot(
+    caller: str,
+    target_files: list[str],
+    backup_dir: str = SNAPSHOT_BASE_DIR,
+) -> dict[str, Any]:
+    """Create timestamped configuration snapshot before applying tuning."""
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S")
+    snap_id = f"snap_{ts}"
+    snap_path = Path(backup_dir) / snap_id
+
+    try:
+        try:
+            snap_path.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            subprocess.run(["sudo", "mkdir", "-p", str(snap_path)], capture_output=True, check=False)
+
+        backed_up = []
+        for src_str in target_files:
+            src = Path(src_str)
+            if src.is_file():
+                rel_dst = snap_path / src.relative_to("/")
+                try:
+                    rel_dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, rel_dst)
+                except PermissionError:
+                    subprocess.run(["sudo", "mkdir", "-p", str(rel_dst.parent)], capture_output=True, check=False)
+                    subprocess.run(["sudo", "cp", "-p", str(src), str(rel_dst)], capture_output=True, check=False)
+                backed_up.append(src_str)
+
+        manifest = {
+            "snapshot_id": snap_id,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+            "caller": caller,
+            "backed_up_files": backed_up,
+        }
+        manifest_str = json.dumps(manifest, indent=2)
+
+        try:
+            (snap_path / "manifest.json").write_text(manifest_str, encoding="utf-8")
+        except PermissionError:
+            subprocess.run(
+                ["sudo", "tee", str(snap_path / "manifest.json")],
+                input=manifest_str,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        return {"success": True, "snapshot_id": snap_id, "manifest": manifest}
+    except Exception as exc:
+        return {"success": False, "error": str(exc)}
+
+
+def list_system_snapshots(backup_dir: str = SNAPSHOT_BASE_DIR) -> list[dict[str, Any]]:
+    """List all available system tuning snapshots."""
+    p = Path(backup_dir)
+    if not p.is_dir():
+        return []
+    snapshots = []
+    for d in sorted(p.iterdir(), reverse=True):
+        manifest_file = d / "manifest.json"
+        if manifest_file.is_file():
+            try:
+                manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+                snapshots.append(manifest)
+            except Exception:
+                pass
+    return snapshots
+
+
+def revert_system_snapshot(
+    snapshot_id: str | None = None,
+    backup_dir: str = SNAPSHOT_BASE_DIR,
+) -> dict[str, Any]:
+    """Revert system configurations to a previous snapshot."""
+    snapshots = list_system_snapshots(backup_dir=backup_dir)
+    if not snapshots:
+        return {"success": False, "error": "No configuration snapshots found to revert."}
+
+    target_manifest = None
+    if snapshot_id:
+        for s in snapshots:
+            if s.get("snapshot_id") == snapshot_id:
+                target_manifest = s
+                break
+        if not target_manifest:
+            return {"success": False, "error": f"Snapshot ID {snapshot_id} not found."}
+    else:
+        target_manifest = snapshots[0]
+
+    sid = target_manifest["snapshot_id"]
+    snap_path = Path(backup_dir) / sid
+    restored = []
+
+    try:
+        for file_str in target_manifest.get("backed_up_files", []):
+            rel_src = snap_path / Path(file_str).relative_to("/")
+            if rel_src.is_file():
+                try:
+                    Path(file_str).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(rel_src, file_str)
+                except PermissionError:
+                    subprocess.run(["sudo", "cp", "-p", str(rel_src), file_str], capture_output=True, check=False)
+                restored.append(file_str)
+
+        # Reload kernel sysctl and systemd
+        if os.geteuid() != 0:
+            subprocess.run(["sudo", "sysctl", "--system"], capture_output=True, check=False)
+            subprocess.run(["sudo", "systemctl", "daemon-reload"], capture_output=True, check=False)
+        else:
+            subprocess.run(["sysctl", "--system"], capture_output=True, check=False)
+            subprocess.run(["systemctl", "daemon-reload"], capture_output=True, check=False)
+
+        return {
+            "success": True,
+            "snapshot_id": sid,
+            "restored_files": restored,
+        }
+    except Exception as exc:
+        return {"success": False, "error": str(exc)}
 
 
 def get_battery_conservation_status(sysfs_path: str = SYSFS_CONSERVATION_DEFAULT) -> str:
