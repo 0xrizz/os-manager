@@ -192,6 +192,8 @@ def run_audio_jitter_benchmark() -> dict[str, Any]:
 
 def run_perf(args: list[str]) -> int:
     """Execute empirical system optimization benchmarks."""
+    if args and args[0] == "perf":
+        args = args[1:]
     parser = argparse.ArgumentParser(
         prog="osm perf",
         description="Empirical hardware, CPU, memory, storage, and audio benchmark runner.",

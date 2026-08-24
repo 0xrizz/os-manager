@@ -50,9 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     clean_parser.add_argument("--all", action="store_true", help="Clean all caches")
 
     # perf
-    perf_parser = subparsers.add_parser("perf", help="Benchmark filesystem I/O")
-    perf_parser.add_argument("--quick", action="store_true", help="Run quick benchmark")
-    perf_parser.add_argument("--json", action="store_true", help="Output metrics as JSON")
+    subparsers.add_parser("perf", add_help=False, help="Empirical benchmark engine for storage, CPU, memory, and audio")
 
     # service
     service_parser = subparsers.add_parser("service", help="Manage background daemons")

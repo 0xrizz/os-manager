@@ -157,9 +157,11 @@ class TestOsmCli(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("EarlyOOM", out)
 
+    @patch("subprocess.run")
     @patch("os_manager.commands.tune.configure_earlyoom", return_value=True)
-    def test_cli_tune_memory_apply(self, mock_conf):
+    def test_cli_tune_memory_apply(self, mock_conf, mock_run):
         """Verify osm tune memory --apply CLI invocation."""
+        mock_run.return_value = MagicMock(returncode=0)
         code, out, _ = self.run_cli(["tune", "memory", "--apply"])
         self.assertEqual(code, 0)
         self.assertIn("EarlyOOM", out)
@@ -261,6 +263,112 @@ class TestOsmCli(unittest.TestCase):
         mock_run_ai.assert_called_once_with(["status"])
 
 
+    def test_cli_tune_revert_list(self):
+        """Verify osm tune revert --list displays snapshots."""
+        code, out, _ = self.run_cli(["tune", "revert", "--list"])
+        self.assertEqual(code, 0)
+        self.assertIn("Snapshots", out)
+
+    def test_cli_tune_revert_dry_run(self):
+        """Verify osm tune revert --dry-run simulates rollback."""
+        code, out, _ = self.run_cli(["tune", "revert", "--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertIn("PLAN", out)
+
+    @patch("os_manager.commands.tune.revert_system_snapshot")
+    def test_cli_tune_revert_apply(self, mock_revert):
+        """Verify osm tune revert --id restores snapshot."""
+        mock_revert.return_value = {"success": True, "snapshot_id": "snap_123", "restored_files": ["/etc/fstab"]}
+        code, out, _ = self.run_cli(["tune", "revert", "--id", "snap_123"])
+        self.assertEqual(code, 0)
+        self.assertIn("Reverted", out)
+        mock_revert.assert_called_once_with(snapshot_id="snap_123")
+
+    def test_cli_tune_power_audit(self):
+        """Verify osm tune power --audit executes."""
+        code, out, _ = self.run_cli(["tune", "power", "--audit"])
+        self.assertEqual(code, 0)
+        self.assertIn("Power", out)
+
+    def test_cli_perf_all_json(self):
+        """Verify osm perf all --quick --json returns JSON metrics."""
+        code, out, _ = self.run_cli(["perf", "all", "--quick", "--json"])
+        self.assertEqual(code, 0)
+        data = json.loads(out)
+        self.assertIn("benchmarks", data)
+
+    def test_cli_tune_scheduler_audit(self):
+        """Verify osm tune scheduler --audit CLI invocation."""
+        code, out, _ = self.run_cli(["tune", "scheduler", "--audit"])
+        self.assertEqual(code, 0)
+        self.assertIn("EEVDF", out)
+
+    @patch("subprocess.run")
+    def test_cli_tune_scheduler_apply(self, mock_run):
+        """Verify osm tune scheduler --apply CLI invocation."""
+        mock_run.return_value = MagicMock(returncode=0)
+        code, out, _ = self.run_cli(["tune", "scheduler", "--apply"])
+        self.assertEqual(code, 0)
+        self.assertIn("EEVDF", out)
+
+    def test_cli_tune_audio_audit(self):
+        """Verify osm tune audio --audit CLI invocation."""
+        code, out, _ = self.run_cli(["tune", "audio", "--audit"])
+        self.assertEqual(code, 0)
+        self.assertIn("PipeWire", out)
+
+    @patch("subprocess.run")
+    def test_cli_tune_audio_apply(self, mock_run):
+        """Verify osm tune audio --apply CLI invocation."""
+        mock_run.return_value = MagicMock(returncode=0)
+        code, out, _ = self.run_cli(["tune", "audio", "--apply"])
+        self.assertEqual(code, 0)
+        self.assertIn("PipeWire", out)
+
+    def test_cli_tune_all_dry_run(self):
+        """Verify osm tune all --dry-run outputs plan simulation."""
+        code, out, _ = self.run_cli(["tune", "all", "--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertIn("PLAN", out)
+
+    def test_cli_tune_storage_dry_run(self):
+        """Verify osm tune storage --dry-run outputs plan simulation."""
+        code, out, _ = self.run_cli(["tune", "storage", "--apply", "--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertIn("PLAN", out)
+
+    def test_cli_tune_memory_dry_run(self):
+        """Verify osm tune memory --dry-run outputs plan simulation."""
+        code, out, _ = self.run_cli(["tune", "memory", "--apply", "--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertIn("PLAN", out)
+
+    def test_cli_tune_scheduler_dry_run(self):
+        """Verify osm tune scheduler --dry-run outputs plan simulation."""
+        code, out, _ = self.run_cli(["tune", "scheduler", "--apply", "--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertIn("PLAN", out)
+
+    def test_cli_tune_audio_dry_run(self):
+        """Verify osm tune audio --dry-run outputs plan simulation."""
+        code, out, _ = self.run_cli(["tune", "audio", "--apply", "--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertIn("PLAN", out)
+
+    def test_cli_tune_power_dry_run(self):
+        """Verify osm tune power --dry-run outputs plan simulation."""
+        code, out, _ = self.run_cli(["tune", "power", "--apply", "--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertIn("PLAN", out)
+
+    def test_cli_tune_persist_dry_run(self):
+        """Verify osm tune persist --dry-run outputs plan simulation."""
+        code, out, _ = self.run_cli(["tune", "persist", "--enable", "--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertIn("PLAN", out)
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

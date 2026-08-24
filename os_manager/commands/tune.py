@@ -44,13 +44,19 @@ def create_system_snapshot(
     """Create timestamped configuration snapshot before applying tuning."""
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S")
     snap_id = f"snap_{ts}"
-    snap_path = Path(backup_dir) / snap_id
+    effective_backup_dir = backup_dir
+    snap_path = Path(effective_backup_dir) / snap_id
 
     try:
         try:
             snap_path.mkdir(parents=True, exist_ok=True)
         except PermissionError:
-            subprocess.run(["sudo", "mkdir", "-p", str(snap_path)], capture_output=True, check=False)
+            if os.geteuid() == 0:
+                return {"success": False, "error": f"Permission denied creating {snap_path}"}
+            # Fallback to user-space snapshots directory if /var/backups is unprivileged
+            effective_backup_dir = os.path.expanduser("~/.local/share/osm/snapshots")
+            snap_path = Path(effective_backup_dir) / snap_id
+            snap_path.mkdir(parents=True, exist_ok=True)
 
         backed_up = []
         for src_str in target_files:
@@ -61,8 +67,9 @@ def create_system_snapshot(
                     rel_dst.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(src, rel_dst)
                 except PermissionError:
-                    subprocess.run(["sudo", "mkdir", "-p", str(rel_dst.parent)], capture_output=True, check=False)
-                    subprocess.run(["sudo", "cp", "-p", str(src), str(rel_dst)], capture_output=True, check=False)
+                    if os.geteuid() != 0:
+                        subprocess.run(["sudo", "mkdir", "-p", str(rel_dst.parent)], capture_output=True, check=False)
+                        subprocess.run(["sudo", "cp", "-p", str(src), str(rel_dst)], capture_output=True, check=False)
                 backed_up.append(src_str)
 
         manifest = {
@@ -91,18 +98,28 @@ def create_system_snapshot(
 
 def list_system_snapshots(backup_dir: str = SNAPSHOT_BASE_DIR) -> list[dict[str, Any]]:
     """List all available system tuning snapshots."""
-    p = Path(backup_dir)
-    if not p.is_dir():
-        return []
+    dirs_to_check = [Path(backup_dir)]
+    if backup_dir == SNAPSHOT_BASE_DIR:
+        user_dir = Path(os.path.expanduser("~/.local/share/osm/snapshots"))
+        if user_dir != Path(backup_dir) and user_dir.is_dir():
+            dirs_to_check.append(user_dir)
+
     snapshots = []
-    for d in sorted(p.iterdir(), reverse=True):
-        manifest_file = d / "manifest.json"
-        if manifest_file.is_file():
-            try:
-                manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
-                snapshots.append(manifest)
-            except Exception:
-                pass
+    seen_ids = set()
+    for p in dirs_to_check:
+        if not p.is_dir():
+            continue
+        for d in sorted(p.iterdir(), reverse=True):
+            manifest_file = d / "manifest.json"
+            if manifest_file.is_file():
+                try:
+                    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+                    sid = manifest.get("snapshot_id")
+                    if sid and sid not in seen_ids:
+                        seen_ids.add(sid)
+                        snapshots.append(manifest)
+                except Exception:
+                    pass
     return snapshots
 
 
@@ -128,6 +145,9 @@ def revert_system_snapshot(
 
     sid = target_manifest["snapshot_id"]
     snap_path = Path(backup_dir) / sid
+    if not snap_path.is_dir():
+        snap_path = Path(os.path.expanduser("~/.local/share/osm/snapshots")) / sid
+
     restored = []
 
     try:
@@ -1343,6 +1363,8 @@ def run_tune(args: list[str]) -> int:
     stor_group = stor_p.add_mutually_exclusive_group()
     stor_group.add_argument("--apply", action="store_true", help="Migrate fstab to ntfs3 and enable fstrim.timer")
     stor_group.add_argument("--audit", action="store_true", help="Audit storage drivers and TRIM status")
+    stor_p.add_argument("--dry-run", action="store_true", help="Simulate storage tuning")
+    stor_p.add_argument("--json", action="store_true", help="Output storage audit as JSON")
     stor_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
 
     # memory
@@ -1350,6 +1372,8 @@ def run_tune(args: list[str]) -> int:
     mem_group = mem_p.add_mutually_exclusive_group()
     mem_group.add_argument("--apply", action="store_true", help="Configure and enable EarlyOOM daemon")
     mem_group.add_argument("--audit", action="store_true", help="Audit EarlyOOM and swap telemetry")
+    mem_p.add_argument("--dry-run", action="store_true", help="Simulate memory tuning")
+    mem_p.add_argument("--json", action="store_true", help="Output memory audit as JSON")
     mem_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
 
     # hardware
@@ -1357,6 +1381,8 @@ def run_tune(args: list[str]) -> int:
     hw_group = hw_p.add_mutually_exclusive_group()
     hw_group.add_argument("--apply", action="store_true", help="Apply Lenovo battery conservation, Fn-Lock, and GPU power save")
     hw_group.add_argument("--audit", action="store_true", help="Audit hardware ACPI, GPU, and thermals")
+    hw_p.add_argument("--dry-run", action="store_true", help="Simulate hardware tuning")
+    hw_p.add_argument("--json", action="store_true", help="Output hardware diagnostics as JSON")
     hw_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
 
     # system
@@ -1364,6 +1390,8 @@ def run_tune(args: list[str]) -> int:
     sys_group = sys_p.add_mutually_exclusive_group()
     sys_group.add_argument("--apply", action="store_true", help="Apply kernel sysctl performance configuration")
     sys_group.add_argument("--audit", action="store_true", help="Audit kernel sysctl, TRIM, and security")
+    sys_p.add_argument("--dry-run", action="store_true", help="Simulate kernel sysctl tuning")
+    sys_p.add_argument("--json", action="store_true", help="Output sysctl audit as JSON")
     sys_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
 
     # scheduler
@@ -1371,6 +1399,8 @@ def run_tune(args: list[str]) -> int:
     sched_group = sched_p.add_mutually_exclusive_group()
     sched_group.add_argument("--apply", action="store_true", help="Apply EEVDF scheduler and cgroups v2 slice configuration")
     sched_group.add_argument("--audit", action="store_true", help="Audit EEVDF scheduler and cgroups v2 user slices")
+    sched_p.add_argument("--dry-run", action="store_true", help="Simulate EEVDF and slice tuning")
+    sched_p.add_argument("--json", action="store_true", help="Output scheduler audit as JSON")
     sched_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
 
     # audio
@@ -1378,6 +1408,8 @@ def run_tune(args: list[str]) -> int:
     audio_group = audio_p.add_mutually_exclusive_group()
     audio_group.add_argument("--apply", action="store_true", help="Apply PipeWire low-latency drop-in and PAM real-time limits")
     audio_group.add_argument("--audit", action="store_true", help="Audit PipeWire and WirePlumber audio stack telemetry")
+    audio_p.add_argument("--dry-run", action="store_true", help="Simulate PipeWire and PAM limits tuning")
+    audio_p.add_argument("--json", action="store_true", help="Output audio audit as JSON")
     audio_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
 
     # power
@@ -1386,8 +1418,9 @@ def run_tune(args: list[str]) -> int:
     power_group.add_argument("--apply", action="store_true", help="Deploy dynamic power udev rules and apply active profile")
     power_group.add_argument("--audit", action="store_true", help="Audit CPU EPP, power source, and platform profile telemetry")
     power_p.add_argument("--profile", choices=["ac", "battery", "status"], default=None, help="Set or inspect power profile")
+    power_p.add_argument("--dry-run", action="store_true", help="Simulate dynamic power profile switching")
+    power_p.add_argument("--json", action="store_true", help="Output power profile telemetry as JSON")
     power_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply", "ac", "battery", "status"])
-
 
     # persist
     persist_p = subparsers.add_parser("persist", help="Manage hardware and system tuning boot persistence")
@@ -1395,7 +1428,17 @@ def run_tune(args: list[str]) -> int:
     persist_group.add_argument("--enable", action="store_true", help="Enable tuning persistence service at boot")
     persist_group.add_argument("--disable", action="store_true", help="Disable tuning persistence service")
     persist_group.add_argument("--status", action="store_true", help="Check persistence service status")
+    persist_p.add_argument("--dry-run", action="store_true", help="Simulate tuning persistence service configuration")
+    persist_p.add_argument("--json", action="store_true", help="Output persistence status as JSON")
     persist_p.add_argument("action", nargs="?", default="status", choices=["status", "enable", "disable"])
+
+    # revert
+    revert_p = subparsers.add_parser("revert", help="Manage and revert system tuning configuration snapshots")
+    revert_p.add_argument("--list", action="store_true", help="List all available configuration snapshots")
+    revert_p.add_argument("--id", dest="snapshot_id", default=None, help="Snapshot ID to revert")
+    revert_p.add_argument("pos_id", nargs="?", default=None, help="Optional positional snapshot ID")
+    revert_p.add_argument("--dry-run", action="store_true", help="Simulate configuration snapshot reversion")
+    revert_p.add_argument("--json", action="store_true", help="Output snapshot list or revert status as JSON")
 
     # all
     all_p = subparsers.add_parser("all", help="Apply or audit all tuning subroutines end-to-end")
@@ -1403,6 +1446,7 @@ def run_tune(args: list[str]) -> int:
     all_group.add_argument("--apply", action="store_true", help="Apply all tuning subroutines end-to-end")
     all_group.add_argument("--audit", action="store_true", help="Audit all tuning subroutines end-to-end")
     all_group.add_argument("--json", action="store_true", help="Output all subsystem telemetry as JSON")
+    all_p.add_argument("--dry-run", action="store_true", help="Simulate all tuning subroutines end-to-end")
     all_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply", "json"])
 
     # battery
@@ -1463,8 +1507,14 @@ def run_tune(args: list[str]) -> int:
         return 0
 
     if parsed_args.subaction == "storage":
+        is_dry_run = getattr(parsed_args, "dry_run", False)
+        if is_dry_run:
+            print("[PLAN] Storage tuning simulation: Hardened ntfs3 fstab migration for /mnt/data, NVMe scheduler (none/256) udev rules, and fstrim.timer enable.")
+            return 0
+        is_json = getattr(parsed_args, "json", False)
         is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
         if is_apply:
+            create_system_snapshot(caller="osm tune storage --apply", target_files=["/etc/fstab", NVME_UDEV_RULE_PATH])
             res_mig = migrate_ntfs_driver(mount_point="/mnt/data", hardened=True)
             nvme_rule = generate_nvme_udev_scheduler_rule()
             if os.geteuid() != 0:
@@ -1485,6 +1535,9 @@ def run_tune(args: list[str]) -> int:
             return 0 if res_mig.get("success") else 1
         else:
             audit = audit_nvme_storage_subsystem()
+            if is_json:
+                print(json.dumps(audit, indent=2))
+                return 0
             print("==================================================")
             print("         Storage & Filesystem I/O Audit           ")
             print("==================================================")
@@ -1494,10 +1547,15 @@ def run_tune(args: list[str]) -> int:
             print(f"4. NVMe Queue Depth (nr_requests): {audit['nvme_nr_requests']}")
             return 0
 
-
     elif parsed_args.subaction == "memory":
+        is_dry_run = getattr(parsed_args, "dry_run", False)
+        if is_dry_run:
+            print("[PLAN] Memory tuning simulation: Configure EarlyOOM (-m 5 -s 5), MGLRU (enabled=7, ttl=1000ms), THP (madvise), and sysctl VM (swappiness=180, vfs_cache_pressure=50).")
+            return 0
+        is_json = getattr(parsed_args, "json", False)
         is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
         if is_apply:
+            create_system_snapshot(caller="osm tune memory --apply", target_files=[SYSCTL_MEMORY_PATH, TMPFILES_MGLRU_PATH, TMPFILES_THP_PATH, "/etc/default/earlyoom"])
             success = configure_earlyoom()
             status_str = "configured and enabled" if success else "configuration failed"
             print(f"[PASS] Memory Resilience & EarlyOOM {status_str}.")
@@ -1505,6 +1563,10 @@ def run_tune(args: list[str]) -> int:
         else:
             oom = audit_earlyoom_status()
             swap = audit_dual_tier_swap_status()
+            mem_audit = audit_memory_subsystem()
+            if is_json:
+                print(json.dumps(mem_audit, indent=2))
+                return 0
             print("==================================================")
             print("       Memory & Resilience Telemetry Audit        ")
             print("==================================================")
@@ -1515,8 +1577,14 @@ def run_tune(args: list[str]) -> int:
             return 0
 
     elif parsed_args.subaction == "hardware":
+        is_dry_run = getattr(parsed_args, "dry_run", False)
+        if is_dry_run:
+            print("[PLAN] Hardware tuning simulation: Lenovo battery conservation mode, Fn-Lock, and NVIDIA GPU runtime D3 power-gating.")
+            return 0
+        is_json = getattr(parsed_args, "json", False)
         is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
         if is_apply:
+            create_system_snapshot(caller="osm tune hardware --apply", target_files=[NVIDIA_MODPROBE_PATH, NVIDIA_UDEV_PATH])
             set_battery_conservation_mode(True)
             set_fn_lock_mode(True)
             if os.geteuid() != 0:
@@ -1527,36 +1595,61 @@ def run_tune(args: list[str]) -> int:
             print("[PASS] Hardware power, ACPI conservation, Fn-Lock, and GPU power gating applied.")
             return 0
         else:
+            gpu = audit_gpu_runtime_power()
+            va = audit_vaapi_acceleration()
+            if is_json:
+                hw_dict = {
+                    "conservation_mode": get_battery_conservation_status(),
+                    "platform_profile": get_platform_profile(),
+                    "fn_lock": get_fn_lock_status(),
+                    "gpu": gpu,
+                    "vaapi": va,
+                }
+                print(json.dumps(hw_dict, indent=2))
+                return 0
             print("==================================================")
             print("     Hardware Power, ACPI & GPU Diagnostics       ")
             print("==================================================")
             print(f"1. Lenovo Battery Conservation: {get_battery_conservation_status()}")
             print(f"2. Lenovo Platform Profile: {get_platform_profile()}")
             print(f"3. Lenovo Fn-Lock: {get_fn_lock_status()}")
-            gpu = audit_gpu_runtime_power()
             print(f"4. NVIDIA GPU D3 State: {gpu.get('runtime_status', 'unknown')}")
-            va = audit_vaapi_acceleration()
             print(f"5. Intel VA-API Acceleration: {'Available' if va['available'] else 'Unavailable'}")
             return 0
 
     elif parsed_args.subaction == "system":
+        is_dry_run = getattr(parsed_args, "dry_run", False)
+        if is_dry_run:
+            print("[PLAN] System tuning simulation: Apply sysctl performance settings (swappiness, inotify, BBR) and verify fstrim.timer.")
+            return 0
+        is_json = getattr(parsed_args, "json", False)
         is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
         if is_apply:
+            create_system_snapshot(caller="osm tune system --apply", target_files=["/etc/sysctl.d/99-osm-performance.conf", "/etc/sysctl.conf"])
             return subprocess.run(["bash", "scripts/tune_system.sh", "--sysctl"], check=False).returncode
         sys_info = audit_sysctl_parameters()
+        trim = audit_fstrim_timer_status()
+        if is_json:
+            print(json.dumps({**sys_info, "trim": trim}, indent=2))
+            return 0
         print("==================================================")
         print("          Kernel & Sysctl System Audit            ")
         print("==================================================")
         print(f"1. vm.swappiness: {sys_info['swappiness']}")
         print(f"2. fs.inotify.max_user_watches: {sys_info['inotify_watches']}")
         print(f"3. TCP Congestion Control: {sys_info['congestion_control']}")
-        trim = audit_fstrim_timer_status()
         print(f"4. NVMe fstrim.timer: {'Active' if trim['active'] else 'Inactive'}")
         return 0
 
     elif parsed_args.subaction == "scheduler":
+        is_dry_run = getattr(parsed_args, "dry_run", False)
+        if is_dry_run:
+            print("[PLAN] Scheduler tuning simulation: EEVDF base slice (2ms), CFS bandwidth (3ms), session.slice (weight 500), and background.slice (weight 20, 1536M memory limit).")
+            return 0
+        is_json = getattr(parsed_args, "json", False)
         is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
         if is_apply:
+            create_system_snapshot(caller="osm tune scheduler --apply", target_files=[SYSCTL_SCHEDULER_PATH, SESSION_SLICE_PATH, BACKGROUND_SLICE_PATH])
             sched_cfg = generate_eevdf_sysctl_config()
             sess_cfg = generate_session_slice_config()
             bg_cfg = generate_background_slice_config()
@@ -1582,6 +1675,9 @@ def run_tune(args: list[str]) -> int:
                 return 1
         else:
             sched = audit_scheduler_subsystem()
+            if is_json:
+                print(json.dumps(sched, indent=2))
+                return 0
             print("==================================================")
             print("   EEVDF Scheduler & Cgroups v2 User Slices Audit ")
             print("==================================================")
@@ -1591,8 +1687,14 @@ def run_tune(args: list[str]) -> int:
             return 0
 
     elif parsed_args.subaction == "audio":
+        is_dry_run = getattr(parsed_args, "dry_run", False)
+        if is_dry_run:
+            print("[PLAN] Audio tuning simulation: PipeWire low-latency configuration (quantum=256, rate=48000) and PAM audio real-time limits.")
+            return 0
+        is_json = getattr(parsed_args, "json", False)
         is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
         if is_apply:
+            create_system_snapshot(caller="osm tune audio --apply", target_files=[PIPEWIRE_CONF_PATH, PAM_AUDIO_LIMITS_PATH])
             pw_cfg = generate_pipewire_low_latency_config()
             pam_cfg = generate_pam_audio_limits_config()
             try:
@@ -1612,6 +1714,9 @@ def run_tune(args: list[str]) -> int:
                 return 1
         else:
             audio = audit_audio_subsystem()
+            if is_json:
+                print(json.dumps(audio, indent=2))
+                return 0
             print("==================================================")
             print("         PipeWire Audio Subsystem Audit           ")
             print("==================================================")
@@ -1623,6 +1728,11 @@ def run_tune(args: list[str]) -> int:
             return 0
 
     elif parsed_args.subaction == "power":
+        is_dry_run = getattr(parsed_args, "dry_run", False)
+        if is_dry_run:
+            print("[PLAN] Power profile tuning simulation: Dynamic udev rule (99-osm-power-profile.rules) and CPU EPP/EPB governor switching.")
+            return 0
+        is_json = getattr(parsed_args, "json", False)
         prof = getattr(parsed_args, "profile", None)
         action = getattr(parsed_args, "action", "audit")
         target_prof = prof if prof else (action if action in ["ac", "battery", "status"] else None)
@@ -1632,6 +1742,9 @@ def run_tune(args: list[str]) -> int:
 
         if target_prof in ["ac", "battery"]:
             res = apply_power_profile(target_prof)
+            if is_json:
+                print(json.dumps(res, indent=2))
+                return 0 if res.get("success") else 1
             if res.get("success"):
                 print(f"[PASS] Power profile '{target_prof}' applied successfully (EPP: {res.get('epp')}, Sched Slice: {res.get('sched_base_slice_ns')}ns).")
                 return 0
@@ -1639,6 +1752,7 @@ def run_tune(args: list[str]) -> int:
                 print(f"[FAIL] Failed to apply power profile '{target_prof}': {res.get('error')}")
                 return 1
         elif is_apply:
+            create_system_snapshot(caller="osm tune power --apply", target_files=[POWER_PROFILE_UDEV_PATH])
             udev_rule = generate_power_profile_udev_rule()
             udev_target = Path(POWER_PROFILE_UDEV_PATH)
             try:
@@ -1662,6 +1776,9 @@ def run_tune(args: list[str]) -> int:
             return 0
         else:
             audit = audit_power_profile()
+            if is_json:
+                print(json.dumps(audit, indent=2))
+                return 0
             print("==================================================")
             print("       Dynamic Power & CPU Profile Audit          ")
             print("==================================================")
@@ -1673,22 +1790,95 @@ def run_tune(args: list[str]) -> int:
             return 0
 
     elif parsed_args.subaction == "persist":
+        is_dry_run = getattr(parsed_args, "dry_run", False)
+        if is_dry_run:
+            print("[PLAN] Hardware tuning persistence simulation: configure /etc/systemd/system/osm-hardware-tune.service and /etc/osm/hardware-tune.conf.")
+            return 0
+        is_json = getattr(parsed_args, "json", False)
         is_enable = getattr(parsed_args, "enable", False) or parsed_args.action == "enable"
         is_disable = getattr(parsed_args, "disable", False) or parsed_args.action == "disable"
         if is_enable:
             success = configure_hardware_persistence(enable=True)
+            if is_json:
+                print(json.dumps({"status": "success" if success else "failed", "persistence": "enabled"}, indent=2))
+                return 0 if success else 1
             print(f"[PASS] Hardware Tuning Boot Persistence {'enabled' if success else 'failed'}.")
             return 0 if success else 1
         elif is_disable:
             success = configure_hardware_persistence(enable=False)
+            if is_json:
+                print(json.dumps({"status": "success" if success else "failed", "persistence": "disabled"}, indent=2))
+                return 0 if success else 1
             print(f"[PASS] Hardware Tuning Boot Persistence {'disabled' if success else 'failed'}.")
             return 0 if success else 1
         else:
             unit_exists = Path("/etc/systemd/system/osm-hardware-tune.service").is_file()
+            if is_json:
+                print(json.dumps({"configured": unit_exists}, indent=2))
+                return 0
             print(f"Persistence Service Unit: {'Configured' if unit_exists else 'Not configured'}")
             return 0
 
+    elif parsed_args.subaction == "revert":
+        is_list = getattr(parsed_args, "list", False)
+        is_json = getattr(parsed_args, "json", False)
+        is_dry_run = getattr(parsed_args, "dry_run", False)
+        target_id = getattr(parsed_args, "snapshot_id", None) or getattr(parsed_args, "pos_id", None)
+
+        if is_list:
+            snapshots = list_system_snapshots()
+            if is_json:
+                print(json.dumps({"status": "success", "snapshots": snapshots}, indent=2))
+                return 0
+            print("==================================================")
+            print("       System Tuning Configuration Snapshots      ")
+            print("==================================================")
+            if not snapshots:
+                print("No configuration snapshots found.")
+            else:
+                for idx, s in enumerate(snapshots, 1):
+                    print(f"{idx}. Snapshot ID: {s.get('snapshot_id')} ({s.get('timestamp')})")
+                    print(f"   Caller: {s.get('caller')}")
+                    print(f"   Files: {', '.join(s.get('backed_up_files', []))}")
+            return 0
+
+        if is_dry_run:
+            print(f"[PLAN] Configuration Revert Simulation for Snapshot '{target_id or 'latest'}':")
+            snapshots = list_system_snapshots()
+            if not snapshots:
+                print("  (No snapshots currently found; simulation verified)")
+            else:
+                target_snap = None
+                if target_id:
+                    for s in snapshots:
+                        if s.get("snapshot_id") == target_id:
+                            target_snap = s
+                            break
+                else:
+                    target_snap = snapshots[0]
+                if target_snap:
+                    print(f"  Target Snapshot ID: {target_snap.get('snapshot_id')}")
+                    print(f"  Files to restore: {', '.join(target_snap.get('backed_up_files', []))}")
+            return 0
+
+        res = revert_system_snapshot(snapshot_id=target_id)
+        if is_json:
+            print(json.dumps(res, indent=2))
+            return 0 if res.get("success") else 1
+
+        if res.get("success"):
+            files_count = len(res.get("restored_files", []))
+            print(f"[PASS] Reverted system configuration to snapshot {res.get('snapshot_id')} ({files_count} files restored).")
+            return 0
+        else:
+            print(f"[FAIL] Revert failed: {res.get('error')}")
+            return 1
+
     elif parsed_args.subaction == "all":
+        is_dry_run = getattr(parsed_args, "dry_run", False)
+        if is_dry_run:
+            print("[PLAN] End-to-end tuning simulation: storage (ntfs3 + TRIM), memory (EarlyOOM + sysctl), scheduler (EEVDF + slices), audio (PipeWire low-latency), power (ACPI + dynamic profiles), and hardware persistence.")
+            return 0
         is_json = getattr(parsed_args, "json", False) or getattr(parsed_args, "action", "") == "json" or getattr(parsed_args, "top_json", False)
         if is_json:
             telemetry = collect_tune_telemetry()
@@ -1696,6 +1886,25 @@ def run_tune(args: list[str]) -> int:
             return 0
         is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
         if is_apply:
+            create_system_snapshot(
+                caller="osm tune all --apply",
+                target_files=[
+                    "/etc/fstab",
+                    NVME_UDEV_RULE_PATH,
+                    SYSCTL_MEMORY_PATH,
+                    TMPFILES_MGLRU_PATH,
+                    TMPFILES_THP_PATH,
+                    "/etc/default/earlyoom",
+                    SYSCTL_SCHEDULER_PATH,
+                    SESSION_SLICE_PATH,
+                    BACKGROUND_SLICE_PATH,
+                    PIPEWIRE_CONF_PATH,
+                    PAM_AUDIO_LIMITS_PATH,
+                    POWER_PROFILE_UDEV_PATH,
+                    NVIDIA_MODPROBE_PATH,
+                    NVIDIA_UDEV_PATH,
+                ],
+            )
             print("[INFO] Executing all customization subroutines end-to-end...")
             subprocess.run(["bash", "scripts/tune_hardware.sh", "--audit"], check=False)
             subprocess.run(["bash", "scripts/tune_system.sh", "--sysctl"], check=False)
