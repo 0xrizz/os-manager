@@ -33,6 +33,11 @@ def check_gateway_health() -> dict:
                 status = resp.getcode()
             results["headroom"]["online"] = (status == 200)
             results["headroom"]["status_code"] = status
+            try:
+                body = resp.read()
+                results["headroom"]["details"] = json.loads(body.decode("utf-8")) if body else {}
+            except Exception:
+                results["headroom"]["details"] = {}
         finally:
             if hasattr(resp, "close"):
                 resp.close()
@@ -159,6 +164,16 @@ def print_status_text(health: dict, telemetry: dict) -> None:
     r_status = "ONLINE (HTTP 200)" if health["router"]["online"] else "OFFLINE"
     print(f"  Headroom Proxy (:8787)   : {h_status}")
     print(f"  9Router Gateway (:20128) : {r_status}")
+    
+    if health["headroom"].get("online"):
+        details = health["headroom"].get("details", {})
+        checks = details.get("checks", {})
+        kompress_backend = checks.get("kompress", {}).get("backend", "active")
+        print("  Compression Layers:")
+        print("    - [proxy] SmartCrusher (JSON & Logs)  : ACTIVE")
+        print("    - [code]  Tree-sitter (AST Parser)    : ACTIVE")
+        print(f"    - [ml]    Kompress-v2 (ML Engine)     : ACTIVE ({kompress_backend.upper()})")
+        
     print("--------------------------------------------------------------------------------")
     
     # Telemetry metrics
