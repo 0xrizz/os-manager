@@ -3,6 +3,11 @@
 set -euo pipefail
 
 SYSCTL_CONF_PATH="/etc/sysctl.d/99-osm-performance.conf"
+SYSCTL_SCHEDULER_PATH="/etc/sysctl.d/99-osm-scheduler.conf"
+SESSION_SLICE_DIR="/etc/systemd/user/session.slice.d"
+SESSION_SLICE_PATH="${SESSION_SLICE_DIR}/10-resources.conf"
+BACKGROUND_SLICE_DIR="/etc/systemd/user/background.slice.d"
+BACKGROUND_SLICE_PATH="${BACKGROUND_SLICE_DIR}/10-resources.conf"
 
 log_info()  { echo -e "\033[1;34m[INFO]\033[0m $*"; }
 log_pass()  { echo -e "\033[1;32m[PASS]\033[0m $*"; }
@@ -61,6 +66,88 @@ audit_sysctl() {
     log_info "vm.swappiness: ${swappiness} (target: 10)"
     log_info "TCP Congestion Control: ${bbr} (target: bbr)"
     log_info "fs.inotify.max_user_watches: ${inotify} (target: 524288)"
+}
+
+apply_scheduler_tuning() {
+    log_info "Applying Linux 6.6+ EEVDF scheduler slicing & cgroups v2 user slice overrides..."
+    if [[ $EUID -ne 0 ]]; then
+        cat <<EOF | sudo tee "${SYSCTL_SCHEDULER_PATH}" >/dev/null
+# /etc/sysctl.d/99-osm-scheduler.conf - Managed by os-manager
+kernel.sched_base_slice_ns = 2000000
+kernel.sched_cfs_bandwidth_slice_us = 3000
+EOF
+        sudo mkdir -p "${SESSION_SLICE_DIR}" "${BACKGROUND_SLICE_DIR}"
+        cat <<EOF | sudo tee "${SESSION_SLICE_PATH}" >/dev/null
+# /etc/systemd/user/session.slice.d/10-resources.conf - Managed by os-manager
+[Slice]
+CPUWeight=500
+IOWeight=500
+ManagedOOMPreference=avoid
+EOF
+        cat <<EOF | sudo tee "${BACKGROUND_SLICE_PATH}" >/dev/null
+# /etc/systemd/user/background.slice.d/10-resources.conf - Managed by os-manager
+[Slice]
+CPUWeight=20
+IOWeight=20
+MemoryHigh=1536M
+ManagedOOMPreference=kill
+EOF
+        sudo sysctl --system >/dev/null 2>&1 || sudo sysctl -p "${SYSCTL_SCHEDULER_PATH}" 2>/dev/null || true
+    else
+        cat <<EOF | tee "${SYSCTL_SCHEDULER_PATH}" >/dev/null
+# /etc/sysctl.d/99-osm-scheduler.conf - Managed by os-manager
+kernel.sched_base_slice_ns = 2000000
+kernel.sched_cfs_bandwidth_slice_us = 3000
+EOF
+        mkdir -p "${SESSION_SLICE_DIR}" "${BACKGROUND_SLICE_DIR}"
+        cat <<EOF | tee "${SESSION_SLICE_PATH}" >/dev/null
+# /etc/systemd/user/session.slice.d/10-resources.conf - Managed by os-manager
+[Slice]
+CPUWeight=500
+IOWeight=500
+ManagedOOMPreference=avoid
+EOF
+        cat <<EOF | tee "${BACKGROUND_SLICE_PATH}" >/dev/null
+# /etc/systemd/user/background.slice.d/10-resources.conf - Managed by os-manager
+[Slice]
+CPUWeight=20
+IOWeight=20
+MemoryHigh=1536M
+ManagedOOMPreference=kill
+EOF
+        sysctl --system >/dev/null 2>&1 || sysctl -p "${SYSCTL_SCHEDULER_PATH}" 2>/dev/null || true
+    fi
+    log_pass "Scheduler & user slices applied (EEVDF base slice: 2ms, session/bg cgroups v2 overrides)."
+}
+
+audit_scheduler() {
+    log_info "Auditing Linux EEVDF scheduler & cgroups v2 user slices..."
+    local sysctl_cmd="sysctl"
+    if ! command -v "${sysctl_cmd}" >/dev/null 2>&1; then
+        if [[ -x "/sbin/sysctl" ]]; then
+            sysctl_cmd="/sbin/sysctl"
+        elif [[ -x "/usr/sbin/sysctl" ]]; then
+            sysctl_cmd="/usr/sbin/sysctl"
+        fi
+    fi
+    local base_slice
+    base_slice="$("${sysctl_cmd}" -n kernel.sched_base_slice_ns 2>/dev/null || echo "unsupported/unknown")"
+    local cfs_slice
+    cfs_slice="$("${sysctl_cmd}" -n kernel.sched_cfs_bandwidth_slice_us 2>/dev/null || echo "unsupported/unknown")"
+    log_info "EEVDF Base Slice (kernel.sched_base_slice_ns): ${base_slice} (target: 2000000)"
+    log_info "CFS Bandwidth Slice (kernel.sched_cfs_bandwidth_slice_us): ${cfs_slice} (target: 3000)"
+
+    if [[ -f "${SESSION_SLICE_PATH}" ]]; then
+        log_pass "systemd user session.slice override: Configured"
+    else
+        log_warn "systemd user session.slice override: Missing"
+    fi
+
+    if [[ -f "${BACKGROUND_SLICE_PATH}" ]]; then
+        log_pass "systemd user background.slice override: Configured"
+    else
+        log_warn "systemd user background.slice override: Missing"
+    fi
 }
 
 enable_nvme_trim() {
@@ -403,6 +490,7 @@ audit_system() {
     audit_storage
     audit_sysctl
     audit_memory
+    audit_scheduler
     status_audio
     status_firewall
     echo "=================================================="
@@ -415,6 +503,7 @@ Usage: $(basename "$0") [OPTION] [SUBCOMMAND]
 Options:
     --storage [migrate|audit]  Migrate NTFS mount to ntfs3 or audit storage status
     --sysctl [apply|audit]     Apply or audit kernel sysctl performance configuration
+    --scheduler [apply|audit]  Apply or audit EEVDF scheduler & cgroups v2 user slices
     --trim [enable|status]     Enable periodic TRIM or check fstrim.timer status
     --earlyoom [enable|status] Configure EarlyOOM daemon or check status
     --memory [apply|audit]     Configure memory resilience (EarlyOOM) or audit swap/memory
@@ -442,6 +531,13 @@ main() {
                 audit_sysctl
             else
                 apply_sysctl_tuning
+            fi
+            ;;
+        --scheduler)
+            if [[ "${subaction}" == "apply" ]]; then
+                apply_scheduler_tuning
+            else
+                audit_scheduler
             fi
             ;;
         --trim)

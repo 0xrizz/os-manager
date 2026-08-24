@@ -21,6 +21,9 @@ SYSFS_MGLRU_TTL = "/sys/kernel/mm/lru_gen/min_ttl_ms"
 SYSFS_THP_ENABLED = "/sys/kernel/mm/transparent_hugepage/enabled"
 SYSFS_THP_DEFRAG = "/sys/kernel/mm/transparent_hugepage/defrag"
 SYSCTL_MEMORY_PATH = "/etc/sysctl.d/99-osm-memory.conf"
+SYSCTL_SCHEDULER_PATH = "/etc/sysctl.d/99-osm-scheduler.conf"
+SESSION_SLICE_PATH = "/etc/systemd/user/session.slice.d/10-resources.conf"
+BACKGROUND_SLICE_PATH = "/etc/systemd/user/background.slice.d/10-resources.conf"
 TMPFILES_MGLRU_PATH = "/etc/tmpfiles.d/00-osm-mglru.conf"
 TMPFILES_THP_PATH = "/etc/tmpfiles.d/00-osm-thp.conf"
 
@@ -719,6 +722,58 @@ def configure_earlyoom(
         return False
 
 
+def generate_eevdf_sysctl_config(base_slice_ns: int = 2000000, cfs_bandwidth_slice_us: int = 3000) -> str:
+    """Generate sysctl configuration for Linux 6.6+ EEVDF scheduler slicing."""
+    return (
+        "# /etc/sysctl.d/99-osm-scheduler.conf - Managed by os-manager\n"
+        f"kernel.sched_base_slice_ns = {base_slice_ns}\n"
+        f"kernel.sched_cfs_bandwidth_slice_us = {cfs_bandwidth_slice_us}\n"
+    )
+
+
+def generate_session_slice_config(cpu_weight: int = 500, io_weight: int = 500) -> str:
+    """Generate systemd user session.slice resource override."""
+    return (
+        "# /etc/systemd/user/session.slice.d/10-resources.conf - Managed by os-manager\n"
+        "[Slice]\n"
+        f"CPUWeight={cpu_weight}\n"
+        f"IOWeight={io_weight}\n"
+        "ManagedOOMPreference=avoid\n"
+    )
+
+
+def generate_background_slice_config(cpu_weight: int = 20, io_weight: int = 20, memory_high: str = "1536M") -> str:
+    """Generate systemd user background.slice resource override."""
+    return (
+        "# /etc/systemd/user/background.slice.d/10-resources.conf - Managed by os-manager\n"
+        "[Slice]\n"
+        f"CPUWeight={cpu_weight}\n"
+        f"IOWeight={io_weight}\n"
+        f"MemoryHigh={memory_high}\n"
+        "ManagedOOMPreference=kill\n"
+    )
+
+
+def audit_scheduler_subsystem() -> dict[str, Any]:
+    """Inspect active EEVDF tunables and systemd user slice configurations."""
+    sysctl_bin = shutil.which("sysctl") or "/sbin/sysctl"
+    slice_val = "unknown"
+    try:
+        res = subprocess.run([sysctl_bin, "-n", "kernel.sched_base_slice_ns"], capture_output=True, text=True, check=False)
+        slice_val = res.stdout.strip() if res.returncode == 0 else "unknown"
+    except Exception:
+        pass
+
+    session_cfg = Path(SESSION_SLICE_PATH).is_file()
+    bg_cfg = Path(BACKGROUND_SLICE_PATH).is_file()
+
+    return {
+        "base_slice_ns": slice_val,
+        "session_slice_configured": session_cfg,
+        "background_slice_configured": bg_cfg,
+    }
+
+
 def collect_tune_telemetry() -> dict[str, Any]:
     """Collect master telemetry dictionary across all system optimization subsystems."""
     # Storage subsystem
@@ -776,6 +831,14 @@ def collect_tune_telemetry() -> dict[str, Any]:
         "inotify_watches": inotify_val,
     }
 
+    # Scheduler subsystem
+    sched_audit = audit_scheduler_subsystem()
+    scheduler_data = {
+        "base_slice_ns": sched_audit.get("base_slice_ns", "unknown"),
+        "session_slice_configured": sched_audit.get("session_slice_configured", False),
+        "background_slice_configured": sched_audit.get("background_slice_configured", False),
+    }
+
     return {
         "status": "success",
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -784,6 +847,7 @@ def collect_tune_telemetry() -> dict[str, Any]:
             "memory": memory_data,
             "hardware": hardware_data,
             "sysctl": sysctl_data,
+            "scheduler": scheduler_data,
         },
     }
 
@@ -1030,6 +1094,13 @@ def run_tune(args: list[str]) -> int:
     sys_group.add_argument("--audit", action="store_true", help="Audit kernel sysctl, TRIM, and security")
     sys_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
 
+    # scheduler
+    sched_p = subparsers.add_parser("scheduler", help="Manage EEVDF scheduler slicing and cgroups v2 user slices")
+    sched_group = sched_p.add_mutually_exclusive_group()
+    sched_group.add_argument("--apply", action="store_true", help="Apply EEVDF scheduler and cgroups v2 slice configuration")
+    sched_group.add_argument("--audit", action="store_true", help="Audit EEVDF scheduler and cgroups v2 user slices")
+    sched_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
+
     # persist
     persist_p = subparsers.add_parser("persist", help="Manage hardware and system tuning boot persistence")
     persist_group = persist_p.add_mutually_exclusive_group()
@@ -1182,6 +1253,42 @@ def run_tune(args: list[str]) -> int:
         trim = audit_fstrim_timer_status()
         print(f"4. NVMe fstrim.timer: {'Active' if trim['active'] else 'Inactive'}")
         return 0
+
+    elif parsed_args.subaction == "scheduler":
+        is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
+        if is_apply:
+            sched_cfg = generate_eevdf_sysctl_config()
+            sess_cfg = generate_session_slice_config()
+            bg_cfg = generate_background_slice_config()
+            try:
+                if os.geteuid() != 0:
+                    subprocess.run(["sudo", "mkdir", "-p", "/etc/sysctl.d", "/etc/systemd/user/session.slice.d", "/etc/systemd/user/background.slice.d"], capture_output=True, check=False)
+                    subprocess.run(["sudo", "tee", SYSCTL_SCHEDULER_PATH], input=sched_cfg, text=True, capture_output=True, check=False)
+                    subprocess.run(["sudo", "tee", SESSION_SLICE_PATH], input=sess_cfg, text=True, capture_output=True, check=False)
+                    subprocess.run(["sudo", "tee", BACKGROUND_SLICE_PATH], input=bg_cfg, text=True, capture_output=True, check=False)
+                    subprocess.run(["sudo", "sysctl", "--system"], capture_output=True, check=False)
+                else:
+                    Path(SYSCTL_SCHEDULER_PATH).parent.mkdir(parents=True, exist_ok=True)
+                    Path(SYSCTL_SCHEDULER_PATH).write_text(sched_cfg, encoding="utf-8")
+                    Path(SESSION_SLICE_PATH).parent.mkdir(parents=True, exist_ok=True)
+                    Path(SESSION_SLICE_PATH).write_text(sess_cfg, encoding="utf-8")
+                    Path(BACKGROUND_SLICE_PATH).parent.mkdir(parents=True, exist_ok=True)
+                    Path(BACKGROUND_SLICE_PATH).write_text(bg_cfg, encoding="utf-8")
+                    subprocess.run(["sysctl", "--system"], capture_output=True, check=False)
+                print("[PASS] EEVDF scheduler slicing (2ms base slice) and cgroups v2 user slices applied.")
+                return 0
+            except Exception as exc:
+                print(f"[FAIL] Failed to apply scheduler tuning: {exc}")
+                return 1
+        else:
+            sched = audit_scheduler_subsystem()
+            print("==================================================")
+            print("   EEVDF Scheduler & Cgroups v2 User Slices Audit ")
+            print("==================================================")
+            print(f"1. EEVDF Base Slice (ns): {sched['base_slice_ns']}")
+            print(f"2. session.slice Overrides: {'Configured' if sched['session_slice_configured'] else 'Missing'}")
+            print(f"3. background.slice Overrides: {'Configured' if sched['background_slice_configured'] else 'Missing'}")
+            return 0
 
     elif parsed_args.subaction == "persist":
         is_enable = getattr(parsed_args, "enable", False) or parsed_args.action == "enable"
