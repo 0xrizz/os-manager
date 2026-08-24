@@ -34,6 +34,8 @@ SYSFS_EPP_NODES = "/sys/devices/system/cpu/cpu*/cpufreq/energy_performance_prefe
 SYSFS_EPB_NODES = "/sys/devices/system/cpu/cpu*/power/energy_perf_bias"
 POWER_PROFILE_UDEV_PATH = "/etc/udev/rules.d/99-osm-power-profile.rules"
 NVME_UDEV_RULE_PATH = "/etc/udev/rules.d/60-nvme-schedulers.rules"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+SCRIPTS_DIR = REPO_ROOT / "scripts"
 
 
 def create_system_snapshot(
@@ -1642,7 +1644,19 @@ def run_tune(args: list[str]) -> int:
         is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
         if is_apply:
             create_system_snapshot(caller="osm tune system --apply", target_files=["/etc/sysctl.d/99-osm-performance.conf", "/etc/sysctl.conf"])
-            return subprocess.run(["bash", "scripts/tune_system.sh", "--sysctl"], check=False).returncode
+            script_path = SCRIPTS_DIR / "tune_system.sh"
+            if script_path.is_file():
+                return subprocess.run(["bash", str(script_path), "--sysctl"], check=False).returncode
+            else:
+                cfg = generate_sysctl_performance_config()
+                if os.geteuid() != 0:
+                    subprocess.run(["sudo", "mkdir", "-p", "/etc/sysctl.d"], capture_output=True, check=False)
+                    subprocess.run(["sudo", "tee", "/etc/sysctl.d/99-osm-performance.conf"], input=cfg, text=True, capture_output=True, check=False)
+                    subprocess.run(["sudo", "sysctl", "--system"], capture_output=True, check=False)
+                else:
+                    Path("/etc/sysctl.d/99-osm-performance.conf").write_text(cfg, encoding="utf-8")
+                    subprocess.run(["sysctl", "--system"], capture_output=True, check=False)
+                return 0
         sys_info = audit_sysctl_parameters()
         trim = audit_fstrim_timer_status()
         if is_json:
@@ -2013,8 +2027,26 @@ def run_tune(args: list[str]) -> int:
                 subprocess.run(["udevadm", "control", "--reload-rules"], capture_output=True, check=False)
                 subprocess.run(["udevadm", "trigger"], capture_output=True, check=False)
 
-            subprocess.run(["bash", "scripts/setup_desktop_env.sh", "--apply"], check=False)
-            subprocess.run(["bash", "scripts/setup_terminal_env.sh"], check=False)
+            # Desktop ergonomics & Nautilus bookmark
+            apply_desktop_gsettings(preset="standard")
+            add_nautilus_bookmark("file:///mnt/data", "Data Store")
+
+            # Terminal environment configuration (Starship, Tmux, Bash hooks)
+            starship_path = Path(os.path.expanduser("~/.config/starship.toml"))
+            starship_path.parent.mkdir(parents=True, exist_ok=True)
+            starship_path.write_text(generate_starship_config(), encoding="utf-8")
+
+            tmux_path = Path(os.path.expanduser("~/.tmux.conf"))
+            tmux_path.write_text(generate_tmux_config(), encoding="utf-8")
+
+            inject_bashrc_hooks()
+
+            script_desktop = SCRIPTS_DIR / "setup_desktop_env.sh"
+            script_terminal = SCRIPTS_DIR / "setup_terminal_env.sh"
+            if script_desktop.is_file():
+                subprocess.run(["bash", str(script_desktop), "--apply"], check=False)
+            if script_terminal.is_file():
+                subprocess.run(["bash", str(script_terminal)], check=False)
             print("[PASS] All hardware, system, desktop, and terminal optimizations applied.")
             return 0
         else:
@@ -2154,11 +2186,20 @@ def run_tune(args: list[str]) -> int:
             print(f"[PASS] Hardware tuning configuration applied from {parsed_args.config}")
             return 0
         elif parsed_args.action == "enable":
-            return subprocess.run(["bash", "scripts/tune_hardware.sh", "--persist", "enable"], check=False).returncode
+            script_hw = SCRIPTS_DIR / "tune_hardware.sh"
+            if script_hw.is_file():
+                return subprocess.run(["bash", str(script_hw), "--persist", "enable"], check=False).returncode
+            return 0 if configure_hardware_persistence(enable=True) else 1
         elif parsed_args.action == "disable":
-            return subprocess.run(["bash", "scripts/tune_hardware.sh", "--persist", "disable"], check=False).returncode
+            script_hw = SCRIPTS_DIR / "tune_hardware.sh"
+            if script_hw.is_file():
+                return subprocess.run(["bash", str(script_hw), "--persist", "disable"], check=False).returncode
+            return 0 if configure_hardware_persistence(enable=False) else 1
         else:
-            return subprocess.run(["bash", "scripts/tune_hardware.sh", "--persist", "status"], check=False).returncode
+            script_hw = SCRIPTS_DIR / "tune_hardware.sh"
+            if script_hw.is_file():
+                return subprocess.run(["bash", str(script_hw), "--persist", "status"], check=False).returncode
+            return 0
 
     elif parsed_args.subaction == "desktop":
         if parsed_args.action == "apply":
