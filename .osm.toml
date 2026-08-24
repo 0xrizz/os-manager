@@ -1,0 +1,47 @@
+[security]
+profile = "strict"              # strict | standard | permissive
+engine = "ast"                  # ast | legacy_regex
+fail_action = "deny"            # deny | prompt | isolate
+
+[security.sandbox]
+backend = "bubblewrap"          # bubblewrap | podman | none
+auto_isolate_dangerous = true
+network_isolation = true
+read_only_root = true
+writable_paths = [
+    ".",
+    "/tmp",
+    "~/.cache"
+]
+
+[security.invariants]
+deny_paths = [
+    "/etc/shadow",
+    "/etc/passwd",
+    "/etc/sudoers",
+    "/boot",
+    "/dev",
+    "/mnt/c/Windows",
+    "/mnt/c/Program Files",
+    "/mnt/c/Program Files (x86)"
+]
+deny_commands = [
+    "mkfs",
+    "fdisk",
+    "parted",
+    "gdisk",
+    "wipefs",
+    "dd",
+    "wsl --unregister",
+    "wsl.exe --unregister",
+    "wsl --shutdown",
+    "wsl --terminate"
+]
+protected_mounts = [
+    "/mnt/data",
+    "/mnt/d"
+]
+
+[hardware]
+driver = "auto"
+force_override = false
