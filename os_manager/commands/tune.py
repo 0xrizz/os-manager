@@ -1056,12 +1056,20 @@ def collect_tune_telemetry() -> dict[str, Any]:
     }
 
     # Memory subsystem
-    oom_audit = audit_earlyoom_status()
+    mem_audit = audit_memory_subsystem()
     swap_audit = audit_dual_tier_swap_status()
     memory_data = {
-        "earlyoom_active": oom_audit.get("active", False),
+        "earlyoom_active": mem_audit.get("earlyoom_active", False),
         "zram_active": swap_audit.get("has_zram", False),
         "swapfile_active": swap_audit.get("has_swapfile", False),
+        "mglru_enabled": mem_audit.get("mglru_enabled", "unsupported"),
+        "mglru_min_ttl_ms": mem_audit.get("mglru_min_ttl_ms", "unsupported"),
+        "thp_mode": mem_audit.get("thp_mode", "unknown"),
+        "swappiness": mem_audit.get("swappiness", "unknown"),
+        "page_cluster": mem_audit.get("page_cluster", "unknown"),
+        "watermark_boost_factor": mem_audit.get("watermark_boost_factor", "unknown"),
+        "watermark_scale_factor": mem_audit.get("watermark_scale_factor", "unknown"),
+        "vfs_cache_pressure": mem_audit.get("vfs_cache_pressure", "unknown"),
     }
 
     # Hardware subsystem
@@ -1131,6 +1139,7 @@ def collect_tune_telemetry() -> dict[str, Any]:
     return {
         "status": "success",
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+        "profile": power_data.get("power_source", "ac"),
         "subsystems": {
             "storage": storage_data,
             "memory": memory_data,
@@ -1435,7 +1444,7 @@ def run_tune(args: list[str]) -> int:
     # revert
     revert_p = subparsers.add_parser("revert", help="Manage and revert system tuning configuration snapshots")
     revert_p.add_argument("--list", action="store_true", help="List all available configuration snapshots")
-    revert_p.add_argument("--id", dest="snapshot_id", default=None, help="Snapshot ID to revert")
+    revert_p.add_argument("--snapshot", "--id", dest="snapshot_id", default=None, help="Snapshot ID to revert")
     revert_p.add_argument("pos_id", nargs="?", default=None, help="Optional positional snapshot ID")
     revert_p.add_argument("--dry-run", action="store_true", help="Simulate configuration snapshot reversion")
     revert_p.add_argument("--json", action="store_true", help="Output snapshot list or revert status as JSON")
