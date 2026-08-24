@@ -1,0 +1,16 @@
+{
+  "domain_counts": {
+    "prompt_architect": 78
+  },
+  "domain_samples": {
+    "prompt_architect": [
+      "<USER_REQUEST>\nYou are a ruthless, uncompromising Devil's Advocate and Principal Debian SRE Reliability Auditor. The engineering team has revised the Debian 13 (Trixie) upgrade specification and generated three decomposed Implementation Plans in docs",
+      "<USER_REQUEST>\nYou are a Principal Debian SRE and Autonomous Systems Engineer for the os-manager repository on bare-metal Debian Linux.\n\nYour objective is to fully remediate the Debian 13 (Trixie) upgrade design specification and write the three deco",
+      "<USER_REQUEST>\nYou are the implementer subagent for Task 3 of the 100% Zero-USB Root Relocation & Expansion plan.\n\nTASK: Master Test Harness & Integration Checkpoint\n\nFILES:\n1. `tests/test_partition_reclamation.sh`\n2. `scripts/harness_check.sh`\n\nREQU",
+      "<USER_REQUEST>\nYou are implementing Task 2: Sandbox Workspace Setup & Prompt Engineering\n\n## Task Description\nRead your task brief first: /home/rizz/dev/os-manager/.superpowers/sdd/2026-08-24-9router-headroom-claude-integration-plan/task-2-brief.md\nI",
+      "<USER_REQUEST>\n/subagent-driven-development You are the Master Controller Agent and Lead Systems Architect executing the os-manager repository implementation plans using the superpowers:subagent-driven-development methodology on Debian Linux.\n\nYour o"
+    ]
+  },
+  "top_scripts": {},
+  "error_samples": []
+}

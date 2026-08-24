@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-08-21T16:36:24Z",
+  "timestamp": "2026-08-24T12:11:29Z",
   "branch": "main",
-  "git_status": " M backups/logs/compact_snapshot.json\n M backups/logs/harness_audit.jsonl\n M backups/logs/harness_errors.jsonl\n M docs/LINUX_MIGRATION_BLUEPRINT.md\n?? .agents/skills/prompt-architect\n?? .claude/skills/prompt-architect/\n?? docs/DEBIAN_13_TRIXIE_UPGRADE_GUIDE.md"
+  "git_status": " D .agents/macos-preset-report.md\n D .agents/prompt.txt\n D .agents/templates/prompt.template.txt\n M backups/logs/compact_snapshot.json\n M backups/logs/harness_audit.jsonl\n M backups/logs/harness_errors.jsonl\n M scripts/update_runtimes.sh\n?? .agents/agents/\n?? .agents/skills/context7-mcp/\n?? docs/superpowers/plans/2026-08-24-test-9router-models-ox-alpha-glm-5-2.md"
 }

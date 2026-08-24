@@ -1,0 +1,117 @@
+{
+  "total_conversations": 30,
+  "root_conversations": 30,
+  "subagent_conversations": 0,
+  "domains": {
+    "test-verifier": {
+      "count": 2,
+      "samples": [
+        {
+          "title": "",
+          "preview": "Agentic Harness Architecture Design",
+          "steps": 13
+        },
+        {
+          "title": "",
+          "preview": "Checking Python Version",
+          "steps": 27
+        }
+      ]
+    },
+    "prompt-architect": {
+      "count": 1,
+      "samples": [
+        {
+          "title": "",
+          "preview": "Agentic Harness Architecture Design",
+          "steps": 13
+        }
+      ]
+    },
+    "audio-hardware-tuner": {
+      "count": 2,
+      "samples": [
+        {
+          "title": "",
+          "preview": "Left Speaker Audio Issue",
+          "steps": 451
+        },
+        {
+          "title": "",
+          "preview": "Debian 13 Upgrade Hardware Audit",
+          "steps": 166
+        }
+      ]
+    },
+    "system-operator": {
+      "count": 4,
+      "samples": [
+        {
+          "title": "",
+          "preview": "saya ingin menginstall firefox developer edition, opsi mana yang anda rekomendasikan untuk os saya '64 bit' atau 'arm'? 'https://www.firefox.com/en-US/channel/desktop/developer/'",
+          "steps": 4
+        },
+        {
+          "title": "",
+          "preview": "Memilih Versi Chrome Linux",
+          "steps": 27
+        },
+        {
+          "title": "",
+          "preview": "Installing Spotify on Linux",
+          "steps": 267
+        },
+        {
+          "title": "",
+          "preview": "Debian Desktop Spec Brainstorming",
+          "steps": 115
+        }
+      ]
+    },
+    "security-auditor": {
+      "count": 1,
+      "samples": [
+        {
+          "title": "",
+          "preview": "Device Security Report Analysis",
+          "steps": 196
+        }
+      ]
+    },
+    "perf-optimizer": {
+      "count": 1,
+      "samples": [
+        {
+          "title": "",
+          "preview": "Understanding OS Swapfile",
+          "steps": 336
+        }
+      ]
+    },
+    "linux-migration-engineer": {
+      "count": 4,
+      "samples": [
+        {
+          "title": "",
+          "preview": "Debian Trixie Upgrade Engine",
+          "steps": 145
+        },
+        {
+          "title": "",
+          "preview": "Debian Trixie Upgrade Audit",
+          "steps": 33
+        },
+        {
+          "title": "",
+          "preview": "Linux Migration Phase Four",
+          "steps": 405
+        },
+        {
+          "title": "",
+          "preview": "OS Manager Post-Migration Audit",
+          "steps": 130
+        }
+      ]
+    }
+  }
+}

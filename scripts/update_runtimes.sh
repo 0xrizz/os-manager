@@ -36,9 +36,10 @@ if command -v bun &>/dev/null; then
     bun upgrade 2>/dev/null || true
 fi
 
-echo "==> [4/5] Updating Astral UV..."
+echo "==> [4/5] Updating Astral UV and user-space tools..."
 if command -v uv &>/dev/null; then
     uv self update 2>/dev/null || true
+    uv tool upgrade --all 2>/dev/null || true
 fi
 
 echo "==> [5/5] Updating AI Coding and Developer CLIs..."
