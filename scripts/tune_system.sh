@@ -262,6 +262,74 @@ migrate_ntfs_storage() {
     log_pass "Successfully migrated ${mount_point} to ntfs3 driver."
 }
 
+apply_audio_tuning() {
+    log_info "Applying PipeWire low-latency configuration & PAM real-time limits..."
+    local pw_dir="/etc/pipewire/pipewire.conf.d"
+    local pw_conf="${pw_dir}/99-low-latency.conf"
+    local pam_conf="/etc/security/limits.d/95-pipewire.conf"
+
+    if [[ $EUID -ne 0 ]]; then
+        sudo mkdir -p "${pw_dir}" /etc/security/limits.d
+        cat <<EOF | sudo tee "${pw_conf}" >/dev/null
+# /etc/pipewire/pipewire.conf.d/99-low-latency.conf - Managed by os-manager
+context.properties = {
+    default.clock.rate          = 48000
+    default.clock.allowed-rates = [ 44100 48000 96000 ]
+    default.clock.quantum       = 256
+    default.clock.min-quantum   = 32
+    default.clock.max-quantum   = 1024
+}
+
+context.modules = [
+    { name = libpipewire-module-rt
+      args = {
+          nice.level   = -11
+          rt.prio      = 88
+          rtkit.enabled = true
+      }
+      flags = [ ifexists nofail ]
+    }
+]
+EOF
+        cat <<EOF | sudo tee "${pam_conf}" >/dev/null
+# /etc/security/limits.d/95-pipewire.conf - Managed by os-manager
+@audio - rtprio 95
+@audio - nice -19
+@audio - memlock unlimited
+EOF
+    else
+        mkdir -p "${pw_dir}" /etc/security/limits.d
+        cat <<EOF | tee "${pw_conf}" >/dev/null
+# /etc/pipewire/pipewire.conf.d/99-low-latency.conf - Managed by os-manager
+context.properties = {
+    default.clock.rate          = 48000
+    default.clock.allowed-rates = [ 44100 48000 96000 ]
+    default.clock.quantum       = 256
+    default.clock.min-quantum   = 32
+    default.clock.max-quantum   = 1024
+}
+
+context.modules = [
+    { name = libpipewire-module-rt
+      args = {
+          nice.level   = -11
+          rt.prio      = 88
+          rtkit.enabled = true
+      }
+      flags = [ ifexists nofail ]
+    }
+]
+EOF
+        cat <<EOF | tee "${pam_conf}" >/dev/null
+# /etc/security/limits.d/95-pipewire.conf - Managed by os-manager
+@audio - rtprio 95
+@audio - nice -19
+@audio - memlock unlimited
+EOF
+    fi
+    log_pass "PipeWire low-latency drop-in & PAM limits configured."
+}
+
 status_audio() {
     log_info "Auditing PipeWire audio stack..."
     if command -v pipewire >/dev/null 2>&1; then
@@ -274,6 +342,12 @@ status_audio() {
         log_pass "WirePlumber session manager found: $(command -v wireplumber)"
     else
         log_warn "WirePlumber session manager not found."
+    fi
+
+    if [[ -f "/etc/pipewire/pipewire.conf.d/99-low-latency.conf" ]]; then
+        log_pass "PipeWire low-latency drop-in: Configured"
+    else
+        log_warn "PipeWire low-latency drop-in: Missing"
     fi
 }
 
@@ -507,7 +581,7 @@ Options:
     --trim [enable|status]     Enable periodic TRIM or check fstrim.timer status
     --earlyoom [enable|status] Configure EarlyOOM daemon or check status
     --memory [apply|audit]     Configure memory resilience (EarlyOOM) or audit swap/memory
-    --audio [status]           Check PipeWire / WirePlumber audio stack status
+    --audio [apply|status]     Apply PipeWire low-latency drop-in & PAM limits or check status
     --firewall [enable|status] Enable UFW firewall or check status
     --audit                    Run comprehensive audit across all subsystems
     --help, -h                 Show this help message
@@ -562,7 +636,11 @@ main() {
             fi
             ;;
         --audio)
-            status_audio
+            if [[ "${subaction}" == "apply" ]]; then
+                apply_audio_tuning
+            else
+                status_audio
+            fi
             ;;
         --firewall)
             if [[ "${subaction}" == "enable" ]]; then

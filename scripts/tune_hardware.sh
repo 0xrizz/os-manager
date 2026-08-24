@@ -143,12 +143,44 @@ audit_gpu_power() {
 
 enforce_gpu_power_save() {
     local path="${1:-${SYSFS_GPU_DEFAULT}}"
-    if [[ ! -f "${path}/control" ]]; then
-        log_error "GPU power control node not found at: ${path}/control"
-        return 1
+    if [[ -f "${path}/control" ]]; then
+        echo "auto" | tee "${path}/control" >/dev/null
+        log_pass "NVIDIA dGPU power control set to 'auto'."
+    else
+        log_warn "GPU power control node not found at: ${path}/control"
     fi
-    echo "auto" | tee "${path}/control" >/dev/null
-    log_pass "NVIDIA dGPU power control set to 'auto'."
+
+    local modprobe_conf="/etc/modprobe.d/nvidia-pm.conf"
+    local udev_rule="/etc/udev/rules.d/80-nvidia-pm.rules"
+    log_info "Deploying NVIDIA RTD3 dynamic power management and udev rules..."
+    if [[ $EUID -ne 0 ]]; then
+        cat <<EOF | sudo tee "${modprobe_conf}" >/dev/null
+# /etc/modprobe.d/nvidia-pm.conf - Managed by os-manager
+options nvidia "NVreg_DynamicPowerManagement=0x02"
+EOF
+        cat <<EOF | sudo tee "${udev_rule}" >/dev/null
+# /etc/udev/rules.d/80-nvidia-pm.rules - Managed by os-manager
+ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{class}=="0x030000", ATTR{power/control}="auto"
+ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{class}=="0x030200", ATTR{power/control}="auto"
+ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{class}=="0x040300", ATTR{power/control}="auto"
+EOF
+        sudo udevadm control --reload-rules 2>/dev/null || true
+        sudo udevadm trigger 2>/dev/null || true
+    else
+        cat <<EOF | tee "${modprobe_conf}" >/dev/null
+# /etc/modprobe.d/nvidia-pm.conf - Managed by os-manager
+options nvidia "NVreg_DynamicPowerManagement=0x02"
+EOF
+        cat <<EOF | tee "${udev_rule}" >/dev/null
+# /etc/udev/rules.d/80-nvidia-pm.rules - Managed by os-manager
+ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{class}=="0x030000", ATTR{power/control}="auto"
+ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{class}=="0x030200", ATTR{power/control}="auto"
+ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{class}=="0x040300", ATTR{power/control}="auto"
+EOF
+        udevadm control --reload-rules 2>/dev/null || true
+        udevadm trigger 2>/dev/null || true
+    fi
+    log_pass "NVIDIA dynamic PM rules configured at ${modprobe_conf} and ${udev_rule}"
 }
 
 audit_vaapi() {

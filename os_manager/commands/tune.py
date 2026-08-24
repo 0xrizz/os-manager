@@ -26,6 +26,10 @@ SESSION_SLICE_PATH = "/etc/systemd/user/session.slice.d/10-resources.conf"
 BACKGROUND_SLICE_PATH = "/etc/systemd/user/background.slice.d/10-resources.conf"
 TMPFILES_MGLRU_PATH = "/etc/tmpfiles.d/00-osm-mglru.conf"
 TMPFILES_THP_PATH = "/etc/tmpfiles.d/00-osm-thp.conf"
+PIPEWIRE_CONF_PATH = "/etc/pipewire/pipewire.conf.d/99-low-latency.conf"
+PAM_AUDIO_LIMITS_PATH = "/etc/security/limits.d/95-pipewire.conf"
+NVIDIA_MODPROBE_PATH = "/etc/modprobe.d/nvidia-pm.conf"
+NVIDIA_UDEV_PATH = "/etc/udev/rules.d/80-nvidia-pm.rules"
 
 
 def create_system_snapshot(
@@ -551,6 +555,86 @@ def audit_pipewire_audio_status() -> dict[str, Any]:
     }
 
 
+def generate_pipewire_low_latency_config(quantum: int = 256, rate: int = 48000) -> str:
+    """Generate PipeWire drop-in configuration for low-latency audio."""
+    return f"""# /etc/pipewire/pipewire.conf.d/99-low-latency.conf - Managed by os-manager
+context.properties = {{
+    default.clock.rate          = {rate}
+    default.clock.allowed-rates = [ 44100 48000 96000 ]
+    default.clock.quantum       = {quantum}
+    default.clock.min-quantum   = 32
+    default.clock.max-quantum   = 1024
+}}
+
+context.modules = [
+    {{ name = libpipewire-module-rt
+      args = {{
+          nice.level   = -11
+          rt.prio      = 88
+          rtkit.enabled = true
+      }}
+      flags = [ ifexists nofail ]
+    }}
+]
+"""
+
+
+def generate_pam_audio_limits_config() -> str:
+    """Generate PAM security limits configuration for real-time audio."""
+    return """# /etc/security/limits.d/95-pipewire.conf - Managed by os-manager
+@audio - rtprio 95
+@audio - nice -19
+@audio - memlock unlimited
+"""
+
+
+def generate_nvidia_pm_modprobe_config() -> str:
+    """Generate modprobe configuration for NVIDIA RTD3 dynamic power management."""
+    return """# /etc/modprobe.d/nvidia-pm.conf - Managed by os-manager
+options nvidia "NVreg_DynamicPowerManagement=0x02"
+"""
+
+
+def generate_nvidia_pm_udev_rule() -> str:
+    """Generate udev rule enforcing Runtime PM autosuspend on NVIDIA PCI devices."""
+    return """# /etc/udev/rules.d/80-nvidia-pm.rules - Managed by os-manager
+ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{class}=="0x030000", ATTR{power/control}="auto"
+ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{class}=="0x030200", ATTR{power/control}="auto"
+ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x10de", ATTR{class}=="0x040300", ATTR{power/control}="auto"
+"""
+
+
+def audit_audio_subsystem() -> dict[str, Any]:
+    """Inspect PipeWire and WirePlumber audio stack telemetry."""
+    pw_bin = shutil.which("pipewire")
+    wp_bin = shutil.which("wireplumber")
+    active_quantum = "1024"
+    active_rate = "48000"
+
+    try:
+        res = subprocess.run(["pw-dump"], capture_output=True, text=True, check=False)
+        if res.returncode == 0 and res.stdout:
+            for line in res.stdout.splitlines():
+                if "default.clock.quantum" in line and ":" in line:
+                    parts = line.split(":")
+                    if len(parts) >= 2:
+                        active_quantum = parts[1].strip().rstrip(",")
+                elif "default.clock.rate" in line and ":" in line:
+                    parts = line.split(":")
+                    if len(parts) >= 2:
+                        active_rate = parts[1].strip().rstrip(",")
+    except Exception:
+        pass
+
+    return {
+        "pipewire_installed": bool(pw_bin),
+        "wireplumber_installed": bool(wp_bin),
+        "active_quantum": active_quantum,
+        "active_rate": active_rate,
+        "low_latency_dropin_present": Path(PIPEWIRE_CONF_PATH).is_file(),
+    }
+
+
 def generate_mglru_config(enabled: int = 7, min_ttl_ms: int = 1000) -> str:
     """Generate systemd tmpfiles.d definition for MGLRU parameters."""
     return (
@@ -839,6 +923,16 @@ def collect_tune_telemetry() -> dict[str, Any]:
         "background_slice_configured": sched_audit.get("background_slice_configured", False),
     }
 
+    # Audio subsystem
+    audio_audit = audit_audio_subsystem()
+    audio_data = {
+        "pipewire_installed": audio_audit.get("pipewire_installed", False),
+        "wireplumber_installed": audio_audit.get("wireplumber_installed", False),
+        "active_quantum": audio_audit.get("active_quantum", "1024"),
+        "active_rate": audio_audit.get("active_rate", "48000"),
+        "low_latency_dropin_present": audio_audit.get("low_latency_dropin_present", False),
+    }
+
     return {
         "status": "success",
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -848,6 +942,7 @@ def collect_tune_telemetry() -> dict[str, Any]:
             "hardware": hardware_data,
             "sysctl": sysctl_data,
             "scheduler": scheduler_data,
+            "audio": audio_data,
         },
     }
 
@@ -1101,6 +1196,13 @@ def run_tune(args: list[str]) -> int:
     sched_group.add_argument("--audit", action="store_true", help="Audit EEVDF scheduler and cgroups v2 user slices")
     sched_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
 
+    # audio
+    audio_p = subparsers.add_parser("audio", help="Manage PipeWire low-latency configuration and PAM audio limits")
+    audio_group = audio_p.add_mutually_exclusive_group()
+    audio_group.add_argument("--apply", action="store_true", help="Apply PipeWire low-latency drop-in and PAM real-time limits")
+    audio_group.add_argument("--audit", action="store_true", help="Audit PipeWire and WirePlumber audio stack telemetry")
+    audio_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
+
     # persist
     persist_p = subparsers.add_parser("persist", help="Manage hardware and system tuning boot persistence")
     persist_group = persist_p.add_mutually_exclusive_group()
@@ -1290,6 +1392,38 @@ def run_tune(args: list[str]) -> int:
             print(f"3. background.slice Overrides: {'Configured' if sched['background_slice_configured'] else 'Missing'}")
             return 0
 
+    elif parsed_args.subaction == "audio":
+        is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
+        if is_apply:
+            pw_cfg = generate_pipewire_low_latency_config()
+            pam_cfg = generate_pam_audio_limits_config()
+            try:
+                if os.geteuid() != 0:
+                    subprocess.run(["sudo", "mkdir", "-p", "/etc/pipewire/pipewire.conf.d", "/etc/security/limits.d"], capture_output=True, check=False)
+                    subprocess.run(["sudo", "tee", PIPEWIRE_CONF_PATH], input=pw_cfg, text=True, capture_output=True, check=False)
+                    subprocess.run(["sudo", "tee", PAM_AUDIO_LIMITS_PATH], input=pam_cfg, text=True, capture_output=True, check=False)
+                else:
+                    Path(PIPEWIRE_CONF_PATH).parent.mkdir(parents=True, exist_ok=True)
+                    Path(PIPEWIRE_CONF_PATH).write_text(pw_cfg, encoding="utf-8")
+                    Path(PAM_AUDIO_LIMITS_PATH).parent.mkdir(parents=True, exist_ok=True)
+                    Path(PAM_AUDIO_LIMITS_PATH).write_text(pam_cfg, encoding="utf-8")
+                print("[PASS] PipeWire low-latency configuration and PAM audio limits applied.")
+                return 0
+            except Exception as exc:
+                print(f"[FAIL] Failed to apply audio configuration: {exc}")
+                return 1
+        else:
+            audio = audit_audio_subsystem()
+            print("==================================================")
+            print("         PipeWire Audio Subsystem Audit           ")
+            print("==================================================")
+            print(f"1. PipeWire Installed: {audio['pipewire_installed']}")
+            print(f"2. WirePlumber Installed: {audio['wireplumber_installed']}")
+            print(f"3. Active Quantum: {audio['active_quantum']}")
+            print(f"4. Active Rate: {audio['active_rate']}")
+            print(f"5. Low-Latency Drop-in: {'Present' if audio['low_latency_dropin_present'] else 'Missing'}")
+            return 0
+
     elif parsed_args.subaction == "persist":
         is_enable = getattr(parsed_args, "enable", False) or parsed_args.action == "enable"
         is_disable = getattr(parsed_args, "disable", False) or parsed_args.action == "disable"
@@ -1400,12 +1534,27 @@ def run_tune(args: list[str]) -> int:
 
     elif parsed_args.subaction == "gpu":
         if parsed_args.action == "power-save":
+            mod_cfg = generate_nvidia_pm_modprobe_config()
+            udev_cfg = generate_nvidia_pm_udev_rule()
             if os.geteuid() != 0:
                 cmd = ["sudo", "tee", f"{SYSFS_GPU_DEFAULT}/control"]
-                return subprocess.run(cmd, input="auto\n", text=True, check=False).returncode
-            res = subprocess.run(["tee", f"{SYSFS_GPU_DEFAULT}/control"], input="auto\n", text=True, capture_output=True, check=False)
-            print("[PASS] NVIDIA GPU power control set to auto.")
-            return res.returncode
+                subprocess.run(cmd, input="auto\n", text=True, check=False)
+                subprocess.run(["sudo", "mkdir", "-p", "/etc/modprobe.d", "/etc/udev/rules.d"], capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", NVIDIA_MODPROBE_PATH], input=mod_cfg, text=True, capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", NVIDIA_UDEV_PATH], input=udev_cfg, text=True, capture_output=True, check=False)
+                subprocess.run(["sudo", "udevadm", "control", "--reload-rules"], capture_output=True, check=False)
+                subprocess.run(["sudo", "udevadm", "trigger"], capture_output=True, check=False)
+            else:
+                if Path(f"{SYSFS_GPU_DEFAULT}/control").is_file():
+                    subprocess.run(["tee", f"{SYSFS_GPU_DEFAULT}/control"], input="auto\n", text=True, capture_output=True, check=False)
+                Path(NVIDIA_MODPROBE_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(NVIDIA_MODPROBE_PATH).write_text(mod_cfg, encoding="utf-8")
+                Path(NVIDIA_UDEV_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(NVIDIA_UDEV_PATH).write_text(udev_cfg, encoding="utf-8")
+                subprocess.run(["udevadm", "control", "--reload-rules"], capture_output=True, check=False)
+                subprocess.run(["udevadm", "trigger"], capture_output=True, check=False)
+            print("[PASS] NVIDIA GPU power control set to auto and RTD3 dynamic PM rules applied.")
+            return 0
         gpu = audit_gpu_runtime_power()
         print(f"NVIDIA GPU Runtime D3 Status: {gpu.get('runtime_status', 'unknown')}")
         print(f"Power Saving Active: {gpu.get('power_saving', False)}")
