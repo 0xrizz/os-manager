@@ -1,5 +1,9 @@
 # Specification: Full-Lifecycle Claude Code Agent Harness Architecture
 
+> **STATUS: PARTIALLY SUPERSEDED**
+> **Partially Superseded by:** `docs/superpowers/specs/2026-08-24-open-source-transformation-roadmap-design.md` on 2026-08-24.
+> **Scope of Supersession:** Section 3.2 (Regex-based `PreToolUse` policy) is superseded by Shell AST analysis (`bashlex`) and ephemeral Bubblewrap (`bwrap`) rootless sandboxing. Core SSOT lifecycle hooks and symlink topology remain active baseline.
+
 - **Date:** 2026-08-18
 - **Scope:** Workspace Architecture & Agent Governance (`/home/rizz/dev/os-manager`)
 - **Status:** Approved / Specification Baseline Complete

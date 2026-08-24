@@ -4,7 +4,6 @@
     "SHELLCHECK_OPTS": "-e SC1090,SC1091"
   },
   "permissions": {
-    "defaultMode": "manual",
     "allow": [
       "Bash(./scripts/*)",
       "Bash(git status)",
@@ -24,7 +23,8 @@
       "Bash(wsl --shutdown*)",
       "Edit(/mnt/c/Windows/**)",
       "Write(/mnt/c/Windows/**)"
-    ]
+    ],
+    "defaultMode": "default"
   },
   "hooks": {
     "SessionStart": [
@@ -98,5 +98,11 @@
         ]
       }
     ]
+  },
+  "skillOverrides": {
+    "mattpocock-skills:handoff": "off"
+  },
+  "enabledPlugins": {
+    "mattpocock-skills@mattpocock": true
   }
 }

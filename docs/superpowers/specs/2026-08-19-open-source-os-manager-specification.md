@@ -1,5 +1,9 @@
 # Open-Source Transformation Design Specification for OS-Manager
 
+> **STATUS: SUPERSEDED**
+> **Superseded by:** `docs/superpowers/specs/2026-08-24-open-source-transformation-roadmap-design.md` on 2026-08-24.
+> **Reason:** Initial distribution baseline upgraded to include Shell AST-based Zero-Trust security guards, dynamic Hardware Abstraction Layer (HAL), native Model Context Protocol (MCP) server engine, and multi-agent SQLite event ledger.
+
 ## 1. Executive Summary
 
 This document specifies the open-source transformation design for the `os-manager` platform. `os-manager` is an autonomous governance harness and system control plane built for Claude Code. The transformation transitions the repository from a single-machine development environment into a production-grade, community-ready open-source framework.
