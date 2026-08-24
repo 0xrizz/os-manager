@@ -10,6 +10,8 @@ SYSFS_GPU_DEFAULT="/sys/bus/pci/devices/0000:01:00.0/power"
 PERSIST_SERVICE="/etc/systemd/system/osm-hardware-tune.service"
 PERSIST_CONF_DIR="/etc/osm"
 PERSIST_CONF="${PERSIST_CONF_DIR}/hardware-tune.conf"
+POWER_UDEV_RULE="/etc/udev/rules.d/99-osm-power-profile.rules"
+
 
 log_info()  { echo -e "\033[1;34m[INFO]\033[0m $*"; }
 log_pass()  { echo -e "\033[1;32m[PASS]\033[0m $*"; }
@@ -282,6 +284,120 @@ disable_persist() {
     log_pass "Hardware persistence service disabled."
 }
 
+get_power_source() {
+    local power_source="battery"
+    for ps in /sys/class/power_supply/*; do
+        if [[ -d "${ps}" ]]; then
+            local t=""
+            local o=""
+            [[ -f "${ps}/type" ]] && t="$(cat "${ps}/type" 2>/dev/null || echo "")"
+            [[ -f "${ps}/online" ]] && o="$(cat "${ps}/online" 2>/dev/null || echo "")"
+            if [[ "${t,,}" == "mains" && "${o}" == "1" ]]; then
+                power_source="ac"
+                break
+            fi
+        fi
+    done
+    echo "${power_source}"
+}
+
+get_cpu_epp() {
+    local node="/sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference"
+    if [[ -f "${node}" ]]; then
+        cat "${node}" 2>/dev/null || echo "unknown"
+    else
+        echo "unknown"
+    fi
+}
+
+set_power_profile() {
+    local prof="${1,,}"
+    if [[ "${prof}" != "ac" && "${prof}" != "battery" && "${prof}" != "bat" ]]; then
+        log_error "Unknown power profile '${prof}'. Valid choices: ac, battery"
+        return 1
+    fi
+
+    local target_epp="balance_performance"
+    local target_epb="4"
+    local target_platform="balanced"
+    local target_slice="2000000"
+
+    if [[ "${prof}" == "battery" || "${prof}" == "bat" ]]; then
+        target_epp="balance_power"
+        target_epb="8"
+        target_platform="low-power"
+        target_slice="3000000"
+    fi
+
+    log_info "Applying '${prof}' dynamic power profile..."
+
+    # Write EPP to all CPUs
+    for node in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do
+        if [[ -f "${node}" ]]; then
+            echo "${target_epp}" | tee "${node}" >/dev/null 2>&1 || true
+        fi
+    done
+
+    # Write EPB to all CPUs if available
+    for node in /sys/devices/system/cpu/cpu*/power/energy_perf_bias; do
+        if [[ -f "${node}" ]]; then
+            echo "${target_epb}" | tee "${node}" >/dev/null 2>&1 || true
+        fi
+    done
+
+    # Set platform profile
+    set_platform_profile "${target_platform}" >/dev/null 2>&1 || true
+
+    # Set EEVDF scheduler base slice if supported
+    if [[ -f "/proc/sys/kernel/sched_base_slice_ns" ]]; then
+        sysctl -w "kernel.sched_base_slice_ns=${target_slice}" >/dev/null 2>&1 || true
+    fi
+
+    log_pass "Power profile '${prof}' applied (EPP: ${target_epp}, EPB: ${target_epb}, Platform: ${target_platform}, Sched Slice: ${target_slice}ns)"
+    return 0
+}
+
+deploy_power_udev_rules() {
+    log_info "Deploying dynamic power profile udev auto-switching rule..."
+    local rule_content="# /etc/udev/rules.d/99-osm-power-profile.rules - Managed by os-manager
+SUBSYSTEM==\"power_supply\", ATTR{online}==\"0\", RUN+=\"/usr/local/bin/osm tune power --profile battery\"
+SUBSYSTEM==\"power_supply\", ATTR{online}==\"1\", RUN+=\"/usr/local/bin/osm tune power --profile ac\"
+"
+    if [[ $EUID -ne 0 ]]; then
+        cat <<EOF | sudo tee "${POWER_UDEV_RULE}" >/dev/null
+${rule_content}
+EOF
+        sudo udevadm control --reload-rules 2>/dev/null || true
+        sudo udevadm trigger 2>/dev/null || true
+    else
+        cat <<EOF | tee "${POWER_UDEV_RULE}" >/dev/null
+${rule_content}
+EOF
+        udevadm control --reload-rules 2>/dev/null || true
+        udevadm trigger 2>/dev/null || true
+    fi
+
+    local current_src
+    current_src="$(get_power_source)"
+    set_power_profile "${current_src}"
+    log_pass "Dynamic power profile udev rules deployed at ${POWER_UDEV_RULE}."
+}
+
+audit_power_profile_sh() {
+    log_info "Auditing Dynamic Dual-Profile Power Telemetry..."
+    local p_source
+    p_source="$(get_power_source)"
+    local epp
+    epp="$(get_cpu_epp)"
+    local plat
+    plat="$(get_platform_profile)"
+    log_info "Active Power Source: ${p_source^^}"
+    log_info "CPU EPP Preference: ${epp}"
+    log_info "Platform Profile: ${plat}"
+    log_info "Battery Conservation: $(get_battery_status)"
+    log_info "Fn-Lock Status: $(get_fn_lock_status)"
+}
+
 show_help() {
     cat <<EOF
 Usage: $(basename "$0") [OPTIONS]
@@ -294,6 +410,7 @@ Options:
   --vaapi [status|install]          Inspect or install Intel VA-API video acceleration drivers
   --thermals [status|install]       Inspect or install Intel thermald daemon
   --persist [status|enable|disable] Inspect or configure boot persistence via systemd
+  --power [status|ac|battery|apply] Inspect or switch dynamic AC/Battery power profile and udev rules
   --audit                           Run full hardware power, thermal, and acceleration diagnostics
   -h, --help                        Display this help message
 EOF
@@ -360,6 +477,16 @@ main() {
                 audit_persist
             fi
             ;;
+        --power)
+            local p_mode="${2:-status}"
+            if [[ "${p_mode}" == "ac" || "${p_mode}" == "battery" || "${p_mode}" == "bat" ]]; then
+                set_power_profile "${p_mode}"
+            elif [[ "${p_mode}" == "apply" ]]; then
+                deploy_power_udev_rules
+            else
+                audit_power_profile_sh
+            fi
+            ;;
         --audit)
             echo "=================================================="
             echo "       Hardware Tuning & Acceleration Audit       "
@@ -370,6 +497,7 @@ main() {
             audit_gpu_power || true
             audit_vaapi || true
             audit_thermals || true
+            audit_power_profile_sh || true
             audit_persist || true
             ;;
         -h|--help)
@@ -385,3 +513,4 @@ main() {
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"
 fi
+

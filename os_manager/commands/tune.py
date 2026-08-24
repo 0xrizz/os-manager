@@ -30,6 +30,9 @@ PIPEWIRE_CONF_PATH = "/etc/pipewire/pipewire.conf.d/99-low-latency.conf"
 PAM_AUDIO_LIMITS_PATH = "/etc/security/limits.d/95-pipewire.conf"
 NVIDIA_MODPROBE_PATH = "/etc/modprobe.d/nvidia-pm.conf"
 NVIDIA_UDEV_PATH = "/etc/udev/rules.d/80-nvidia-pm.rules"
+SYSFS_EPP_NODES = "/sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference"
+SYSFS_EPB_NODES = "/sys/devices/system/cpu/cpu*/power/energy_perf_bias"
+POWER_PROFILE_UDEV_PATH = "/etc/udev/rules.d/99-osm-power-profile.rules"
 
 
 def create_system_snapshot(
@@ -244,6 +247,103 @@ def set_fn_lock_mode(enable: bool, fn_path: str = SYSFS_FN_LOCK_DEFAULT) -> bool
         return res.returncode == 0
     except Exception:
         return False
+
+
+def generate_power_profile_udev_rule() -> str:
+    """Generate udev rules for automatic AC/Battery tuning switching."""
+    return """# /etc/udev/rules.d/99-osm-power-profile.rules - Managed by os-manager
+SUBSYSTEM=="power_supply", ATTR{online}=="0", RUN+="/usr/local/bin/osm tune power --profile battery"
+SUBSYSTEM=="power_supply", ATTR{online}=="1", RUN+="/usr/local/bin/osm tune power --profile ac"
+"""
+
+
+def apply_power_profile(profile: str) -> dict[str, Any]:
+    """Apply dynamic kernel, CPU governor, and scheduler tunings for AC or Battery profile."""
+    prof = profile.lower()
+    if prof not in ["ac", "battery", "bat"]:
+        return {"success": False, "error": f"Unknown profile '{profile}'. Valid: ac, battery"}
+
+    is_ac = prof == "ac"
+    target_epp = "balance_performance" if is_ac else "balance_power"
+    target_epb = "4" if is_ac else "8"
+    target_platform = "balanced" if is_ac else "low-power"
+    target_slice = 2000000 if is_ac else 3000000
+
+    try:
+        # Write EPP across online CPUs
+        cpu_glob = list(Path("/sys/devices/system/cpu").glob("cpu[0-9]*/cpufreq/energy_performance_preference"))
+        for node in cpu_glob:
+            if os.geteuid() != 0:
+                subprocess.run(["sudo", "tee", str(node)], input=f"{target_epp}\n", text=True, capture_output=True, check=False)
+            else:
+                try:
+                    node.write_text(f"{target_epp}\n", encoding="utf-8")
+                except Exception:
+                    subprocess.run(["tee", str(node)], input=f"{target_epp}\n", text=True, capture_output=True, check=False)
+
+        # Write EPB across online CPUs if present
+        cpu_epb_glob = list(Path("/sys/devices/system/cpu").glob("cpu[0-9]*/power/energy_perf_bias"))
+        for node in cpu_epb_glob:
+            if os.geteuid() != 0:
+                subprocess.run(["sudo", "tee", str(node)], input=f"{target_epb}\n", text=True, capture_output=True, check=False)
+            else:
+                try:
+                    node.write_text(f"{target_epb}\n", encoding="utf-8")
+                except Exception:
+                    subprocess.run(["tee", str(node)], input=f"{target_epb}\n", text=True, capture_output=True, check=False)
+
+        # Set platform profile if supported
+        set_platform_profile(target_platform)
+
+        # Set EEVDF scheduler base slice
+        if Path("/proc/sys/kernel/sched_base_slice_ns").is_file():
+            if os.geteuid() != 0:
+                subprocess.run(
+                    ["sudo", "sysctl", "-w", f"kernel.sched_base_slice_ns={target_slice}"],
+                    capture_output=True,
+                    check=False,
+                )
+            else:
+                subprocess.run(["sysctl", "-w", f"kernel.sched_base_slice_ns={target_slice}"], capture_output=True, check=False)
+
+        return {
+            "success": True,
+            "profile": "ac" if is_ac else "battery",
+            "epp": target_epp,
+            "epb": target_epb,
+            "platform_profile": target_platform,
+            "sched_base_slice_ns": target_slice,
+        }
+    except Exception as exc:
+        return {"success": False, "error": str(exc)}
+
+
+def audit_power_profile() -> dict[str, Any]:
+    """Inspect active CPU frequency governor, EPP, EPB, and AC power supply state."""
+    current_epp = "unknown"
+    node_0 = Path("/sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference")
+    if node_0.is_file():
+        try:
+            current_epp = node_0.read_text().strip()
+        except Exception:
+            pass
+
+    power_source = "battery"
+    for ps in Path("/sys/class/power_supply").glob("*"):
+        type_file = ps / "type"
+        online_file = ps / "online"
+        if type_file.is_file() and type_file.read_text().strip().lower() == "mains":
+            if online_file.is_file() and online_file.read_text().strip() == "1":
+                power_source = "ac"
+                break
+
+    return {
+        "current_epp": current_epp,
+        "power_source": power_source,
+        "platform_profile": get_platform_profile(),
+        "conservation_mode": get_battery_conservation_status(),
+        "fn_lock": get_fn_lock_status(),
+    }
 
 
 def audit_gpu_runtime_power(gpu_pci_path: str = SYSFS_GPU_DEFAULT) -> dict[str, Any]:
@@ -933,6 +1033,14 @@ def collect_tune_telemetry() -> dict[str, Any]:
         "low_latency_dropin_present": audio_audit.get("low_latency_dropin_present", False),
     }
 
+    # Power subsystem
+    power_audit = audit_power_profile()
+    power_data = {
+        "current_epp": power_audit.get("current_epp", "unknown"),
+        "power_source": power_audit.get("power_source", "unknown"),
+        "platform_profile": power_audit.get("platform_profile", "unknown"),
+    }
+
     return {
         "status": "success",
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -943,8 +1051,10 @@ def collect_tune_telemetry() -> dict[str, Any]:
             "sysctl": sysctl_data,
             "scheduler": scheduler_data,
             "audio": audio_data,
+            "power": power_data,
         },
     }
+
 
 
 GTK_BOOKMARKS_DEFAULT = os.path.expanduser("~/.config/gtk-3.0/bookmarks")
@@ -1203,6 +1313,15 @@ def run_tune(args: list[str]) -> int:
     audio_group.add_argument("--audit", action="store_true", help="Audit PipeWire and WirePlumber audio stack telemetry")
     audio_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
 
+    # power
+    power_p = subparsers.add_parser("power", help="Manage dynamic AC/Battery power profile switching and udev rules")
+    power_group = power_p.add_mutually_exclusive_group()
+    power_group.add_argument("--apply", action="store_true", help="Deploy dynamic power udev rules and apply active profile")
+    power_group.add_argument("--audit", action="store_true", help="Audit CPU EPP, power source, and platform profile telemetry")
+    power_p.add_argument("--profile", choices=["ac", "battery", "status"], default=None, help="Set or inspect power profile")
+    power_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply", "ac", "battery", "status"])
+
+
     # persist
     persist_p = subparsers.add_parser("persist", help="Manage hardware and system tuning boot persistence")
     persist_group = persist_p.add_mutually_exclusive_group()
@@ -1422,6 +1541,56 @@ def run_tune(args: list[str]) -> int:
             print(f"3. Active Quantum: {audio['active_quantum']}")
             print(f"4. Active Rate: {audio['active_rate']}")
             print(f"5. Low-Latency Drop-in: {'Present' if audio['low_latency_dropin_present'] else 'Missing'}")
+            return 0
+
+    elif parsed_args.subaction == "power":
+        prof = getattr(parsed_args, "profile", None)
+        action = getattr(parsed_args, "action", "audit")
+        target_prof = prof if prof else (action if action in ["ac", "battery", "status"] else None)
+
+        is_apply = getattr(parsed_args, "apply", False) or action == "apply"
+        is_audit = getattr(parsed_args, "audit", False) or action == "audit"
+
+        if target_prof in ["ac", "battery"]:
+            res = apply_power_profile(target_prof)
+            if res.get("success"):
+                print(f"[PASS] Power profile '{target_prof}' applied successfully (EPP: {res.get('epp')}, Sched Slice: {res.get('sched_base_slice_ns')}ns).")
+                return 0
+            else:
+                print(f"[FAIL] Failed to apply power profile '{target_prof}': {res.get('error')}")
+                return 1
+        elif is_apply:
+            udev_rule = generate_power_profile_udev_rule()
+            udev_target = Path(POWER_PROFILE_UDEV_PATH)
+            try:
+                if os.geteuid() != 0:
+                    subprocess.run(["sudo", "mkdir", "-p", "/etc/udev/rules.d"], capture_output=True, check=False)
+                    subprocess.run(["sudo", "tee", POWER_PROFILE_UDEV_PATH], input=udev_rule, text=True, capture_output=True, check=False)
+                    subprocess.run(["sudo", "udevadm", "control", "--reload-rules"], capture_output=True, check=False)
+                    subprocess.run(["sudo", "udevadm", "trigger"], capture_output=True, check=False)
+                else:
+                    udev_target.parent.mkdir(parents=True, exist_ok=True)
+                    udev_target.write_text(udev_rule, encoding="utf-8")
+                    subprocess.run(["udevadm", "control", "--reload-rules"], capture_output=True, check=False)
+                    subprocess.run(["udevadm", "trigger"], capture_output=True, check=False)
+            except Exception as exc:
+                print(f"[WARN] Failed to write udev rule: {exc}")
+
+            curr_audit = audit_power_profile()
+            src = curr_audit.get("power_source", "ac")
+            apply_res = apply_power_profile("ac" if src == "ac" else "battery")
+            print(f"[PASS] Dynamic power profile udev rule installed at {POWER_PROFILE_UDEV_PATH} and '{src}' profile applied.")
+            return 0
+        else:
+            audit = audit_power_profile()
+            print("==================================================")
+            print("       Dynamic Power & CPU Profile Audit          ")
+            print("==================================================")
+            print(f"1. Power Source: {audit.get('power_source', 'unknown').upper()}")
+            print(f"2. Intel EPP Preference: {audit.get('current_epp', 'unknown')}")
+            print(f"3. Platform Profile: {audit.get('platform_profile', 'unknown')}")
+            print(f"4. Battery Conservation: {audit.get('conservation_mode', 'unknown')}")
+            print(f"5. Fn-Lock: {audit.get('fn_lock', 'unknown')}")
             return 0
 
     elif parsed_args.subaction == "persist":
