@@ -5,12 +5,16 @@ import os
 import shutil
 
 from ..platform.detector import detect_platform
+from ..platform.hal import audit_storage_subsystem, get_active_hardware_driver
 
 
 def run_diag(args: list[str]) -> int:
     """Execute diagnostic inspection and format output."""
     json_mode = "--json" in args
     plat = detect_platform()
+    driver = get_active_hardware_driver()
+    dmi = driver.get_dmi_info()
+    storage = audit_storage_subsystem("/")
 
     total_b, used_b, free_b = shutil.disk_usage("/")
     cpu_count = os.cpu_count() or 1
@@ -18,6 +22,16 @@ def run_diag(args: list[str]) -> int:
     data = {
         "status": "healthy",
         "platform": plat,
+        "hardware": {
+            "vendor": dmi.vendor,
+            "product": dmi.product_name,
+            "driver": driver.__class__.__name__,
+        },
+        "storage": {
+            "target_device": storage.target_device,
+            "scheduler": storage.scheduler,
+            "is_nvme": storage.is_nvme,
+        },
         "cpu_count": cpu_count,
         "disk": {
             "total_gb": round(total_b / (1024**3), 2),
@@ -31,6 +45,7 @@ def run_diag(args: list[str]) -> int:
     else:
         print("=== OS-Manager Diagnostic Report ===")
         print(f"Platform: {plat['platform']} ({plat['distro_id']})")
+        print(f"Hardware: {dmi.vendor} {dmi.product_name} ({driver.__class__.__name__})")
         print(f"Package Manager: {plat['pkg_manager']}")
         print(f"Service Manager: {plat['service_manager']}")
         print(f"CPUs: {cpu_count}")
