@@ -37,6 +37,8 @@ class TestShellASTGuard(unittest.TestCase):
             "echo 'root::0:0:::' >> /etc/shadow",
             "echo bad | tee /etc/sudoers",
             "echo x > /mnt/c/Windows/system.ini",
+            "echo x > /mnt/data/important.db",
+            "echo backup > /mnt/d/backup.tar",
         ]
         for cmd in attack_cmds:
             with self.subTest(cmd=cmd):
@@ -46,6 +48,23 @@ class TestShellASTGuard(unittest.TestCase):
                     any(v.category == "Redirection" for v in violations),
                     f"Violation category mismatch for {cmd}: {violations}",
                 )
+
+    def test_blocked_protected_mounts_file_operations(self) -> None:
+        payload_mnt_data = {
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/mnt/data/file.txt", "content": "test"},
+        }
+        res_data = evaluate_payload(payload_mnt_data)
+        self.assertFalse(res_data.allowed)
+        self.assertEqual(res_data.exit_code, 2)
+
+        payload_mnt_d = {
+            "tool_name": "Edit",
+            "tool_input": {"file_path": "/mnt/d/wsl_backup/archive.tar", "new_string": "test"},
+        }
+        res_d = evaluate_payload(payload_mnt_d)
+        self.assertFalse(res_d.allowed)
+        self.assertEqual(res_d.exit_code, 2)
 
     def test_blocked_destructive_root_deletion(self) -> None:
         root_deletes = [

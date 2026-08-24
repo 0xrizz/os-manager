@@ -36,9 +36,10 @@ class ShellASTValidator:
 
     def __init__(self, invariants: Optional[InvariantsConfig] = None):
         self.invariants = invariants or InvariantsConfig()
+        all_deny = list(self.invariants.deny_paths) + list(self.invariants.protected_mounts)
         self.protected_paths: List[str] = [
             str(Path(p).expanduser().resolve()) if Path(p).is_absolute() else p
-            for p in self.invariants.deny_paths
+            for p in all_deny
         ]
         self.blocked_binaries: Set[str] = set(self.invariants.deny_commands)
 
