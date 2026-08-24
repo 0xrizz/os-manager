@@ -161,13 +161,17 @@ def revert_system_snapshot(
                     subprocess.run(["sudo", "cp", "-p", str(rel_src), file_str], capture_output=True, check=False)
                 restored.append(file_str)
 
-        # Reload kernel sysctl and systemd
+        # Reload kernel sysctl, systemd, and udev rules
         if os.geteuid() != 0:
             subprocess.run(["sudo", "sysctl", "--system"], capture_output=True, check=False)
             subprocess.run(["sudo", "systemctl", "daemon-reload"], capture_output=True, check=False)
+            subprocess.run(["sudo", "udevadm", "control", "--reload-rules"], capture_output=True, check=False)
+            subprocess.run(["sudo", "udevadm", "trigger"], capture_output=True, check=False)
         else:
             subprocess.run(["sysctl", "--system"], capture_output=True, check=False)
             subprocess.run(["systemctl", "daemon-reload"], capture_output=True, check=False)
+            subprocess.run(["udevadm", "control", "--reload-rules"], capture_output=True, check=False)
+            subprocess.run(["udevadm", "trigger"], capture_output=True, check=False)
 
         return {
             "success": True,
@@ -556,6 +560,9 @@ def generate_hardened_fstab_ntfs3_entry(current_fstab: str, mount_point: str = "
     """Generate hardened ntfs3 fstab entry preserving Windows invariants and POSIX masks."""
     lines = []
     for line in current_fstab.splitlines():
+        if line.strip().startswith("#"):
+            lines.append(line)
+            continue
         if mount_point in line and ("ntfs-3g" in line or "ntfs3" in line):
             parts = line.split()
             if len(parts) >= 2:
@@ -1915,8 +1922,97 @@ def run_tune(args: list[str]) -> int:
                 ],
             )
             print("[INFO] Executing all customization subroutines end-to-end...")
-            subprocess.run(["bash", "scripts/tune_hardware.sh", "--audit"], check=False)
-            subprocess.run(["bash", "scripts/tune_system.sh", "--sysctl"], check=False)
+            # Storage
+            migrate_ntfs_driver(mount_point="/mnt/data", hardened=True)
+            nvme_rule = generate_nvme_udev_scheduler_rule()
+            if os.geteuid() != 0:
+                subprocess.run(["sudo", "mkdir", "-p", "/etc/udev/rules.d"], capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", NVME_UDEV_RULE_PATH], input=nvme_rule, text=True, capture_output=True, check=False)
+                subprocess.run(["sudo", "systemctl", "enable", "--now", "fstrim.timer"], capture_output=True, check=False)
+            else:
+                Path(NVME_UDEV_RULE_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(NVME_UDEV_RULE_PATH).write_text(nvme_rule, encoding="utf-8")
+                subprocess.run(["systemctl", "enable", "--now", "fstrim.timer"], capture_output=True, check=False)
+
+            # Memory
+            configure_earlyoom()
+            mglru_cfg = generate_mglru_config()
+            thp_cfg = generate_thp_config()
+            vm_cfg = generate_vm_sysctl_config()
+            if os.geteuid() != 0:
+                subprocess.run(["sudo", "mkdir", "-p", "/etc/tmpfiles.d", "/etc/sysctl.d"], capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", TMPFILES_MGLRU_PATH], input=mglru_cfg, text=True, capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", TMPFILES_THP_PATH], input=thp_cfg, text=True, capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", SYSCTL_MEMORY_PATH], input=vm_cfg, text=True, capture_output=True, check=False)
+                subprocess.run(["sudo", "systemd-tmpfiles", "--create"], capture_output=True, check=False)
+            else:
+                Path(TMPFILES_MGLRU_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(TMPFILES_MGLRU_PATH).write_text(mglru_cfg, encoding="utf-8")
+                Path(TMPFILES_THP_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(TMPFILES_THP_PATH).write_text(thp_cfg, encoding="utf-8")
+                Path(SYSCTL_MEMORY_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(SYSCTL_MEMORY_PATH).write_text(vm_cfg, encoding="utf-8")
+                subprocess.run(["systemd-tmpfiles", "--create"], capture_output=True, check=False)
+
+            # Scheduler
+            sched_cfg = generate_eevdf_sysctl_config()
+            sess_cfg = generate_session_slice_config()
+            bg_cfg = generate_background_slice_config()
+            if os.geteuid() != 0:
+                subprocess.run(["sudo", "mkdir", "-p", "/etc/sysctl.d", "/etc/systemd/user/session.slice.d", "/etc/systemd/user/background.slice.d"], capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", SYSCTL_SCHEDULER_PATH], input=sched_cfg, text=True, capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", SESSION_SLICE_PATH], input=sess_cfg, text=True, capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", BACKGROUND_SLICE_PATH], input=bg_cfg, text=True, capture_output=True, check=False)
+            else:
+                Path(SYSCTL_SCHEDULER_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(SYSCTL_SCHEDULER_PATH).write_text(sched_cfg, encoding="utf-8")
+                Path(SESSION_SLICE_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(SESSION_SLICE_PATH).write_text(sess_cfg, encoding="utf-8")
+                Path(BACKGROUND_SLICE_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(BACKGROUND_SLICE_PATH).write_text(bg_cfg, encoding="utf-8")
+
+            # Audio & GPU
+            pw_cfg = generate_pipewire_low_latency_config()
+            pam_cfg = generate_pam_audio_limits_config()
+            nv_mod = generate_nvidia_pm_modprobe_config()
+            nv_udev = generate_nvidia_pm_udev_rule()
+            if os.geteuid() != 0:
+                subprocess.run(["sudo", "mkdir", "-p", "/etc/pipewire/pipewire.conf.d", "/etc/security/limits.d", "/etc/modprobe.d"], capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", PIPEWIRE_CONF_PATH], input=pw_cfg, text=True, capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", PAM_AUDIO_LIMITS_PATH], input=pam_cfg, text=True, capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", NVIDIA_MODPROBE_PATH], input=nv_mod, text=True, capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", NVIDIA_UDEV_PATH], input=nv_udev, text=True, capture_output=True, check=False)
+            else:
+                Path(PIPEWIRE_CONF_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(PIPEWIRE_CONF_PATH).write_text(pw_cfg, encoding="utf-8")
+                Path(PAM_AUDIO_LIMITS_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(PAM_AUDIO_LIMITS_PATH).write_text(pam_cfg, encoding="utf-8")
+                Path(NVIDIA_MODPROBE_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(NVIDIA_MODPROBE_PATH).write_text(nv_mod, encoding="utf-8")
+                Path(NVIDIA_UDEV_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(NVIDIA_UDEV_PATH).write_text(nv_udev, encoding="utf-8")
+
+            # Power & ACPI
+            set_battery_conservation_mode(True)
+            set_fn_lock_mode(True)
+            power_udev = generate_power_profile_udev_rule()
+            if os.geteuid() != 0:
+                subprocess.run(["sudo", "tee", POWER_PROFILE_UDEV_PATH], input=power_udev, text=True, capture_output=True, check=False)
+            else:
+                Path(POWER_PROFILE_UDEV_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(POWER_PROFILE_UDEV_PATH).write_text(power_udev, encoding="utf-8")
+            apply_power_profile("ac")
+
+            # Reload all daemons & sysctl
+            if os.geteuid() != 0:
+                subprocess.run(["sudo", "sysctl", "--system"], capture_output=True, check=False)
+                subprocess.run(["sudo", "udevadm", "control", "--reload-rules"], capture_output=True, check=False)
+                subprocess.run(["sudo", "udevadm", "trigger"], capture_output=True, check=False)
+            else:
+                subprocess.run(["sysctl", "--system"], capture_output=True, check=False)
+                subprocess.run(["udevadm", "control", "--reload-rules"], capture_output=True, check=False)
+                subprocess.run(["udevadm", "trigger"], capture_output=True, check=False)
+
             subprocess.run(["bash", "scripts/setup_desktop_env.sh", "--apply"], check=False)
             subprocess.run(["bash", "scripts/setup_terminal_env.sh"], check=False)
             print("[PASS] All hardware, system, desktop, and terminal optimizations applied.")
