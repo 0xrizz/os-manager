@@ -5,7 +5,7 @@ You are an expert Linux Systems Engineer, DevOps Specialist, and Automation Arch
 ---
 
 ## 1. Environment & Global Guardrails
-* **Target Environment:** Bare-Metal Debian GNU/Linux 13 (Trixie), Linux Kernel 6.12+, GNOME 48 (Wayland), Lenovo IdeaPad 3 (81WD) with Intel Core i5-1035G1 + NVIDIA GeForce MX330 + 8GB RAM + NVMe SSD.
+* **Target Environment:** Bare-Metal Debian GNU/Linux 13 (Trixie), Linux Kernel 6.12.101+, Lenovo IdeaPad 3 (81WD) with Intel Core i5-1035G1 + NVIDIA GeForce MX330 + 8GB RAM + NVMe SSD.
 * **Zero-Data-Loss on Persistent Storage:**
   * Partition 4 (Drive D: / `DATA_STORE` mounted at `/mnt/data`, NTFS `ntfs3`) contains permanent user data (~201 GB).
   * NEVER run destructive partition commands (`mkfs`, `fdisk d`, broad `rm -rf`, format) targeting Drive D: / `/dev/nvme0n1p4`.
@@ -19,27 +19,23 @@ You are an expert Linux Systems Engineer, DevOps Specialist, and Automation Arch
 ---
 
 ## 2. Current Task & Objective
-* **Target Objective:** Adaptive Kernel & System Optimization Suite is fully implemented and passing 234/234 tests.
-* **Target Plan:** `docs/superpowers/plans/2026-08-24-adaptive-kernel-system-optimization.md`
+* **Target Objective:** Execute the implementation plan for scaling zRAM to 100% (8GB) and synchronizing codebase templates using Subagent-Driven Development (`/subagent-driven-development`).
+* **Target Plan:** `docs/superpowers/plans/2026-08-24-zram-100-percent-scaling-and-sync.md`
 * **Target Specification:** `docs/superpowers/specs/2026-08-24-adaptive-kernel-system-optimization-design.md`
-* **Baseline Context:** All subcommands (`osm tune`, `osm perf`) are operational with snapshot rollback, empirical benchmarks, and dynamic AC/Battery switching.
+* **Baseline Context:** Read `.agents/HANDOFF.md` before starting. 234/234 tests currently passing.
 
 ---
 
 ## 3. Scope of Work & Task Breakdown
-- [x] Task 1: Atomic Snapshot & Revert Engine (`osm tune revert` & `--dry-run`)
-- [x] Task 2: Memory & Virtual Memory Engine (MGLRU, zRAM swappiness=180, THP madvise, EarlyOOM)
-- [x] Task 3: EEVDF Scheduler & Cgroups v2 User Slice Engine
-- [x] Task 4: PipeWire Low-Latency Audio & Hybrid GPU Subsystem
-- [x] Task 5: Dynamic Dual-Profile Power Engine (AC vs Battery Switching)
-- [x] Task 6: Storage & I/O Engine (Hardened `ntfs3`, EXT4 `lazytime`, NVMe Schedulers)
-- [x] Task 7: Empirical Benchmarking Engine (`osm perf`)
-- [x] Task 8: Unified CLI Integration & Master Telemetry
+- [ ] Task 1: Codebase Template Synchronization (`os_manager/commands/hsi.py`, `scripts/hsi-harden.sh`, `tests/test_hsi_hardening.py`)
+- [ ] Task 2: Live Host zRAM Deployment & Systemd Reinitialization (`/etc/systemd/zram-generator.conf`, `swapoff`, `swapon`, `earlyoom`)
+- [ ] Task 3: Full Telemetry Audit & End-to-End Verification (`osm tune all --json`, `osm perf all --quick`, `pytest tests/`)
 
 ---
 
 ## 4. Verification & Quality Gates
-* [x] Unit test suite clean execution (`pytest tests/` -> 234/234 passed)
-* [x] Master regression test harness execution
-* [x] ShellCheck & Bash syntax clean execution (`bash -n scripts/*.sh`)
-* [x] Checkpoint handoff updated in `.agents/HANDOFF.md`
+* [ ] Initialize SDD: `bash .agents/skills/subagent-driven-development/scripts/init docs/superpowers/plans/2026-08-24-zram-100-percent-scaling-and-sync.md`
+* [ ] Complete Tasks 1..3 with TDD, implementer subagent, and reviewer subagent loop
+* [ ] Verify live zRAM size (~7.5 GiB / 8GB) via `free -h` and `cat /proc/swaps`
+* [ ] Verify 100% test pass rate in `.venv/bin/pytest tests/ -v`
+* [ ] Update checkpoint handoff in `.agents/HANDOFF.md`
