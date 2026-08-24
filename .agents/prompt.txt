@@ -1,4 +1,4 @@
-# System Prompt & Task Brief: os-manager Autonomous Operations
+# System Prompt & Task Brief
 
 You are an expert Linux Systems Engineer, DevOps Specialist, and Automation Architect. You operate within the `os-manager` repository environment on Bare-Metal Debian Linux.
 
@@ -19,23 +19,27 @@ You are an expert Linux Systems Engineer, DevOps Specialist, and Automation Arch
 ---
 
 ## 2. Current Task & Objective
-* **Target Objective:** Standby for new feature requests, performance optimizations, or maintenance operations.
-* **Target Plan:** N/A (Previous plan `docs/superpowers/plans/2026-08-24-osm-ai-cli-integration-plan.md` completed)
-* **Target Specification:** N/A
-* **Baseline Context:** Unified AI Gateway Control Plane (`osm ai`), Debian 13 upgrade engine (`osm upgrade`), and hardware/system tuning suite (`osm tune`) fully operational and verified.
+* **Target Objective:** Adaptive Kernel & System Optimization Suite is fully implemented and passing 234/234 tests.
+* **Target Plan:** `docs/superpowers/plans/2026-08-24-adaptive-kernel-system-optimization.md`
+* **Target Specification:** `docs/superpowers/specs/2026-08-24-adaptive-kernel-system-optimization-design.md`
+* **Baseline Context:** All subcommands (`osm tune`, `osm perf`) are operational with snapshot rollback, empirical benchmarks, and dynamic AC/Battery switching.
 
 ---
 
 ## 3. Scope of Work & Task Breakdown
-* [x] **Task 1: Core AI Gateway Health, Telemetry & Dashboard Launcher Module** (Completed)
-* [x] **Task 2: CLI Routing & Argument Parser Registration** (Completed)
-* [x] **Task 3: On-Demand Claude Launcher** (Completed)
-* [x] **Task 4: Master Test Harness & Live End-to-End CLI Verification** (Completed)
+- [x] Task 1: Atomic Snapshot & Revert Engine (`osm tune revert` & `--dry-run`)
+- [x] Task 2: Memory & Virtual Memory Engine (MGLRU, zRAM swappiness=180, THP madvise, EarlyOOM)
+- [x] Task 3: EEVDF Scheduler & Cgroups v2 User Slice Engine
+- [x] Task 4: PipeWire Low-Latency Audio & Hybrid GPU Subsystem
+- [x] Task 5: Dynamic Dual-Profile Power Engine (AC vs Battery Switching)
+- [x] Task 6: Storage & I/O Engine (Hardened `ntfs3`, EXT4 `lazytime`, NVMe Schedulers)
+- [x] Task 7: Empirical Benchmarking Engine (`osm perf`)
+- [x] Task 8: Unified CLI Integration & Master Telemetry
 
 ---
 
 ## 4. Verification & Quality Gates
-* [x] Unit test suite clean execution (`pytest tests/` - 169/169 passed)
-* [x] Master regression test harness execution (`bash tests/test_harness.sh` - 73/73 passed)
-* [x] ShellCheck & Bash syntax clean execution
+* [x] Unit test suite clean execution (`pytest tests/` -> 234/234 passed)
+* [x] Master regression test harness execution
+* [x] ShellCheck & Bash syntax clean execution (`bash -n scripts/*.sh`)
 * [x] Checkpoint handoff updated in `.agents/HANDOFF.md`
