@@ -18,13 +18,19 @@ from os_manager.commands.hsi import (
 )
 
 
-def test_generate_zram_config():
-    """Verify zram-generator config generation format."""
-    cfg = generate_zram_config(ram_fraction="ram / 2", max_mb=8192)
+def test_generate_zram_config_default():
+    """Verify zram-generator config defaults to 100% RAM (min(ram, 8192))."""
+    cfg = generate_zram_config()
     assert "[zram0]" in cfg
-    assert "zram-size = min(ram / 2, 8192)" in cfg
+    assert "zram-size = min(ram, 8192)" in cfg
     assert "compression-algorithm = zstd" in cfg
     assert "swap-priority = 100" in cfg
+
+
+def test_generate_zram_config_custom():
+    """Verify zram-generator config supports custom fractions."""
+    cfg = generate_zram_config(ram_fraction="ram / 2", max_mb=4096)
+    assert "zram-size = min(ram / 2, 4096)" in cfg
 
 
 def test_check_sleep_state_s2idle(tmp_path):

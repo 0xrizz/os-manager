@@ -53,7 +53,7 @@ echo "    Configuring /etc/systemd/zram-generator.conf..."
 cat <<'EOF' > /etc/systemd/zram-generator.conf
 # Managed by osm hsi-harden
 [zram0]
-zram-size = min(ram / 2, 8192)
+zram-size = min(ram, 8192)
 compression-algorithm = zstd
 swap-priority = 100
 EOF
