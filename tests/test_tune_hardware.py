@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from os_manager.commands.tune import (
     audit_gpu_runtime_power,
+    audit_hardware_state,
     audit_vaapi_acceleration,
     configure_hardware_persistence,
     generate_hardware_persist_unit,
@@ -208,6 +209,17 @@ class TestTuneHardware(unittest.TestCase):
         )
         self.assertTrue(success)
         self.assertEqual(mock_run.call_count, 3)
+
+    def test_audit_hardware_state_via_hal(self):
+        """Verify audit_hardware_state queries active HAL driver."""
+        state = audit_hardware_state()
+        self.assertIn("conservation_mode", state)
+        self.assertIn("platform_profile", state)
+        self.assertIn("platform_profile_choices", state)
+        self.assertIn("gpu_power_control", state)
+        self.assertIn("gpu_runtime_status", state)
+        self.assertIn("dmi_vendor", state)
+        self.assertIn("dmi_product", state)
 
 
 if __name__ == "__main__":

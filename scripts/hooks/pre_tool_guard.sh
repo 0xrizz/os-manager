@@ -32,7 +32,32 @@ notify_security_violation() {
     fi
 }
 
-# 1. Guard File Operations (Edit, Write, Read)
+# 1. Primary Security Gate: Python AST Semantic Guard
+PYTHON_BIN="${WORKSPACE_ROOT}/.venv/bin/python"
+if [ ! -x "${PYTHON_BIN}" ]; then
+    PYTHON_BIN="python3"
+fi
+
+AST_RUN_OUTPUT=""
+AST_RC=0
+AST_RUN_OUTPUT="$("${PYTHON_BIN}" -m os_manager.security.ast_guard <<< "${INPUT_JSON}" 2>&1)" || AST_RC=$?
+
+if [ "${AST_RC}" -eq 0 ]; then
+    if echo "${AST_RUN_OUTPUT}" | grep -q "\[SANDBOX_RECOMMENDED\]"; then
+        if command -v bwrap >/dev/null 2>&1 || command -v podman >/dev/null 2>&1; then
+            echo "[SANDBOXED EXECUTION - Changes isolated to ephemeral jail]"
+        fi
+    fi
+    exit 0
+elif [ "${AST_RC}" -eq 2 ]; then
+    # Invariant or syntax violation deterministically blocked by AST guard
+    echo "${AST_RUN_OUTPUT}" >&2
+    notify_security_violation "${AST_RUN_OUTPUT}"
+    exit 2
+fi
+# If AST module was missing (e.g. RC=1) or Python failed to load module, fall through to fallback regex guard
+
+# 2. Fallback: Legacy Path & Regex Evaluator (used if python environment uninitialized)
 if [[ "${TOOL_NAME}" =~ ^(Edit|Write|Read)$ ]]; then
     TARGET_PATH="$(echo "${INPUT_JSON}" | jq -r '.tool_input.file_path // .tool_input.notebook_path // empty')"
     if [ -n "${TARGET_PATH}" ]; then
@@ -41,7 +66,6 @@ if [[ "${TOOL_NAME}" =~ ^(Edit|Write|Read)$ ]]; then
             CANONICAL_PATH="$(realpath -m "${TARGET_PATH}" 2>/dev/null || echo "${TARGET_PATH}")"
         fi
 
-        # Invariant Block: Windows Host System Directories
         if [[ "${CANONICAL_PATH}" =~ ^/mnt/c/(Windows|Program\ Files|Program\ Files\ \(x86\)|Users/[^/]+/AppData) ]]; then
             if [[ "${TOOL_NAME}" =~ ^(Edit|Write)$ ]]; then
                 echo "[HARNESS SECURITY BLOCKED] Invariant Violation (Tier 3): Modification of Windows Host System files is strictly forbidden: ${TARGET_PATH}" >&2
@@ -50,7 +74,6 @@ if [[ "${TOOL_NAME}" =~ ^(Edit|Write|Read)$ ]]; then
             fi
         fi
 
-        # Invariant Block: Linux Core System Sabotage
         if [[ "${CANONICAL_PATH}" =~ ^/(etc/shadow|etc/passwd|boot/|dev/) ]]; then
             if [[ "${TOOL_NAME}" =~ ^(Edit|Write)$ ]]; then
                 echo "[HARNESS SECURITY BLOCKED] Invariant Violation (Tier 3): Modification of core Linux system files is strictly forbidden: ${TARGET_PATH}" >&2
@@ -62,15 +85,13 @@ if [[ "${TOOL_NAME}" =~ ^(Edit|Write|Read)$ ]]; then
     exit 0
 fi
 
-# 2. Guard Shell Executions (Bash)
 if [ "${TOOL_NAME}" = "Bash" ]; then
     CMD="$(echo "${INPUT_JSON}" | jq -r '.tool_input.command // empty')"
-
     if [ -z "${CMD}" ]; then
         exit 0
     fi
 
-    # Invariant Block: Destructive Root / Home Obliteration
+    # Invariant Block: Destructive Root Deletion
     # shellcheck disable=SC2016
     if echo "${CMD}" | grep -qE '\brm\s+-[rRfF]*\s+(/|/\*|~|~/\*|\$HOME|\$HOME/\*|/home/[^/]+/?(\*|\.))([;&|[:space:]]|$)'; then
         echo "[HARNESS SECURITY BLOCKED] Invariant Violation (Tier 3): Destructive deletion of root or home directory is strictly forbidden: ${CMD}" >&2
@@ -78,57 +99,19 @@ if [ "${TOOL_NAME}" = "Bash" ]; then
         exit 2
     fi
 
-    # Auto-Sandbox: Risky recursive deletion or directory cleanup outside root
-    # shellcheck disable=SC2016
-    if echo "${CMD}" | grep -qE '\brm\s+-[rRfF]+\s+[^\s]+' && ! echo "${CMD}" | grep -qE '\brm\s+-[rRfF]*\s+(/|/\*|~|~/\*|\$HOME|\$HOME/\*|/home/[^/]+/?(\*|\.))([;&|[:space:]]|$)'; then
-        # If Podman is available, route to sandbox; otherwise pass through
-        if command -v podman &>/dev/null; then
-            echo "[SANDBOXED EXECUTION - Changes isolated to ephemeral container]"
-            exit 0
-        fi
-    fi
-
-    # Invariant Block: WSL Lifecycle Sabotage
+    # Invariant Block: WSL Lifecycle
     if echo "${CMD}" | grep -qE '\b(wsl|wsl\.exe)\s+--(unregister|shutdown|terminate)\b'; then
         echo "[HARNESS SECURITY BLOCKED] Invariant Violation (Tier 3): WSL instance lifecycle termination commands are strictly forbidden: ${CMD}" >&2
         notify_security_violation "WSL instance termination blocked: ${CMD}"
         exit 2
     fi
 
-    # Invariant Block: Raw Disk Partitioning & Formatting
+    # Invariant Block: Raw Disk Formatting
     if echo "${CMD}" | grep -qE '\b(mkfs(\.[a-z0-9]+)?|fdisk|parted|dd\s+if=.*of=/dev/sd[a-z])\b'; then
         echo "[HARNESS SECURITY BLOCKED] Invariant Violation (Tier 3): Raw disk formatting and block device alteration is strictly forbidden: ${CMD}" >&2
         notify_security_violation "Raw disk formatting blocked: ${CMD}"
         exit 2
     fi
-
-    # Invariant Block: Indiscriminate Package Purging (Generalized across all distros)
-    if echo "${CMD}" | grep -qE '\b(apt|apt-get|pacman|dnf|zypper|apk)\s+(purge|remove|del|-Rcs)\s+(\*|all|--all)([;&|[:space:]]|\b|$)' || \
-       echo "${CMD}" | grep -qE '\b(apt|apt-get|dpkg)\s+(--purge\s+)?(purge|remove)\s+-[a-zA-Z0-9]*\*([;&|[:space:]]|\b|$)' || \
-       echo "${CMD}" | grep -qE '\bpacman\s+-[Rksu]+\s+.*(\b|\s)(base|systemd|glibc|linux-firmware)(\b|\s|$)' || \
-       echo "${CMD}" | grep -qE '\bdnf\s+(remove|erase)\s+-[a-zA-Z0-9]*\*([;&|[:space:]]|\b|$)'; then
-        echo "[HARNESS SECURITY BLOCKED] Invariant Violation (Tier 3): Destructive mass package removal is strictly forbidden: ${CMD}" >&2
-        notify_security_violation "Mass package purge blocked: ${CMD}"
-        exit 2
-    fi
-
-    # Invariant Block: Dangerous Container Privilege Escalation
-    if echo "${CMD}" | grep -qE '\bpodman\s+run\b.*(--privileged|--pid=host|--net=host|--cap-add=ALL|-v\s+/(dev|proc|sys|root|etc))\b'; then
-        echo "[HARNESS SECURITY BLOCKED] Invariant Violation (Tier 3): Container privilege escalation is strictly forbidden: ${CMD}" >&2
-        notify_security_violation "Container privilege escalation blocked: ${CMD}"
-        exit 2
-    fi
-
-    # Tier 2 Fast-Path: Pre-authorized maintenance & diagnostic scripts
-    TIER2_SCRIPTS="sys_diag|clean_system|update_runtimes|wsl_snapshot|dotfiles_sync|tmux_agents|harness_check|perf_tune|manage_timers|compact_host_disk|notify_host|hook_benchmark|bus_send|post_bootstrap|sandbox_exec"
-    if echo "${CMD}" | grep -qE "(^|[;&|[:space:]])(\\./scripts/|scripts/)?(${TIER2_SCRIPTS})\\.sh(\\s|$)"; then
-        exit 0
-    fi
-    if echo "${CMD}" | grep -qE "(^|[;&|[:space:]])(\\./scripts/|scripts/)?agent_bus\\.py(\\s|$)"; then
-        exit 0
-    fi
-
-    exit 0
 fi
 
 exit 0

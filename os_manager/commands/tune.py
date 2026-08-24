@@ -10,6 +10,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from os_manager.platform.hal import (
+    audit_storage_subsystem,
+    get_active_hardware_driver,
+)
+
 SYSFS_CONSERVATION_DEFAULT = "/sys/bus/platform/drivers/ideapad_acpi/VPC2004:00/conservation_mode"
 SYSFS_PROFILE_DEFAULT = "/sys/firmware/acpi/platform_profile"
 SYSFS_PROFILE_CHOICES_DEFAULT = "/sys/firmware/acpi/platform_profile_choices"
@@ -583,36 +588,39 @@ ACTION=="add|change", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/scheduler}="none",
 """
 
 
+def audit_hardware_state() -> dict[str, Any]:
+    """Inspect battery conservation, thermal profile, and GPU status via HAL."""
+    driver = get_active_hardware_driver()
+    prof = driver.get_platform_profile()
+    bat = driver.get_battery_conservation()
+    gpu = driver.get_gpu_power_status()
+    dmi = driver.get_dmi_info()
+
+    return {
+        "conservation_mode": 1 if bat.conservation_mode else 0,
+        "platform_profile": prof.current,
+        "platform_profile_choices": prof.choices,
+        "gpu_power_control": gpu.get("control", "unknown"),
+        "gpu_runtime_status": gpu.get("runtime_status", "unknown"),
+        "dmi_vendor": dmi.vendor,
+        "dmi_product": dmi.product_name,
+    }
+
+
 def audit_nvme_storage_subsystem() -> dict[str, Any]:
-    """Inspect NVMe block layer scheduler, queue depth, TRIM, and NTFS drivers."""
+    """Inspect NVMe block layer scheduler, queue depth, TRIM, and NTFS drivers dynamically."""
+    storage_info = audit_storage_subsystem("/")
     ntfs = audit_ntfs_mount_driver("/mnt/data")
     trim = audit_fstrim_timer_status()
-    sched = "unknown"
-    nr_req = "unknown"
-
-    sched_file = Path("/sys/block/nvme0n1/queue/scheduler")
-    if sched_file.is_file():
-        try:
-            raw = sched_file.read_text().strip()
-            for token in raw.split():
-                if token.startswith("[") and token.endswith("]"):
-                    sched = token.strip("[]")
-        except Exception:
-            pass
-
-    req_file = Path("/sys/block/nvme0n1/queue/nr_requests")
-    if req_file.is_file():
-        try:
-            nr_req = req_file.read_text().strip()
-        except Exception:
-            pass
 
     return {
         "ntfs3_active": ntfs.get("is_inkernel", False),
         "ntfs_driver": ntfs.get("driver", "unknown"),
         "trim_active": trim.get("active", False),
-        "nvme_scheduler": sched,
-        "nvme_nr_requests": nr_req,
+        "nvme_scheduler": storage_info.scheduler,
+        "nvme_nr_requests": storage_info.nr_requests,
+        "target_device": storage_info.target_device,
+        "is_nvme": storage_info.is_nvme,
     }
 
 
