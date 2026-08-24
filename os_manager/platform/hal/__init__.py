@@ -11,6 +11,8 @@ from .dell import DellDriver
 from .generic_linux import GenericLinuxDriver
 from .lenovo import LenovoDriver
 from .macos import DarwinDriver
+from .registry import HardwareRegistry, get_active_hardware_driver
+from .storage import StorageSubsystemInfo, audit_storage_subsystem
 from .thinkpad import ThinkPadDriver
 
 __all__ = [
@@ -24,5 +26,8 @@ __all__ = [
     "AsusDriver",
     "DellDriver",
     "DarwinDriver",
+    "HardwareRegistry",
+    "get_active_hardware_driver",
+    "StorageSubsystemInfo",
+    "audit_storage_subsystem",
 ]
-
