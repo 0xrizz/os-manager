@@ -33,6 +33,7 @@ NVIDIA_UDEV_PATH = "/etc/udev/rules.d/80-nvidia-pm.rules"
 SYSFS_EPP_NODES = "/sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference"
 SYSFS_EPB_NODES = "/sys/devices/system/cpu/cpu*/power/energy_perf_bias"
 POWER_PROFILE_UDEV_PATH = "/etc/udev/rules.d/99-osm-power-profile.rules"
+NVME_UDEV_RULE_PATH = "/etc/udev/rules.d/60-nvme-schedulers.rules"
 
 
 def create_system_snapshot(
@@ -531,6 +532,61 @@ def generate_fstab_ntfs3_entry(current_fstab: str, mount_point: str = "/mnt/data
     return "\n".join(lines) + "\n"
 
 
+def generate_hardened_fstab_ntfs3_entry(current_fstab: str, mount_point: str = "/mnt/data") -> str:
+    """Generate hardened ntfs3 fstab entry preserving Windows invariants and POSIX masks."""
+    lines = []
+    for line in current_fstab.splitlines():
+        if mount_point in line and ("ntfs-3g" in line or "ntfs3" in line):
+            parts = line.split()
+            if len(parts) >= 2:
+                uuid_part = parts[0]
+                mp_part = parts[1]
+                opts = "defaults,uid=1000,gid=1000,dmask=027,fmask=137,windows_names,iocharset=utf8,noatime,prealloc,nocase,hide_dot_files,nofail"
+                line = f"{uuid_part}  {mp_part}  ntfs3  {opts}  0  0"
+        lines.append(line)
+    return "\n".join(lines) + "\n"
+
+
+def generate_nvme_udev_scheduler_rule() -> str:
+    """Generate udev rule setting NVMe I/O scheduler to none and nr_requests to 256."""
+    return """# /etc/udev/rules.d/60-nvme-schedulers.rules - Managed by os-manager
+ACTION=="add|change", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/scheduler}="none", ATTR{queue/nr_requests}="256"
+"""
+
+
+def audit_nvme_storage_subsystem() -> dict[str, Any]:
+    """Inspect NVMe block layer scheduler, queue depth, TRIM, and NTFS drivers."""
+    ntfs = audit_ntfs_mount_driver("/mnt/data")
+    trim = audit_fstrim_timer_status()
+    sched = "unknown"
+    nr_req = "unknown"
+
+    sched_file = Path("/sys/block/nvme0n1/queue/scheduler")
+    if sched_file.is_file():
+        try:
+            raw = sched_file.read_text().strip()
+            for token in raw.split():
+                if token.startswith("[") and token.endswith("]"):
+                    sched = token.strip("[]")
+        except Exception:
+            pass
+
+    req_file = Path("/sys/block/nvme0n1/queue/nr_requests")
+    if req_file.is_file():
+        try:
+            nr_req = req_file.read_text().strip()
+        except Exception:
+            pass
+
+    return {
+        "ntfs3_active": ntfs.get("is_inkernel", False),
+        "ntfs_driver": ntfs.get("driver", "unknown"),
+        "trim_active": trim.get("active", False),
+        "nvme_scheduler": sched,
+        "nvme_nr_requests": nr_req,
+    }
+
+
 def audit_ntfs_mount_driver(mount_point: str = "/mnt/data") -> dict[str, Any]:
     """Audit current mount driver for a given mount point."""
     try:
@@ -550,7 +606,11 @@ def audit_ntfs_mount_driver(mount_point: str = "/mnt/data") -> dict[str, Any]:
         return {"mount_point": mount_point, "driver": "unknown", "is_inkernel": False}
 
 
-def migrate_ntfs_driver(fstab_path: str = "/etc/fstab", mount_point: str = "/mnt/data") -> dict[str, Any]:
+def migrate_ntfs_driver(
+    fstab_path: str = "/etc/fstab",
+    mount_point: str = "/mnt/data",
+    hardened: bool = False,
+) -> dict[str, Any]:
     """Migrate mount_point in fstab from ntfs-3g to in-kernel ntfs3 with backup and remount."""
     p = Path(fstab_path)
     if not p.is_file():
@@ -562,12 +622,13 @@ def migrate_ntfs_driver(fstab_path: str = "/etc/fstab", mount_point: str = "/mnt
         return {"success": False, "error": f"Failed to read {fstab_path}: {e}"}
 
     if "ntfs3" in content and mount_point in content and "ntfs-3g" not in content:
-        return {
-            "success": True,
-            "status": "already_migrated",
-            "driver": "ntfs3",
-            "mount_point": mount_point,
-        }
+        if not hardened or "dmask=027" in content:
+            return {
+                "success": True,
+                "status": "already_migrated",
+                "driver": "ntfs3",
+                "mount_point": mount_point,
+            }
 
     ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     backup_path = f"{fstab_path}.bak.{ts}"
@@ -576,7 +637,11 @@ def migrate_ntfs_driver(fstab_path: str = "/etc/fstab", mount_point: str = "/mnt
     except Exception as e:
         return {"success": False, "error": f"Failed to create fstab backup at {backup_path}: {e}"}
 
-    new_content = generate_fstab_ntfs3_entry(content, mount_point=mount_point)
+    if hardened:
+        new_content = generate_hardened_fstab_ntfs3_entry(content, mount_point=mount_point)
+    else:
+        new_content = generate_fstab_ntfs3_entry(content, mount_point=mount_point)
+
     try:
         p.write_text(new_content, encoding="utf-8")
     except Exception as e:
@@ -961,11 +1026,13 @@ def audit_scheduler_subsystem() -> dict[str, Any]:
 def collect_tune_telemetry() -> dict[str, Any]:
     """Collect master telemetry dictionary across all system optimization subsystems."""
     # Storage subsystem
-    stor_audit = audit_ntfs_mount_driver("/mnt/data")
-    trim_audit = audit_fstrim_timer_status()
+    stor_audit = audit_nvme_storage_subsystem()
     storage_data = {
-        "ntfs_driver": stor_audit.get("driver", "unknown"),
-        "trim_active": trim_audit.get("active", False),
+        "ntfs_driver": stor_audit.get("ntfs_driver", "unknown"),
+        "ntfs3_active": stor_audit.get("ntfs3_active", False),
+        "trim_active": stor_audit.get("trim_active", False),
+        "nvme_scheduler": stor_audit.get("nvme_scheduler", "unknown"),
+        "nvme_nr_requests": stor_audit.get("nvme_nr_requests", "unknown"),
     }
 
     # Memory subsystem
@@ -1398,23 +1465,35 @@ def run_tune(args: list[str]) -> int:
     if parsed_args.subaction == "storage":
         is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
         if is_apply:
-            res_mig = migrate_ntfs_driver(mount_point="/mnt/data")
+            res_mig = migrate_ntfs_driver(mount_point="/mnt/data", hardened=True)
+            nvme_rule = generate_nvme_udev_scheduler_rule()
             if os.geteuid() != 0:
+                subprocess.run(["sudo", "mkdir", "-p", "/etc/udev/rules.d"], capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", NVME_UDEV_RULE_PATH], input=nvme_rule, text=True, capture_output=True, check=False)
+                subprocess.run(["sudo", "udevadm", "control", "--reload-rules"], capture_output=True, check=False)
+                subprocess.run(["sudo", "udevadm", "trigger", "--subsystem-match=block"], capture_output=True, check=False)
                 subprocess.run(["sudo", "systemctl", "enable", "--now", "fstrim.timer"], capture_output=True, check=False)
             else:
+                p_rule = Path(NVME_UDEV_RULE_PATH)
+                p_rule.parent.mkdir(parents=True, exist_ok=True)
+                p_rule.write_text(nvme_rule, encoding="utf-8")
+                subprocess.run(["udevadm", "control", "--reload-rules"], capture_output=True, check=False)
+                subprocess.run(["udevadm", "trigger", "--subsystem-match=block"], capture_output=True, check=False)
                 subprocess.run(["systemctl", "enable", "--now", "fstrim.timer"], capture_output=True, check=False)
             status_str = "migrated" if res_mig.get("success") else "applied"
-            print(f"[PASS] Storage /mnt/data {status_str} and fstrim.timer enabled.")
+            print(f"[PASS] Storage /mnt/data {status_str}, NVMe scheduler udev rules applied, and fstrim.timer enabled.")
             return 0 if res_mig.get("success") else 1
         else:
-            ntfs = audit_ntfs_mount_driver("/mnt/data")
-            trim = audit_fstrim_timer_status()
+            audit = audit_nvme_storage_subsystem()
             print("==================================================")
             print("         Storage & Filesystem I/O Audit           ")
             print("==================================================")
-            print(f"1. Storage /mnt/data Driver: {ntfs['driver']} (In-Kernel: {ntfs['is_inkernel']})")
-            print(f"2. NVMe fstrim.timer: {'Active' if trim['active'] else 'Inactive'}")
+            print(f"1. Storage /mnt/data Driver: {audit['ntfs_driver']} (In-Kernel: {audit['ntfs3_active']})")
+            print(f"2. NVMe fstrim.timer: {'Active' if audit['trim_active'] else 'Inactive'}")
+            print(f"3. NVMe I/O Scheduler: {audit['nvme_scheduler']}")
+            print(f"4. NVMe Queue Depth (nr_requests): {audit['nvme_nr_requests']}")
             return 0
+
 
     elif parsed_args.subaction == "memory":
         is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"

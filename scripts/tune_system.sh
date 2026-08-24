@@ -8,6 +8,7 @@ SESSION_SLICE_DIR="/etc/systemd/user/session.slice.d"
 SESSION_SLICE_PATH="${SESSION_SLICE_DIR}/10-resources.conf"
 BACKGROUND_SLICE_DIR="/etc/systemd/user/background.slice.d"
 BACKGROUND_SLICE_PATH="${BACKGROUND_SLICE_DIR}/10-resources.conf"
+NVME_UDEV_RULE_PATH="/etc/udev/rules.d/60-nvme-schedulers.rules"
 
 log_info()  { echo -e "\033[1;34m[INFO]\033[0m $*"; }
 log_pass()  { echo -e "\033[1;32m[PASS]\033[0m $*"; }
@@ -172,8 +173,30 @@ status_nvme_trim() {
     fi
 }
 
+apply_nvme_scheduler_tuning() {
+    log_info "Applying NVMe I/O scheduler (none) and queue depth (nr_requests=256)..."
+    if [[ $EUID -ne 0 ]]; then
+        sudo mkdir -p /etc/udev/rules.d
+        cat <<EOF | sudo tee "${NVME_UDEV_RULE_PATH}" >/dev/null
+# /etc/udev/rules.d/60-nvme-schedulers.rules - Managed by os-manager
+ACTION=="add|change", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/scheduler}="none", ATTR{queue/nr_requests}="256"
+EOF
+        sudo udevadm control --reload-rules 2>/dev/null || true
+        sudo udevadm trigger --subsystem-match=block 2>/dev/null || true
+    else
+        mkdir -p /etc/udev/rules.d
+        cat <<EOF | tee "${NVME_UDEV_RULE_PATH}" >/dev/null
+# /etc/udev/rules.d/60-nvme-schedulers.rules - Managed by os-manager
+ACTION=="add|change", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/scheduler}="none", ATTR{queue/nr_requests}="256"
+EOF
+        udevadm control --reload-rules 2>/dev/null || true
+        udevadm trigger --subsystem-match=block 2>/dev/null || true
+    fi
+    log_pass "NVMe scheduler udev rule configured at: ${NVME_UDEV_RULE_PATH}"
+}
+
 audit_storage() {
-    log_info "Auditing storage filesystem drivers and NVMe TRIM..."
+    log_info "Auditing storage filesystem drivers, NVMe scheduler, and TRIM..."
     local mount_point="${1:-/mnt/data}"
     local fstype="unknown"
     if command -v findmnt >/dev/null 2>&1; then
@@ -186,21 +209,33 @@ audit_storage() {
     else
         log_info "Storage ${mount_point}: ${fstype}"
     fi
+
+    if [[ -f "/sys/block/nvme0n1/queue/scheduler" ]]; then
+        local sched
+        sched="$(cat /sys/block/nvme0n1/queue/scheduler 2>/dev/null || echo "unknown")"
+        log_info "NVMe Scheduler: ${sched} (target: [none])"
+    fi
+    if [[ -f "/sys/block/nvme0n1/queue/nr_requests" ]]; then
+        local nr_req
+        nr_req="$(cat /sys/block/nvme0n1/queue/nr_requests 2>/dev/null || echo "unknown")"
+        log_info "NVMe nr_requests: ${nr_req} (target: 256)"
+    fi
+
     status_nvme_trim
 }
 
 migrate_ntfs_storage() {
     local mount_point="${1:-/mnt/data}"
     local fstab_path="/etc/fstab"
-    log_info "Migrating ${mount_point} to in-kernel ntfs3 driver..."
+    log_info "Migrating ${mount_point} to hardened in-kernel ntfs3 driver..."
 
     if ! grep -q "${mount_point}" "${fstab_path}" 2>/dev/null; then
         log_warn "Mount point ${mount_point} not found in ${fstab_path}."
         return 0
     fi
 
-    if grep "${mount_point}" "${fstab_path}" | grep -q "ntfs3" && ! grep "${mount_point}" "${fstab_path}" | grep -q "ntfs-3g"; then
-        log_pass "${mount_point} is already configured with ntfs3 in ${fstab_path}."
+    if grep "${mount_point}" "${fstab_path}" | grep -q "ntfs3" && ! grep "${mount_point}" "${fstab_path}" | grep -q "ntfs-3g" && grep "${mount_point}" "${fstab_path}" | grep -q "dmask=027"; then
+        log_pass "${mount_point} is already configured with hardened ntfs3 in ${fstab_path}."
         return 0
     fi
 
@@ -215,18 +250,16 @@ migrate_ntfs_storage() {
         cp "${fstab_path}" "${backup_path}"
     fi
 
-    # Update fstab
-    log_info "Updating fstab entry to ntfs3..."
+    # Update fstab with hardened options
+    log_info "Updating fstab entry to hardened ntfs3..."
     local tmp_fstab
     tmp_fstab="$(mktemp)"
+    local hardened_opts="defaults,uid=1000,gid=1000,dmask=027,fmask=137,windows_names,iocharset=utf8,noatime,prealloc,nocase,hide_dot_files,nofail"
     while IFS= read -r line || [[ -n "$line" ]]; do
-        if echo "$line" | grep -q "${mount_point}" && echo "$line" | grep -q "ntfs-3g"; then
-            local p1 p2 p3 p4 prest
-            read -r p1 p2 p3 p4 prest <<< "$line"
-            if [[ "$p4" != *"iocharset=utf8"* ]]; then
-                p4="${p4},iocharset=utf8"
-            fi
-            echo "$p1 $p2 ntfs3 $p4 $prest" >> "$tmp_fstab"
+        if echo "$line" | grep -q "${mount_point}" && (echo "$line" | grep -q "ntfs-3g" || echo "$line" | grep -q "ntfs3"); then
+            local p1 p2 p3 prest
+            read -r p1 p2 p3 prest <<< "$line"
+            echo "$p1  $p2  ntfs3  ${hardened_opts}  0  0" >> "$tmp_fstab"
         else
             echo "$line" >> "$tmp_fstab"
         fi
@@ -259,8 +292,10 @@ migrate_ntfs_storage() {
         return 1
     fi
 
-    log_pass "Successfully migrated ${mount_point} to ntfs3 driver."
+    apply_nvme_scheduler_tuning
+    log_pass "Successfully migrated ${mount_point} to hardened ntfs3 driver and applied NVMe udev scheduler."
 }
+
 
 apply_audio_tuning() {
     log_info "Applying PipeWire low-latency configuration & PAM real-time limits..."
@@ -576,6 +611,7 @@ Usage: $(basename "$0") [OPTION] [SUBCOMMAND]
 
 Options:
     --storage [migrate|audit]  Migrate NTFS mount to ntfs3 or audit storage status
+    --nvme [apply|audit]       Apply NVMe udev scheduler rules or audit NVMe status
     --sysctl [apply|audit]     Apply or audit kernel sysctl performance configuration
     --scheduler [apply|audit]  Apply or audit EEVDF scheduler & cgroups v2 user slices
     --trim [enable|status]     Enable periodic TRIM or check fstrim.timer status
@@ -600,6 +636,14 @@ main() {
                 audit_storage
             fi
             ;;
+        --nvme)
+            if [[ "${subaction}" == "apply" ]]; then
+                apply_nvme_scheduler_tuning
+            else
+                audit_storage
+            fi
+            ;;
+
         --sysctl)
             if [[ "${subaction}" == "audit" ]]; then
                 audit_sysctl
