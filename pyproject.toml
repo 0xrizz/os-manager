@@ -19,7 +19,9 @@ classifiers = [
     "Operating System :: MacOS :: MacOS X",
     "Topic :: Software Development :: Quality Assurance",
 ]
-dependencies = []
+dependencies = [
+    "bashlex>=0.18",
+]
 
 [project.urls]
 Homepage = "https://github.com/0xrizz/os-manager"
