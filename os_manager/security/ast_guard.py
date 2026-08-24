@@ -61,7 +61,7 @@ class ShellASTValidator:
                     severity="CRITICAL",
                     category="Command",
                     target=raw_cmd,
-                    reason="Destructive deletion of root or home directory is strictly prohibited",
+                    reason="Destructive deletion of root or home directory is strictly forbidden",
                 )
             )
             return False, violations, False
@@ -77,12 +77,41 @@ class ShellASTValidator:
                     severity="CRITICAL",
                     category="Command",
                     target="wsl",
-                    reason="WSL instance lifecycle termination commands are strictly prohibited",
+                    reason="WSL instance lifecycle termination commands are strictly forbidden",
                 )
             )
             return False, violations, False
 
-        # 4. Parse AST via bashlex
+        # 4. Check for mass package removal
+        if (
+            re.search(r"\b(apt|apt-get|pacman|dnf|zypper|apk)\s+(purge|remove|del|-Rcs)\s+(\*|all|--all)([;&|[:space:]]|\b|$)", raw_cmd)
+            or re.search(r"\b(apt|apt-get|dpkg)\s+(--purge\s+)?(purge|remove)\s+-[a-zA-Z0-9]*\*([;&|[:space:]]|\b|$)", raw_cmd)
+            or re.search(r"\bpacman\s+-[Rksu]+\s+.*(\b|\s)(base|systemd|glibc|linux-firmware)(\b|\s|$)", raw_cmd)
+            or re.search(r"\bdnf\s+(remove|erase)\s+-[a-zA-Z0-9]*\*([;&|[:space:]]|\b|$)", raw_cmd)
+        ):
+            violations.append(
+                PolicyViolation(
+                    severity="CRITICAL",
+                    category="Command",
+                    target=raw_cmd,
+                    reason="Destructive mass package removal is strictly forbidden",
+                )
+            )
+            return False, violations, False
+
+        # 5. Check for dangerous container privilege escalation
+        if re.search(r"\b(podman|docker)\s+run\b.*(--privileged|--pid=host|--net=host|--cap-add=ALL|-v\s+/(dev|proc|sys|root|etc))\b", raw_cmd):
+            violations.append(
+                PolicyViolation(
+                    severity="CRITICAL",
+                    category="Command",
+                    target=raw_cmd,
+                    reason="Container privilege escalation is strictly forbidden",
+                )
+            )
+            return False, violations, False
+
+        # 6. Parse AST via bashlex
         try:
             nodes = bashlex.parse(raw_cmd)
         except Exception:
