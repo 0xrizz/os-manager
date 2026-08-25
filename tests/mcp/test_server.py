@@ -60,6 +60,23 @@ class TestMcpServer(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["id"], 4)
         self.assertEqual(data["result"], {})
 
+    async def test_handle_notification_suppresses_response(self) -> None:
+        req = {
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+            "params": {},
+        }
+        res_str = await self.server.handle_message(json.dumps(req))
+        self.assertIsNone(res_str)
+
+        req_custom = {
+            "jsonrpc": "2.0",
+            "method": "custom_notify",
+            "params": {"key": "val"},
+        }
+        res_str_custom = await self.server.handle_message(json.dumps(req_custom))
+        self.assertIsNone(res_str_custom)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,266 +4,118 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Environment and Architecture Overview
 
-`os-manager` is the control plane and automation hub for managing a Debian 13 (Trixie) WSL2 environment on Windows 11.
+`os-manager` is an autonomous AI governance harness, workstation optimizer, and multi-agent control plane for developer environments across Debian 13 (Trixie) WSL2, Linux (Ubuntu/Arch/Fedora), and macOS.
 
-- **OS / Platform**: Debian GNU/Linux 13 (Trixie), WSL2 (Kernel 6.18.x) on Windows 11 Host
-- **Filesystem Mounts**:
-  - `/` (Native ext4 WSL root): Primary high-performance domain for repositories, virtual environments, and builds.
-  - `/mnt/c/` (Windows Host C:): Read-only host inspection. Direct writes to Windows system directories are hard-blocked.
-  - `/mnt/d/` (Windows Host D:): Dedicated disaster recovery and backup storage (`/mnt/d/wsl_backup`).
-- **Runtimes and CLIs**: Node.js, PNPM, Bun, Python UV, Tmux, Cloudflare Wrangler, Claude Code CLI, Google Antigravity (`agy`), Agent-Style CLI (`agent-style`).
+- **OS / Platform**: Linux & WSL2 on Windows 11 Host, macOS
+- **Filesystem Domain**:
+  - `/` (Native ext4 Linux/WSL root): Primary high-throughput domain for git repositories, virtual environments, and builds. Avoid NTFS 9P mounts for daily dev work.
+  - `/mnt/c/` (Windows Host C:): Read-only host inspection. Direct writes to Windows system directories (`Windows`, `Program Files`, `AppData`) are strictly blocked by AST security gates.
+  - `/mnt/d/` (Windows Host D:): Dedicated disaster recovery target (`/mnt/d/wsl_backup`).
+- **Core Technology Stack**: Python 3.11+ (Standard Library `asyncio`, `dataclasses`, `argparse`, `json`, `pathlib`), Bash 5+, Bubblewrap (`bwrap`), Podman, Pytest.
 
 ---
 
 ## Common Development and Operational Commands
 
 ### Testing and Validation
-- Run master harness test suite (75 assertions): `./tests/test_harness.sh`
-- Run full Python test discovery suite: `.venv/bin/python -m unittest discover -s tests -p "test_*.py"`
-- Run Pytest test suite: `.venv/bin/pytest tests/`
-- Run individual test suites:
+- Run master harness test suite (79 assertions): `./tests/test_harness.sh`
+- Run complete Pytest test suite (291 tests): `.venv/bin/pytest tests/`
+- Run Python unittest discovery: `.venv/bin/python -m unittest discover -s tests -p "test_*.py"`
+- Run individual module test suites:
+  - MCP Protocol & Server suite: `.venv/bin/pytest tests/mcp/`
+  - MCP End-to-End Stdio integration: `python3 -m unittest tests/integration/test_mcp_e2e.py`
+  - Dynamic HAL & Vendor Driver suite: `.venv/bin/pytest tests/platform/`
+  - Shell AST semantic parser & policy gate: `python3 -m unittest tests/security/test_ast_guard.py`
   - Declarative config engine tests: `python3 -m unittest tests/config/test_loader.py`
-  - Shell AST semantic parser & policy gate tests: `python3 -m unittest tests/security/test_ast_guard.py`
-  - Bubblewrap sandbox tests: `./tests/security/test_sandbox_bwrap.sh`
-  - PreToolUse hook integration tests: `python3 -m unittest tests/integration/test_pre_tool_guard.py`
-  - Release packaging & checksum tests: `./tests/test_release_packaging.sh`
-  - UX & DX enhancements tests: `./tests/test_ux_dx.sh`
-  - CI/CD and release workflow tests: `./tests/test_ci_cd.sh`
-  - Marketing assets & launch playbook tests: `./tests/test_marketing_assets.sh`
-  - Open-source governance tests: `./tests/test_governance.sh`
-  - Inter-Agent Message Bus unit tests: `python3 -m unittest tests/test_agent_bus.py`
-  - Disaster Recovery Provisioning tests: `./tests/test_bootstrap.sh`
-  - Prometheus metrics exporter tests: `python3 -m unittest tests/test_metrics_exporter.py`
-  - Desktop notification bridge tests: `./tests/test_notify_host.sh`
-  - Host disk compaction tests: `./tests/test_disk_compaction.sh`
-  - Agent workspace virtualization sandbox tests: `./tests/test_sandbox.sh`
-  - Cross-distribution abstraction tests: `./tests/test_distro.sh`
-  - Hook latency monotonic tracing tests: `./tests/test_hook_tracing.sh`
+  - PreToolUse security hook integration: `python3 -m unittest tests/integration/test_pre_tool_guard.py`
+  - Bubblewrap rootless sandbox tests: `./tests/security/test_sandbox_bwrap.sh`
+  - AI Gateway & Headroom control tests: `.venv/bin/pytest tests/test_ai_*.py`
   - CLI routing unit tests: `python3 -m unittest tests/test_cli.py`
 - Run full harness self-check and symlink validation: `./scripts/harness_check.sh`
-- Audit Markdown prose against writing rules: `agent-style review --audit-only <file.md>`
+- Audit Markdown prose against style rules: `for f in <file.md>; do agent-style review --audit-only "$f"; done`
 - Sync multi-agent skills to Universal Agent and Antigravity: `./scripts/sync_agent_skills.sh`
 - Standalone installer & scaffolding: `./install.sh [--global|--project <dir>|--uninstall|--dry-run]`
 
-### Pillar Automation Scripts
-- Declarative configuration manifest: `.osm.toml`
-- Shell AST validator CLI: `python3 -m os_manager.security.ast_guard [--stdin]`
-- Bubblewrap rootless namespace sandbox: `./scripts/sandbox_bwrap.sh --workdir <dir> [--allow-net] -- <cmd>`
-- Inter-Agent Message Bus daemon: `python3 ./scripts/agent_bus.py [--socket-path <path>]`
-
-- Inter-Agent message publisher client: `./scripts/bus_send.sh [--topic <topic>|--to <agent>] --payload '<json>'`
-- Automated WSL2 disaster recovery provisioner: `powershell.exe -ExecutionPolicy Bypass -File ./scripts/bootstrap_wsl.ps1 [-SnapshotPath <path>] [-DryRun]`
-- Linux post-bootstrap verification agent: `./scripts/post_bootstrap.sh [--audit-only]`
-- System diagnostics and resource metrics: `./scripts/sys_diag.sh [--full|--json]`
-- Zero-dependency Prometheus metrics exporter: `python3 ./scripts/metrics_exporter.py [--port 9100]`
-- Windows desktop toast notification bridge: `./scripts/notify_host.sh --title "..." --message "..." [--type info|warning|error]`
-- Automated host VHDX disk compaction: `./scripts/compact_host_disk.sh [--dry-run|--threshold-gb 10]`
-- Rootless Podman agent workspace sandbox: `./scripts/sandbox_exec.sh --workdir <dir> -- <cmd>`
-- Hook latency benchmark analyzer: `./scripts/hook_benchmark.sh [--samples N|--hook <name>|--json|--assert-p99]`
-- Safe cache and package cleanup: `./scripts/clean_system.sh [--dry-run|--all|--compact]`
-- Runtime and toolchain updates: `./scripts/update_runtimes.sh [--check]`
-- Disaster recovery snapshot to `/mnt/d/`: `./scripts/wsl_snapshot.sh [--verify|--prune]`
-- Dotfiles backup, diff, and restore: `./scripts/dotfiles_sync.sh [backup|diff|restore]`
-- Multi-agent paired Tmux workspace: `./scripts/tmux_agents.sh [start|attach]`
-- Filesystem I/O performance benchmark: `./scripts/perf_tune.sh [--quick|--json]`
-- Systemd user timer manager: `./scripts/manage_timers.sh [status|install|uninstall|enable|disable]`
-- Repository batch migration to ext4: `./scripts/migrate_repos.sh`
+### Core CLI Commands (`osm`)
+- `osm mcp serve`: Launch asynchronous JSON-RPC 2.0 stdio MCP server daemon
+- `osm mcp install [--client all|claude|cursor|antigravity]`: Auto-configure MCP client settings
+- `osm mcp tools`: Inspect available MCP tool declarations
+- `osm check [--json]`: Run master harness test suite
+- `osm diag [--json]`: Gather real-time system, platform, and DMI diagnostics
+- `osm tune [status|apply|revert]`: Tune CPU governor, I/O schedulers, memory, and platform profiles
+- `osm hsi [audit|apply [--dry-run]]`: Host Security ID hardware & firmware hardening
+- `osm ai [status|start|stop|restart|configure]`: Unified AI gateway (Headroom & 9Router)
+- `osm clean [--dry-run|--all]`: Evict package manager caches and temp files
+- `osm perf`: Empirical benchmarks for storage I/O, memory, and CPU
+- `osm upgrade`: Debian 13 (Trixie) upgrade coordination engine
+- `osm init [--global|--project <dir>]`: Initialize Claude Code harness and hook configurations
 
 ---
 
-## Repository Structure
+## Repository Structure & Module Architecture
 
 ```text
 os-manager/
 ├── .agents/
 │   └── skills/                  # Relative symlinks to .claude/skills/ (Universal Agent standard)
 ├── .claude/
-│   ├── agents/                  # Custom subagent definitions (security-auditor, system-operator)
-│   ├── commands/                # Custom slash command definitions (/diag, /clean, /perf, etc.)
+│   ├── agents/                  # Custom subagents (security-auditor, system-operator, etc.)
+│   ├── commands/                # Custom slash commands (/diag, /clean, /perf, /snapshot, etc.)
 │   ├── rules/                   # Modular prompt rules (WSL boundaries, safety tiers, error recovery)
-│   ├── skills/                  # Master Single Source of Truth (SSOT) skill definitions (22 skills)
+│   ├── skills/                  # Master SSOT skill definitions (25 skills)
 │   └── settings.json            # Master harness configuration (permissions, hooks, env)
-├── backups/
-│   ├── dotfiles/                # Backed-up dotfiles managed via /dotfiles
-│   └── logs/                    # Audit logs, error telemetry, and compact snapshots
-├── playbooks/                   # Markdown runbooks and disaster recovery procedures
+├── os_manager/                  # Core Python package
+│   ├── cli.py                   # Main CLI argument parser and routing dispatcher
+│   ├── commands/                # Subcommand controllers (mcp, ai, tune, hsi, diag, clean, etc.)
+│   ├── config/                  # Declarative configuration engine (.osm.toml loader & schema)
+│   ├── mcp/                     # Native Model Context Protocol (MCP) server & client config
+│   │   ├── protocol.py          # JSON-RPC 2.0 framing and error models
+│   │   ├── tools.py             # Tool declarations (osm_safe_exec, osm_system_health, osm_tune)
+│   │   ├── server.py            # Async stdio server daemon & message router
+│   │   └── client_config.py     # Multi-client idempotent config injector
+│   ├── platform/                # Dynamic Hardware Abstraction Layer (HAL)
+│   │   ├── detector.py          # OS / Distro / Architecture detector
+│   │   └── hal/                 # Vendor drivers (Lenovo, Asus, Dell, Apple, Generic Linux, ThinkPad)
+│   └── security/                # Zero-trust security engine
+│       └── ast_guard.py         # Shell AST semantic analysis & 4-tier policy gate
 ├── scripts/
-│   ├── hooks/                   # Deterministic lifecycle hooks (PreToolUse, PostToolUse, etc.)
-│   │   └── lib/
-│   │       └── trace_helper.sh  # Nanosecond hook execution monotonic tracing library
-│   ├── lib/
-│   │   └── distro.sh            # Zero-dependency cross-distro detection & package abstraction
-│   ├── agent_bus.py             # Asynchronous JSON-RPC 2.0 Unix socket message broker
-│   ├── bootstrap_wsl.ps1        # Windows host PowerShell WSL2 disaster recovery provisioner
-│   ├── bus_send.sh              # Non-blocking fail-safe CLI publisher for agent bus
-│   ├── clean_system.sh          # Safe cache & package cleanup script
-│   ├── compact_host_disk.sh     # Host VHDX slack space compaction utility
-│   ├── dotfiles_sync.sh         # Dotfiles backup, diff, and restore script
-│   ├── harness_check.sh         # Harness end-to-end self-check runner
-│   ├── hook_benchmark.sh        # Hook performance & latency percentile analyzer
-│   ├── manage_timers.sh         # Systemd user timer & service manager
-│   ├── metrics_exporter.py      # Prometheus 0.0.4 metrics daemon (127.0.0.1:9100)
-│   ├── migrate_repos.sh         # Batch repository migration utility (NTFS -> ext4)
-│   ├── notify_host.sh           # Windows WinRT desktop toast notification dispatcher
-│   ├── perf_tune.sh             # Filesystem I/O performance benchmark script
-│   ├── post_bootstrap.sh        # Linux first-boot verification and self-healing agent
-│   ├── sandbox_exec.sh          # Rootless Podman agent isolation wrapper
-│   ├── sync_agent_skills.sh     # Multi-agent SSOT symlink synchronization script
-│   ├── sys_diag.sh              # System diagnostic & health inspection script
-│   ├── tmux_agents.sh           # Multi-agent paired tmux workspace manager
-│   ├── update_runtimes.sh       # Runtimes & toolchains update coordinator
-│   └── wsl_snapshot.sh          # WSL disaster recovery snapshot script
-├── systemd/
-│   ├── agent-bus.service        # Systemd user service unit for inter-agent message bus
-│   ├── os-maintenance.service   # Systemd user service unit for daily maintenance
-│   ├── os-maintenance.timer     # Systemd user timer unit for scheduled maintenance
-│   └── os-metrics-exporter.service # Systemd user service unit for metrics exporter
-├── tests/
-│   ├── test_agent_bus.py        # Unit tests for Inter-Agent Message Bus (10 tests)
-│   ├── test_bootstrap.sh        # Unit tests for Automated Disaster Recovery Provisioning (15 assertions)
-│   ├── test_disk_compaction.sh  # Unit tests for host disk compaction
-│   ├── test_distro.sh           # Mocked cross-distribution unit test suite (13 assertions)
-│   ├── test_harness.sh          # Master harness integration test suite (50 assertions)
-│   ├── test_hook_tracing.sh     # Hook tracing & latency benchmark test suite (12 assertions)
-│   ├── test_metrics_exporter.py # Unit tests for Prometheus metrics exporter (11 tests)
-│   ├── test_notify_host.sh      # Unit tests for Windows toast notification bridge (15 tests)
-│   └── test_sandbox.sh          # Unit tests for agent workspace virtualization (19 tests)
+│   ├── hooks/                   # Lifecycle hooks (SessionStart, PreToolUse, PostToolUse, etc.)
+│   │   └── lib/trace_helper.sh  # Nanosecond hook execution monotonic tracing library
+│   ├── sandbox_bwrap.sh         # Bubblewrap rootless container jail
+│   ├── sys_diag.sh              # System diagnostic engine
+│   └── sync_agent_skills.sh     # Multi-agent SSOT symlink sync
+├── tests/                       # Unit, integration, and security test suites
+│   ├── config/                  # Config loader tests
+│   ├── integration/             # PreToolUse guard & MCP stdio E2E tests
+│   ├── mcp/                     # MCP protocol, tools, server, and client installer tests
+│   ├── platform/                # HAL and vendor driver tests
+│   ├── security/                # AST guard and Bubblewrap sandbox tests
+│   └── test_harness.sh          # Master test harness runner (79 assertions)
 └── CLAUDE.md                    # Project guidance and governance rules
 ```
 
 ---
 
-## Claude Code Agent Harness Architecture
+## 4-Tier Security Matrix & Zero-Trust Governance
 
-The repository implements a **Claude-First Single Source of Truth (SSOT)** harness architecture featuring deterministic lifecycle hooks, a 4-tier security matrix, auto-healing static analysis, custom slash commands, and multi-agent interoperability.
+Lifecycle hooks in `scripts/hooks/` and `os_manager/security/ast_guard.py` enforce strict execution tiers:
 
-```text
- ══════════════════════════════════════════════════════════════════════════════════════════════════════
-                                CLAUDE-FIRST AGENT HARNESS TOPOLOGY                                  
- ══════════════════════════════════════════════════════════════════════════════════════════════════════
-                                               │
- ┌─────────────────────────────────────────────▼──────────────────────────────────────────────────────┐
- │ HARNESS CONFIGURATION & GOVERNANCE LAYER                                                            │
- │ • .claude/settings.json (Permissions, Env, Hook Registrations)                                     │
- │ • CLAUDE.md & .claude/rules/ (WSL Boundaries, Safety Tiers, Error Recovery Protocols)             │
- └─────────────────────────────────────────────┬──────────────────────────────────────────────────────┘
-                                               │
-        ┌──────────────────────────────────────┼──────────────────────────────────────┐
-        ▼                                      ▼                                      ▼
- ┌──────────────┐                       ┌──────────────┐                       ┌──────────────┐
- │  LIFECYCLE   │                       │    CUSTOM    │                       │ MULTI-AGENT  │
- │    HOOKS     │                       │   COMMANDS   │                       │ INTEROP &    │
- │   ENGINE     │                       │  & SKILLS    │                       │ SUBAGENTS    │
- ├──────────────┤                       ├──────────────┤                       ├──────────────┤
- │•SessionStart │                       │• /diag       │                       │•.claude/     │
- │•PreToolUse   │                       │• /clean      │                       │  skills/     │
- │•PostToolUse  │                       │• /upgrade    │                       │•.agents/     │
- │•PostFailure  │                       │• /snapshot   │                       │  skills/     │
- │•PreCompact   │                       │• /dotfiles   │                       │•~/.gemini/   │
- │•SessionEnd   │                       │• /pair       │                       │  config/     │
- │              │                       │• /harness-   │                       │  skills/     │
- │              │                       │  check       │                       │•.claude/     │
- │              │                       │              │                       │  agents/     │
- └──────────────┘                       └──────────────┘                       └──────────────┘
-```
-
-### 1. Lifecycle Hooks Engine (`scripts/hooks/`)
-
-Registered in `.claude/settings.json` and executed deterministically using `${CLAUDE_PROJECT_DIR}` variable interpolation:
-
-- **`SessionStart`** (`scripts/hooks/session_preflight.sh`): Checks RAM headroom (>300MB), verifies CLI binaries (`jq`, `python3`, `uv`, `node`), triggers multi-agent symlink sync, and logs to `backups/logs/harness_audit.jsonl`.
-- **`PreToolUse`** (`scripts/hooks/pre_tool_guard.sh`): Evaluates all `Bash`, `Edit`, and `Write` invocations against the 4-Tier Security Matrix. Exits with code `2` on invariant violations to block execution deterministically with actionable `stderr` feedback.
-- **`PostToolUse`** (`scripts/hooks/post_tool_lint.sh`): Auto-healing quality gate for file modifications (`.sh`, `.json`, `.py`). Validates syntax via `bash -n`, `shellcheck`, `jq empty`, and `python3 -m py_compile`. Returns Exit Code `2` on syntax defects to prompt immediate LLM auto-healing.
-- **`PostToolUseFailure`** (`scripts/hooks/post_tool_failure.sh`): Telemetry logger capturing tool failures into `backups/logs/harness_errors.jsonl`.
-- **`PreCompact`** (`scripts/hooks/pre_compact_state.sh`): Captures active git status and branch telemetry to `backups/logs/compact_snapshot.json` before context truncation.
-- **`SessionEnd`** (`scripts/hooks/session_cleanup.sh`): Flushes session state, logs session completion, and cleans ephemeral test artifacts.
-
-### 2. Four-Tier Security Matrix (`.claude/rules/safety-tiers.md`)
-
-- **Tier 0 (Autonomous / Read-Only - Exit 0)**: Read-only queries (`git status`, `git diff`, `free`, `df`, `systemctl status`, `ps`, read-only diagnostics) run autonomously.
-- **Tier 1 (Workspace Contained - Exit 0)**: File reads, writes, and edits bounded within `${CLAUDE_PROJECT_DIR}` proceed autonomously subject to post-tool linting.
-- **Tier 2 (Controlled System Operations - Exit 0)**: Whitelisted scripts (`scripts/*.sh`, `scripts/metrics_exporter.py`, `scripts/agent_bus.py`) run with pre-authorized status. Covered utilities include diagnostics, cleanup, updates, snapshots, benchmarks, metrics, notifications, disk compaction, sandboxing, timer management, message bus operations, and recovery provisioning.
-- **Tier 3 (Strict Invariant Violations - Hard Blocked with Exit 2)**:
-  - Root / Home obliteration: `rm -rf /`, `rm -rf ~`, `rm -rf $HOME`.
-  - WSL instance lifecycle destruction: `wsl --unregister`, `wsl.exe --unregister`, `wsl --shutdown`.
-  - Package manager wildcard purges: `apt purge *`, `apt remove -y *`, `pacman -Rcs *`, `dnf remove --all`, `zypper remove *`.
-  - Privileged container escape vectors: `podman run --privileged`, `docker run --privileged`.
-  - Raw disk partitioning / formatting: `mkfs.*`, `fdisk`, `dd if=... of=/dev/sd*`.
-  - Windows host intrusions: Modifying `/mnt/c/Windows`, `Program Files`, `AppData`.
-  - Linux core system destruction: Modifying `/etc/passwd`, `/etc/shadow`, `/boot/`, `/dev/`.
-
-### 3. WSL2 Filesystem Boundaries and Storage Invariants (`.claude/rules/wsl-boundaries.md`)
-
-- **Native EXT4 Domain (`${HOME}/`)**: Repositories, `node_modules`, `.venv`, and build stores MUST reside on ext4. This avoids 9P virtualization latency and permission churn.
-- **NTFS Windows Mounts (`/mnt/c/`, `/mnt/d/`)**:
-  - `/mnt/d/`: Designated solely for compressed WSL point-in-time snapshots and offsite archival (`/mnt/d/wsl_backup`).
-  - `/mnt/c/`: Read-only host inspection. Direct modifications to Windows host system folders are strictly prohibited.
+1. **Tier 0 (Autonomous Read-Only - Exit 0)**: Non-mutating inspections (`git status`, `df`, `ps`, `uptime`, `osm diag`).
+2. **Tier 1 (Workspace Contained - Exit 0)**: File modifications strictly bounded within `${CLAUDE_PROJECT_DIR}/`, validated post-tool via `bash -n`, `python3 -m py_compile`, and `jq empty`.
+3. **Tier 2 (Controlled Operations - Exit 0)**: Whitelisted scripts (`scripts/*.sh`, `osm` CLI commands) run pre-authorized.
+4. **Tier 3 (Strict Invariants - Hard Block with Exit 2)**:
+   - Root / Home obliteration: `rm -rf /`, `rm -rf ~`, `rm -rf $HOME`.
+   - WSL instance lifecycle destruction: `wsl --unregister`, `wsl.exe --shutdown`.
+   - Package manager wildcard purges: `apt purge *`, `pacman -Rcs *`.
+   - Privileged container escapes: `podman run --privileged`, `docker run --privileged`.
+   - Raw disk partitioning / formatting: `mkfs.*`, `fdisk`, `dd if=... of=/dev/sd*`.
+   - Protected path writes: Modifying `/mnt/c/Windows`, `/etc/shadow`, `/boot/`, `/dev/`.
 
 ---
 
-## Custom Slash Commands (`.claude/commands/`)
+## Multi-Agent Symlink Bridge & SSOT
 
-- **`/diag`**: Comprehensive system diagnostics (`./scripts/sys_diag.sh`).
-- **`/clean`**: Disk space reclamation across APT, UV, PNPM, Bun, and `/tmp` (`./scripts/clean_system.sh`).
-- **`/upgrade`**: Coordinated toolchain updates (`./scripts/update_runtimes.sh`).
-- **`/snapshot`**: Point-in-time tarball backups to `/mnt/d/wsl_backup` (`./scripts/wsl_snapshot.sh`).
-- **`/dotfiles`**: Dotfiles backup, diff inspection, and safe restoration (`./scripts/dotfiles_sync.sh`).
-- **`/pair`**: Spawns paired Tmux session with Claude Code and Google Antigravity (`./scripts/tmux_agents.sh`).
-- **`/perf`**: System performance and filesystem I/O benchmark (`./scripts/perf_tune.sh`).
-- **`/harness-check`**: Runs complete harness self-check and diagnostic matrix (`./scripts/harness_check.sh`).
-
----
-
-## Custom Subagents Registry (`.claude/agents/`)
-
-- **`security-auditor`** (`.claude/agents/security-auditor.md`):
-  - **Persona**: Specialized read-only security auditor for vulnerability, secret leakage, and permission analysis.
-  - **Tools**: `Read`, `Grep`, `Glob`, `Bash` (read-only diagnostics).
-  - **Model & Effort**: `sonnet`, high effort.
-- **`system-operator`** (`.claude/agents/system-operator.md`):
-  - **Persona**: Systems operations engineer executing automation and refactoring tasks.
-  - **Tools**: `Bash`, `Read`, `Grep`, `Glob`, `Edit`, `Write`.
-  - **Isolation**: `worktree` (all changes execute in isolated git worktrees).
-  - **Model & Effort**: `inherit`, high effort.
-
----
-
-## Multi-Agent SSOT Symlink Bridge (`scripts/sync_agent_skills.sh`)
-
-`.claude/skills/` is the single source of truth (SSOT) for all skill definitions. The synchronization script creates zero-copy symlinks across downstream agent frameworks:
-
-1. **Universal Agent Standard** (`.agents/skills/`): Populated with relative symlinks (`../../.claude/skills/<name>`) for portable git tracking.
-2. **Google Antigravity** (`~/.gemini/config/skills/`): Populated with absolute symlinks for local runtime interop with `agy`.
-3. **Automated Sync**: Executed automatically during `SessionStart` preflight and `/harness-check`.
-
----
-
-## Superpowers Methodology Suite
-
-All tasks in this workspace follow the Superpowers engineering discipline:
-- `/brainstorming`: Requirements exploration and design refinement.
-- `/writing-plans` & `/executing-plans`: Incremental, test-driven implementation planning & execution.
-- `/subagent-driven-development` & `/dispatching-parallel-agents`: Parallel and task-isolated subagent orchestration.
-- `/test-driven-development`: Red-Green-Refactor testing discipline.
-- `/systematic-debugging`: Root-cause tracing and test pollution detection.
-- `/requesting-code-review` & `/receiving-code-review`: Rigorous two-stage code review workflows.
-- `/verification-before-completion`: Evidence-first task completion gating.
-- `/using-git-worktrees` & `/finishing-a-development-branch`: Git isolation and merge workflow.
-- `/writing-skills`: Skill authoring and behavioral testing framework.
-
----
-
-## Safety and Execution Rules
-
-1. **Deterministic Execution**:
-   - Hard blocks (Exit Code 2) override any conversational prompt.
-   - All shell scripts must maintain LF line endings, `chmod +x` permissions, and `set -euo pipefail`.
-2. **Safe Autonomous Operations**:
-   - Read-only diagnostics (`free`, `df`, `systemctl status`, `uname`, network checks).
-   - Standard cache cleanups (`uv cache clean`, `pnpm store prune`, `sudo apt clean`).
-   - Repository metadata updates (`sudo apt update`).
-3. **Explicit Confirmation Required**:
-   - Destructive operations outside workspace boundaries.
-   - Modifying systemd unit configurations or restarting core system services.
-   - WSL instance lifecycle operations (shutdown, terminate, unregister).
-   - Restoring dotfiles over active `$HOME` configuration files.
+- `.claude/skills/` is the Single Source of Truth (SSOT).
+- Relative symlinks in `.agents/skills/` maintain portable Universal Agent compliance.
+- Absolute symlinks in `~/.gemini/config/skills/` maintain Google Antigravity (`agy`) interop.
+- Automated sync runs during `SessionStart` preflight and `./scripts/harness_check.sh`.

@@ -29,6 +29,11 @@ class TestMcpClientConfig(unittest.TestCase):
         success = install_claude_mcp_config(target_file=claude_settings)
         self.assertTrue(success)
 
+        # Check backup creation
+        backups = list(self.root.glob("settings.*.bak"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_text(encoding="utf-8"), '{"permissions": {}}')
+
         data = json.loads(claude_settings.read_text(encoding="utf-8"))
         self.assertIn("mcpServers", data)
         self.assertIn("os-manager", data["mcpServers"])
