@@ -1,0 +1,23 @@
+# Maintainer: 0xrizz <abdulmajidalkarim343@gmail.com>
+pkgname=osm-bin
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Autonomous AI governance harness and control plane for Claude Code"
+arch=('x86_64' 'aarch64')
+url="https://github.com/0xrizz/os-manager"
+license=('MIT')
+depends=('python' 'bubblewrap' 'jq')
+makedepends=('python-build' 'python-installer' 'python-hatchling')
+source=("https://github.com/0xrizz/os-manager/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cd "${srcdir}/os-manager-${pkgver}"
+    python -m build --wheel --no-isolation
+}
+
+package() {
+    cd "${srcdir}/os-manager-${pkgver}"
+    python -m installer --destdir="${pkgdir}" dist/*.whl
+    install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
