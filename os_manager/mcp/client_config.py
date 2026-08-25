@@ -2,6 +2,8 @@
 
 import json
 from pathlib import Path
+import shutil
+import time
 from typing import Any, Dict, Optional
 
 
@@ -21,6 +23,7 @@ def _update_mcp_json_file(file_path: Path) -> bool:
         data: Dict[str, Any] = {}
         if file_path.is_file():
             try:
+                shutil.copy2(file_path, file_path.with_suffix(f".{int(time.time())}.bak"))
                 data = json.loads(file_path.read_text(encoding="utf-8"))
             except Exception:
                 data = {}

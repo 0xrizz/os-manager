@@ -28,8 +28,12 @@ class McpServer:
         except JsonRpcError as err:
             return format_jsonrpc_response(error=err, msg_id=None)
 
-        # Ignore notifications (no id)
-        if req.id is None and req.method.startswith("notifications/"):
+        # JSON-RPC 2.0 Notifications: id is None, must not return a response
+        if req.id is None:
+            try:
+                await self._dispatch_method(req.method, req.params)
+            except Exception:
+                pass
             return None
 
         try:
