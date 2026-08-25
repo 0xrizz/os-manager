@@ -11,6 +11,7 @@ from .protocol import (
     format_jsonrpc_response,
     parse_jsonrpc_message,
 )
+from .server import McpServer, run_stdio_server
 from .tools import execute_tool, get_tool_definitions
 
 __all__ = [
@@ -23,6 +24,8 @@ __all__ = [
     "METHOD_NOT_FOUND",
     "INVALID_PARAMS",
     "INTERNAL_ERROR",
-    "get_tool_definitions",
+    "McpServer",
+    "run_stdio_server",
     "execute_tool",
+    "get_tool_definitions",
 ]
