@@ -18,10 +18,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Common Development and Operational Commands
 
 ### Testing and Validation
-- Run master harness test suite (79 assertions): `./tests/test_harness.sh`
-- Run complete Pytest test suite (291 tests): `.venv/bin/pytest tests/`
+- Run master harness test suite (81 assertions): `./tests/test_harness.sh`
+- Run complete Pytest test suite (301 tests): `.venv/bin/pytest tests/`
 - Run Python unittest discovery: `.venv/bin/python -m unittest discover -s tests -p "test_*.py"`
 - Run individual module test suites:
+  - Multi-Agent State Ledger suite: `.venv/bin/pytest tests/ledger/`
+  - Multi-Platform Packaging suite: `.venv/bin/pytest tests/packaging/`
   - MCP Protocol & Server suite: `.venv/bin/pytest tests/mcp/`
   - MCP End-to-End Stdio integration: `python3 -m unittest tests/integration/test_mcp_e2e.py`
   - Dynamic HAL & Vendor Driver suite: `.venv/bin/pytest tests/platform/`
