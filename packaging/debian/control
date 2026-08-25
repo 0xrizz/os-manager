@@ -1,0 +1,14 @@
+Source: 0xrizz-os-manager
+Section: utils
+Priority: optional
+Maintainer: 0xrizz <abdulmajidalkarim343@gmail.com>
+Build-Depends: debhelper-compat (= 13), python3-all, python3-hatchling, dh-python
+Standards-Version: 4.6.2
+Homepage: https://github.com/0xrizz/os-manager
+
+Package: 0xrizz-os-manager
+Architecture: all
+Depends: python3, ${python3:Depends}, ${misc:Depends}, bubblewrap, jq
+Description: Autonomous AI governance harness and control plane for Claude Code
+ os-manager provides deterministic lifecycle hooks, 4-tier security guardrails,
+ and workstation tuning capabilities for AI coding agents.
