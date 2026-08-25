@@ -11,6 +11,7 @@ from .protocol import (
     format_jsonrpc_response,
     parse_jsonrpc_message,
 )
+from .tools import execute_tool, get_tool_definitions
 
 __all__ = [
     "JsonRpcError",
@@ -22,4 +23,6 @@ __all__ = [
     "METHOD_NOT_FOUND",
     "INVALID_PARAMS",
     "INTERNAL_ERROR",
+    "get_tool_definitions",
+    "execute_tool",
 ]
