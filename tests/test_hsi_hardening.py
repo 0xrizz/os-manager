@@ -3,9 +3,8 @@
 import os
 import subprocess
 from pathlib import Path
+import unittest
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from os_manager.commands.hsi import (
     audit_hsi_posture,

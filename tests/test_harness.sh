@@ -430,6 +430,18 @@ assert_exit_code "osm ai --help execution" 0 $?
 PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli ai status --json > /dev/null 2>&1
 assert_exit_code "osm ai status --json execution" 0 $?
 
+echo "--- Testing Native MCP Server Engine Suite ---"
+python3 -m unittest discover -s "${WORKSPACE_ROOT}/tests/mcp" -p "test_*.py" > /dev/null 2>&1
+assert_exit_code "tests/mcp unit test discovery suite" 0 $?
+
+python3 -m unittest discover -s "${WORKSPACE_ROOT}/tests/integration" -p "test_mcp_*.py" > /dev/null 2>&1
+assert_exit_code "test_mcp_e2e.py end-to-end stdio suite" 0 $?
+
+PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli mcp --help > /dev/null 2>&1
+assert_exit_code "osm mcp --help execution" 0 $?
+
+PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli mcp tools > /dev/null 2>&1
+assert_exit_code "osm mcp tools execution" 0 $?
 echo "--- Testing Declarative Config & AST Security Pytest Suite ---"
 if command -v "${WORKSPACE_ROOT}/.venv/bin/python" >/dev/null 2>&1; then
     "${WORKSPACE_ROOT}/.venv/bin/python" -m unittest discover -s "${WORKSPACE_ROOT}/tests" -p "test_*.py" > /dev/null 2>&1

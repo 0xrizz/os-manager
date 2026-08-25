@@ -262,6 +262,14 @@ class TestOsmCli(unittest.TestCase):
         self.assertEqual(code, 0)
         mock_run_ai.assert_called_once_with(["status"])
 
+    @patch("os_manager.commands.mcp.run_mcp")
+    def test_mcp_command_dispatch(self, mock_run_mcp):
+        """Verify osm mcp routes properly to run_mcp dispatcher."""
+        mock_run_mcp.return_value = 0
+        code, _, _ = self.run_cli(["mcp", "tools"])
+        self.assertEqual(code, 0)
+        mock_run_mcp.assert_called_once_with(["tools"])
+
 
     def test_cli_tune_revert_list(self):
         """Verify osm tune revert --list displays snapshots."""

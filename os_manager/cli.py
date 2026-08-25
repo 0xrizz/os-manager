@@ -68,6 +68,9 @@ def build_parser() -> argparse.ArgumentParser:
     # ai
     subparsers.add_parser("ai", add_help=False, help="Unified AI gateway control plane (Headroom & 9Router)")
 
+    # mcp
+    subparsers.add_parser("mcp", add_help=False, help="Model Context Protocol (MCP) server engine")
+
     return parser
 
 
@@ -105,6 +108,9 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "ai":
         from .commands.ai import run_ai
         return run_ai(argv[1:])
+    elif args.command == "mcp":
+        from .commands.mcp import run_mcp
+        return run_mcp(argv[1:])
     else:
         parser.print_help()
         return 0

@@ -18,8 +18,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Common Development and Operational Commands
 
 ### Testing and Validation
-- Run master harness test suite (59 assertions): `./tests/test_harness.sh`
+- Run master harness test suite (75 assertions): `./tests/test_harness.sh`
+- Run full Python test discovery suite: `.venv/bin/python -m unittest discover -s tests -p "test_*.py"`
+- Run Pytest test suite: `.venv/bin/pytest tests/`
 - Run individual test suites:
+  - Declarative config engine tests: `python3 -m unittest tests/config/test_loader.py`
+  - Shell AST semantic parser & policy gate tests: `python3 -m unittest tests/security/test_ast_guard.py`
+  - Bubblewrap sandbox tests: `./tests/security/test_sandbox_bwrap.sh`
+  - PreToolUse hook integration tests: `python3 -m unittest tests/integration/test_pre_tool_guard.py`
   - Release packaging & checksum tests: `./tests/test_release_packaging.sh`
   - UX & DX enhancements tests: `./tests/test_ux_dx.sh`
   - CI/CD and release workflow tests: `./tests/test_ci_cd.sh`
@@ -40,7 +46,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Standalone installer & scaffolding: `./install.sh [--global|--project <dir>|--uninstall|--dry-run]`
 
 ### Pillar Automation Scripts
+- Declarative configuration manifest: `.osm.toml`
+- Shell AST validator CLI: `python3 -m os_manager.security.ast_guard [--stdin]`
+- Bubblewrap rootless namespace sandbox: `./scripts/sandbox_bwrap.sh --workdir <dir> [--allow-net] -- <cmd>`
 - Inter-Agent Message Bus daemon: `python3 ./scripts/agent_bus.py [--socket-path <path>]`
+
 - Inter-Agent message publisher client: `./scripts/bus_send.sh [--topic <topic>|--to <agent>] --payload '<json>'`
 - Automated WSL2 disaster recovery provisioner: `powershell.exe -ExecutionPolicy Bypass -File ./scripts/bootstrap_wsl.ps1 [-SnapshotPath <path>] [-DryRun]`
 - Linux post-bootstrap verification agent: `./scripts/post_bootstrap.sh [--audit-only]`
