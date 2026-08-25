@@ -1,42 +1,40 @@
 #!/usr/bin/env bash
 # scripts/sync_agent_skills.sh - Multi-Agent Single Source of Truth (SSOT) Symlink Bridge
+# NOTE: Skills remain scoped strictly within project workspaces (.claude/skills/)
+# and are NOT automatically promoted to global user home directories (~/.claude or ~/.gemini)
+# unless explicitly requested with --global.
 set -euo pipefail
 
 WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CLAUDE_SKILLS="${WORKSPACE_ROOT}/.claude/skills"
-UNIVERSAL_SKILLS="${WORKSPACE_ROOT}/.agents/skills"
-ANTIGRAVITY_SKILLS="${HOME}/.gemini/config/skills"
+CLAUDE_PROJECT_SKILLS="${WORKSPACE_ROOT}/.claude/skills"
+PROMOTE_GLOBAL=0
 
-mkdir -p "${UNIVERSAL_SKILLS}"
-mkdir -p "${ANTIGRAVITY_SKILLS}"
-
-echo "=== Synchronizing Multi-Agent Skills (SSOT: .claude/skills) ==="
-
-# 1. Clean broken symlinks in targets (portable across Linux and BSD/macOS find)
-if find . --version >/dev/null 2>&1; then
-    find "${UNIVERSAL_SKILLS}" -xtype l -delete 2>/dev/null || true
-    find "${ANTIGRAVITY_SKILLS}" -xtype l -delete 2>/dev/null || true
-else
-    find "${UNIVERSAL_SKILLS}" -type l ! -exec test -e {} \; -delete 2>/dev/null || true
-    find "${ANTIGRAVITY_SKILLS}" -type l ! -exec test -e {} \; -delete 2>/dev/null || true
+if [ "${1:-}" = "--global" ]; then
+    PROMOTE_GLOBAL=1
 fi
 
-# 2. Propagate to Universal Agent standard (.agents/skills/) using relative symlinks
-for skill_path in "${CLAUDE_SKILLS}"/*; do
+echo "=== Checking Multi-Agent Skills (SSOT: .claude/skills) ==="
+
+TOTAL_SKILLS=0
+for skill_path in "${CLAUDE_PROJECT_SKILLS}"/*; do
     if [ -d "${skill_path}" ]; then
-        skill_name="$(basename "${skill_path}")"
-        # Relative link: ../../.claude/skills/<name>
-        ln -sfn "../../.claude/skills/${skill_name}" "${UNIVERSAL_SKILLS}/${skill_name}"
+        TOTAL_SKILLS=$((TOTAL_SKILLS + 1))
     fi
 done
 
-# 3. Propagate to Google Antigravity (~/.gemini/config/skills/) using absolute symlinks
-for skill_path in "${CLAUDE_SKILLS}"/*; do
-    if [ -d "${skill_path}" ]; then
-        skill_name="$(basename "${skill_path}")"
-        ln -sfn "${skill_path}" "${ANTIGRAVITY_SKILLS}/${skill_name}"
-    fi
-done
+echo "✓ Verified ${TOTAL_SKILLS} project skills scoped to .claude/skills/"
 
-echo "✓ Synchronized $(find "${UNIVERSAL_SKILLS}" -mindepth 1 -maxdepth 1 | wc -l) skills to .agents/skills/ (Universal Agent)"
-echo "✓ Synchronized $(find "${ANTIGRAVITY_SKILLS}" -mindepth 1 -maxdepth 1 | wc -l) skills to ~/.gemini/config/skills/ (Google Antigravity)"
+if [ "${PROMOTE_GLOBAL}" -eq 1 ]; then
+    GLOBAL_CLAUDE_SKILLS="${HOME}/.claude/skills"
+    GLOBAL_ANTIGRAVITY_SKILLS="${HOME}/.gemini/config/skills"
+    mkdir -p "${GLOBAL_CLAUDE_SKILLS}" "${GLOBAL_ANTIGRAVITY_SKILLS}"
+
+    for skill_path in "${CLAUDE_PROJECT_SKILLS}"/*; do
+        if [ -d "${skill_path}" ]; then
+            skill_name="$(basename "${skill_path}")"
+            ln -sfn "${skill_path}" "${GLOBAL_CLAUDE_SKILLS}/${skill_name}"
+            ln -sfn "${skill_path}" "${GLOBAL_ANTIGRAVITY_SKILLS}/${skill_name}"
+        fi
+    done
+    echo "✓ Promoted ${TOTAL_SKILLS} skills to global user home directories."
+fi

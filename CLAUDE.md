@@ -117,7 +117,6 @@ Lifecycle hooks in `scripts/hooks/` and `os_manager/security/ast_guard.py` enfor
 
 ## Multi-Agent Symlink Bridge & SSOT
 
-- `.claude/skills/` is the Single Source of Truth (SSOT).
-- Relative symlinks in `.agents/skills/` maintain portable Universal Agent compliance.
-- Absolute symlinks in `~/.gemini/config/skills/` maintain Google Antigravity (`agy`) interop.
-- Automated sync runs during `SessionStart` preflight and `./scripts/harness_check.sh`.
+- `.claude/skills/` is the Single Source of Truth (SSOT) for workspace-scoped skills.
+- Project-specific skills remain strictly isolated within the repository workspace and are not auto-promoted to global `~/.gemini/config/skills/` or `~/.claude/skills/`.
+- Global promotion can be explicitly performed via `./scripts/sync_agent_skills.sh --global` if desired.

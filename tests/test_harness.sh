@@ -463,6 +463,10 @@ fi
 echo "--- Testing Sandbox Bubblewrap Isolation Suite ---"
 "${WORKSPACE_ROOT}/tests/security/test_sandbox_bwrap.sh" > /dev/null 2>&1
 assert_exit_code "test_sandbox_bwrap.sh execution" 0 $?
+
+echo "--- Testing Multi-Agent Harness Isolation Suite ---"
+"${WORKSPACE_ROOT}/tests/test_harness_isolation.sh" > /dev/null 2>&1
+assert_exit_code "test_harness_isolation.sh complete suite" 0 $?
 set -e
 
 echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"

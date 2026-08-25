@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SKILL_FILE=".agents/skills/tmux-agents/SKILL.md"
+SKILL_FILE=".claude/skills/tmux-agents/SKILL.md"
 
 echo "==> Checking skill documentation content..."
 if ! grep -q "company" "$SKILL_FILE"; then
