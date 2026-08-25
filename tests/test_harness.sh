@@ -442,7 +442,6 @@ assert_exit_code "osm mcp --help execution" 0 $?
 
 PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli mcp tools > /dev/null 2>&1
 assert_exit_code "osm mcp tools execution" 0 $?
-
 echo "--- Testing Declarative Config & AST Security Pytest Suite ---"
 if command -v "${WORKSPACE_ROOT}/.venv/bin/python" >/dev/null 2>&1; then
     "${WORKSPACE_ROOT}/.venv/bin/python" -m unittest discover -s "${WORKSPACE_ROOT}/tests" -p "test_*.py" > /dev/null 2>&1
