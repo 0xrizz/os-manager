@@ -13,7 +13,7 @@
   <a href="https://github.com/0xrizz/os-manager/actions"><img src="https://img.shields.io/github/actions/workflow/status/0xrizz/os-manager/ci.yml?branch=main&label=CI&logo=github" alt="CI Status"></a>
   <a href="https://pypi.org/project/0xrizz-os-manager/"><img src="https://img.shields.io/pypi/v/0xrizz-os-manager?color=blue&logo=pypi" alt="PyPI Version"></a>
   <a href="https://github.com/0xrizz/os-manager/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
-  <a href="https://github.com/0xrizz/os-manager"><img src="https://img.shields.io/badge/tests-148%2F148%20passing-brightgreen" alt="Tests"></a>
+  <a href="https://github.com/0xrizz/os-manager"><img src="https://img.shields.io/badge/tests-301%2F301%20passing-brightgreen" alt="Tests"></a>
 </p>
 
 <p align="center">
@@ -42,9 +42,11 @@ osm check
 ┌── [osm] System & Harness Status ─────────────────────────────────────────┐
 │ • Platform      : Debian 13 (Trixie) WSL2 | Linux 6.18.x                 │
 │ • Security      : Tier 0-3 Guard Active (Exit 2 on host violation)       │
-│ • Virtualization: Rootless Podman Sandbox Fallback Ready                 │
+│ • Virtualization: Rootless Podman & Bubblewrap Sandbox Ready             │
+│ • Coordination  : SQLite WAL State Ledger & Distributed Mutex            │
+│ • Protocols     : Async FastMCP 2.0 Server & Stdio Message Router        │
 │ • Observability : Prometheus Exporter (:9100) + Monotonic Tracing        │
-│ • Test Engine   : 148/148 Assertions Passing [100% OK]                   │
+│ • Test Engine   : 301/301 Unit Tests & 81 Harness Assertions [100% OK]   │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -53,7 +55,11 @@ osm check
 ## 🛡️ Core Features
 
 - **4-Tier Security Matrix**: Deterministically blocks host sabotage (`/mnt/c/Windows`, `/etc/shadow`) with hard zero-trust vetoes (Exit Code 2).
-- **Auto-Sandbox Fallback**: Seamlessly reroutes risky operations (`rm -rf`, heavy purges) into rootless Podman containers without aborting turns.
+- **Auto-Sandbox Fallback**: Seamlessly reroutes risky operations (`rm -rf`, heavy purges) into rootless Podman and Bubblewrap (`bwrap`) containers without aborting turns.
+- **Native FastMCP Server**: JSON-RPC 2.0 stdio model context protocol engine for direct AI tool and resource invocation (`osm mcp serve`, `osm mcp install`).
+- **Multi-Agent State Ledger & Advisory Mutex**: SQLite WAL-backed event stream (`~/.local/state/osm/ledger.db`), cross-agent context handoff envelope protocol, and distributed TTL-based resource locks.
+- **Universal Hardware Abstraction Layer (HAL)**: Dynamic vendor drivers for Lenovo ThinkPad, ASUS ROG/Zephyrus, Dell XPS, Apple Silicon, and Generic Linux.
+- **Universal Packaging**: Turnkey manifests for Homebrew Tap (`osm.rb`), Arch Linux AUR (`PKGBUILD`), and Debian (`control`/`rules`).
 - **Workstation Performance**: Automated VHDX compaction, zero 9P latency enforcement on ext4, and fast cache cleanup.
 - **Background Observability**: Built-in Prometheus metrics exporter (`127.0.0.1:9100`) and nanosecond hook latency tracing.
 - **Multi-Agent SSOT Bridge**: Zero-copy relative symlinks synchronizing skills across Claude Code, Universal Agent, and Google Antigravity.
