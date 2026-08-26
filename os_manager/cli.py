@@ -71,6 +71,9 @@ def build_parser() -> argparse.ArgumentParser:
     # mcp
     subparsers.add_parser("mcp", add_help=False, help="Model Context Protocol (MCP) server engine")
 
+    # gpu
+    subparsers.add_parser("gpu", add_help=False, help="Dual-GPU Subsystem Management and Workload Router")
+
     return parser
 
 
@@ -111,6 +114,9 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "mcp":
         from .commands.mcp import run_mcp
         return run_mcp(argv[1:])
+    elif args.command == "gpu":
+        from .commands.gpu import run_gpu
+        return run_gpu(argv[1:])
     else:
         parser.print_help()
         return 0
