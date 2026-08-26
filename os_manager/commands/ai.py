@@ -168,11 +168,11 @@ def print_status_text(health: dict, telemetry: dict) -> None:
     if health["headroom"].get("online"):
         details = health["headroom"].get("details", {})
         checks = details.get("checks", {})
-        kompress_backend = checks.get("kompress", {}).get("backend", "active")
+        kompress_backend = (checks.get("kompress", {}) or {}).get("backend") or "active"
         print("  Compression Layers:")
         print("    - [proxy] SmartCrusher (JSON & Logs)  : ACTIVE")
         print("    - [code]  Tree-sitter (AST Parser)    : ACTIVE")
-        print(f"    - [ml]    Kompress-v2 (ML Engine)     : ACTIVE ({kompress_backend.upper()})")
+        print(f"    - [ml]    Kompress-v2 (ML Engine)     : ACTIVE ({str(kompress_backend).upper()})")
         
     print("--------------------------------------------------------------------------------")
     
