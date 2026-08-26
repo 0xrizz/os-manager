@@ -29,6 +29,26 @@ class DmiInfo:
     bios_version: str = "Unknown"
 
 
+@dataclass
+class GpuDeviceInfo:
+    vendor: str = "Unknown"
+    device_name: str = "Unknown"
+    pci_slot: str = ""
+    driver_in_use: str = "none"
+    is_discrete: bool = False
+    power_state: str = "unsupported"
+    vaapi_supported: bool = False
+    cuda_supported: bool = False
+
+
+@dataclass
+class GpuSubsystemInfo:
+    primary_display_gpu: Optional[GpuDeviceInfo] = None
+    discrete_gpu: Optional[GpuDeviceInfo] = None
+    active_profile: str = "hybrid"
+    driver_flavor: str = "missing"
+
+
 class AbstractHardwareDriver(ABC):
     """Base interface for vendor and platform hardware drivers."""
 
@@ -68,4 +88,9 @@ class AbstractHardwareDriver(ABC):
     @abstractmethod
     def get_gpu_power_status(self) -> Dict[str, Any]:
         """Query discrete GPU power and runtime status."""
+        pass
+
+    @abstractmethod
+    def audit_gpu_subsystem(self) -> GpuSubsystemInfo:
+        """Audit full GPU subsystem telemetry, identifying integrated and discrete devices."""
         pass
