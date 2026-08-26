@@ -15,6 +15,7 @@ def run_diag(args: list[str]) -> int:
     driver = get_active_hardware_driver()
     dmi = driver.get_dmi_info()
     storage = audit_storage_subsystem("/")
+    gpu_subsystem = driver.audit_gpu_subsystem()
 
     total_b, used_b, free_b = shutil.disk_usage("/")
     cpu_count = os.cpu_count() or 1
@@ -31,6 +32,12 @@ def run_diag(args: list[str]) -> int:
             "target_device": storage.target_device,
             "scheduler": storage.scheduler,
             "is_nvme": storage.is_nvme,
+        },
+        "gpu": {
+            "active_profile": gpu_subsystem.active_profile,
+            "driver_flavor": gpu_subsystem.driver_flavor,
+            "primary_display_gpu": gpu_subsystem.primary_display_gpu.device_name if gpu_subsystem.primary_display_gpu else None,
+            "discrete_gpu": gpu_subsystem.discrete_gpu.device_name if gpu_subsystem.discrete_gpu else None,
         },
         "cpu_count": cpu_count,
         "disk": {
@@ -49,6 +56,7 @@ def run_diag(args: list[str]) -> int:
         print(f"Package Manager: {plat['pkg_manager']}")
         print(f"Service Manager: {plat['service_manager']}")
         print(f"CPUs: {cpu_count}")
+        print(f"GPU Profile: {gpu_subsystem.active_profile} (Flavor: {gpu_subsystem.driver_flavor})")
         print(f"Disk Free: {data['disk']['free_gb']} GB / {data['disk']['total_gb']} GB")
 
     return 0
