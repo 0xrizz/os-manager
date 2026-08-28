@@ -1,7 +1,10 @@
 """os_manager/memory/psi_daemon.py - Autonomous PSI Feedback & zRAM Compaction Subsystem."""
 
+import glob
+import json
 import os
 import re
+import subprocess
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -106,3 +109,153 @@ def collect_psi_metrics() -> PsiMetrics | None:
         io_full=io_readings.get("full", PsiReading()),
         timestamp=datetime.now(timezone.utc).isoformat(),
     )
+
+
+PSI_LOG_FILE = Path("backups/logs/psi_events.jsonl")
+
+
+def _write_privileged_sysfs(target_path: str, value: str) -> bool:
+    """Write value to sysfs or procfs securely using non-interactive sudo if needed."""
+    p = Path(target_path)
+    try:
+        if os.geteuid() == 0:
+            p.write_text(f"{value}\n", encoding="utf-8")
+            return True
+
+        # Non-interactive sudo pipe
+        cmd = f"echo '{value}' | sudo -S tee '{target_path}'"
+        env_path = Path.cwd() / ".env"
+        if env_path.is_file():
+            res = subprocess.run(
+                f"grep -E '^SUDO_PASSWORD=' '{env_path}' | cut -d '=' -f2- | {cmd}",
+                shell=True,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        else:
+            res = subprocess.run(["sudo", "-n", "tee", target_path], input=f"{value}\n", text=True, capture_output=True, check=False)
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
+def _log_psi_event(tier: str, reason: str, metrics: PsiMetrics | None = None) -> None:
+    """Log critical memory pressure mitigation event to audit file."""
+    try:
+        PSI_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        event = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "tier": tier,
+            "reason": reason,
+            "metrics": asdict(metrics) if metrics else {},
+        }
+        with open(PSI_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event) + "\n")
+    except Exception:
+        pass
+
+
+def compact_zram_devices() -> list[str]:
+    """Trigger memory compaction across all active zRAM devices."""
+    compacted: list[str] = []
+    targets = glob.glob("/sys/block/zram*/compact")
+    for target in targets:
+        if _write_privileged_sysfs(target, "1"):
+            compacted.append(target)
+    return compacted
+
+
+def trigger_mglru_kick() -> bool:
+    """Re-enable MGLRU page aging and request dirty page writeback sync."""
+    mglru_target = "/sys/kernel/mm/lru_gen/enabled"
+    _write_privileged_sysfs(mglru_target, "1")
+    try:
+        os.sync()
+    except Exception:
+        pass
+    return True
+
+
+def trigger_critical_cache_drop(reason: str = "critical stall", metrics: PsiMetrics | None = None) -> bool:
+    """Execute emergency page cache reclaim and record audit event."""
+    _log_psi_event("tier3_throttle_drop", reason, metrics)
+    return _write_privileged_sysfs("/proc/sys/vm/drop_caches", "1")
+
+
+class StagedMitigationController:
+    """3-Tier autonomous memory pressure mitigation engine with cooldown debouncing."""
+
+    def __init__(self, thresholds: PsiThresholds | None = None):
+        self.thresholds = thresholds or PsiThresholds()
+        self.last_mitigation_time: float = 0.0
+        self.last_mitigation_tier: MitigationTier = "none"
+        self.mitigation_count: int = 0
+
+    def evaluate_and_mitigate(self, metrics: PsiMetrics) -> dict[str, Any]:
+        """Evaluate current PSI metrics against thresholds and trigger appropriate mitigation tier."""
+        now = time.monotonic()
+        time_since_last = now - self.last_mitigation_time
+        in_cooldown = time_since_last < self.thresholds.cooldown_seconds
+
+        # Determine target tier
+        target_tier: MitigationTier = "none"
+        reason = "pressure_normal"
+
+        if metrics.memory_full.avg10 >= self.thresholds.tier3_memory_full_avg10:
+            target_tier = "tier3_throttle_drop"
+            reason = f"memory.full.avg10={metrics.memory_full.avg10:.2f} >= {self.thresholds.tier3_memory_full_avg10}"
+        elif (
+            metrics.memory_some.avg10 >= self.thresholds.tier2_memory_some_avg10
+            or metrics.memory_full.avg10 >= self.thresholds.tier2_memory_full_avg10
+        ):
+            target_tier = "tier2_mglru_sync"
+            reason = f"memory.some.avg10={metrics.memory_some.avg10:.2f} or memory.full.avg10={metrics.memory_full.avg10:.2f}"
+        elif (
+            metrics.memory_some.avg10 >= self.thresholds.tier1_memory_some_avg10
+            or metrics.memory_some.avg60 >= self.thresholds.tier1_memory_some_avg60
+        ):
+            target_tier = "tier1_compact"
+            reason = f"memory.some.avg10={metrics.memory_some.avg10:.2f} or memory.some.avg60={metrics.memory_some.avg60:.2f}"
+
+        if target_tier == "none":
+            return {
+                "mitigated": False,
+                "tier": "none",
+                "reason": reason,
+                "cooldown_active": in_cooldown,
+                "cooldown_remaining": max(0.0, self.thresholds.cooldown_seconds - time_since_last),
+            }
+
+        if in_cooldown:
+            return {
+                "mitigated": False,
+                "tier": target_tier,
+                "reason": "cooldown_suppressed",
+                "cooldown_active": True,
+                "cooldown_remaining": max(0.0, self.thresholds.cooldown_seconds - time_since_last),
+            }
+
+        # Execute mitigation
+        compacted: list[str] = []
+        if target_tier in ("tier1_compact", "tier2_mglru_sync", "tier3_throttle_drop"):
+            compacted = compact_zram_devices()
+
+        if target_tier in ("tier2_mglru_sync", "tier3_throttle_drop"):
+            trigger_mglru_kick()
+
+        if target_tier == "tier3_throttle_drop":
+            trigger_critical_cache_drop(reason=reason, metrics=metrics)
+
+        self.last_mitigation_time = now
+        self.last_mitigation_tier = target_tier
+        self.mitigation_count += 1
+
+        return {
+            "mitigated": True,
+            "tier": target_tier,
+            "reason": reason,
+            "compacted_devices": compacted,
+            "cooldown_active": False,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
