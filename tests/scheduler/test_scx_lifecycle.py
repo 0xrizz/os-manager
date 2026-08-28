@@ -147,6 +147,26 @@ class TestScxProfilesAndGenerator(unittest.TestCase):
         self.assertEqual(res.returncode, 0)
         self.assertTrue(mock_run.called)
 
+    def test_package_all_exports(self):
+        """Verify scheduler package exposes public API symbols."""
+        import os_manager.scheduler as pkg
+        for symbol in [
+            "ScxProfile",
+            "ScxProfileName",
+            "ScxSupportStatus",
+            "SCX_PROFILES",
+            "SYSTEMD_SCX_UNIT_PATH",
+            "generate_scx_systemd_unit",
+            "discover_installed_schedulers",
+            "probe_sched_ext_support",
+            "start_scx_scheduler",
+            "stop_scx_scheduler",
+            "enable_scx_service",
+            "disable_scx_service",
+        ]:
+            self.assertTrue(hasattr(pkg, symbol), f"Missing exported symbol: {symbol}")
+
+
 
 if __name__ == "__main__":
     unittest.main()
