@@ -311,6 +311,26 @@ class TestTuneSystem(unittest.TestCase):
             self.assertIn("kernel", telemetry.get("subsystems", {}))
             self.assertEqual(telemetry["subsystems"]["kernel"]["nmi_watchdog"], "0")
 
+    def test_collect_tune_telemetry_includes_cpu(self):
+        """Verify master telemetry collector includes cpu subsystem."""
+        from os_manager.commands.tune import collect_tune_telemetry
+        with patch("os_manager.commands.tune.audit_cpu_subsystem") as mock_cpu_audit:
+            mock_cpu_audit.return_value = {
+                "total_cpus": 8,
+                "is_heterogeneous": True,
+                "detection_method": "core_type",
+                "p_cores": [0, 1, 2, 3],
+                "e_cores": [4, 5, 6, 7],
+                "p_core_mask": "0-3",
+                "e_core_mask": "4-7",
+                "all_cores_mask": "0-7",
+                "session_cpuset_configured": True,
+                "background_cpuset_configured": True,
+            }
+            telemetry = collect_tune_telemetry()
+            self.assertIn("cpu", telemetry.get("subsystems", {}))
+            self.assertEqual(telemetry["subsystems"]["cpu"]["p_core_mask"], "0-3")
+            self.assertTrue(telemetry["subsystems"]["cpu"]["is_heterogeneous"])
 
 
 if __name__ == "__main__":
