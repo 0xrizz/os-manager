@@ -114,6 +114,30 @@ def collect_psi_metrics() -> PsiMetrics | None:
 PSI_LOG_FILE = Path("backups/logs/psi_events.jsonl")
 
 
+def _run_privileged(cmd: list[str], input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    """Execute privileged command non-interactively via sudo_exec.sh or sudo pipe."""
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    sudo_wrapper = repo_root / "scripts" / "sudo_exec.sh"
+
+    if os.geteuid() == 0:
+        return subprocess.run(cmd, input=input_text, capture_output=True, text=True, check=False)
+
+    if sudo_wrapper.is_file() and os.access(sudo_wrapper, os.X_OK):
+        full_cmd = [str(sudo_wrapper)] + cmd
+        return subprocess.run(full_cmd, input=input_text, capture_output=True, text=True, check=False)
+
+    env_path = repo_root / ".env"
+    if not env_path.is_file():
+        env_path = Path.cwd() / ".env"
+
+    if env_path.is_file():
+        joined_cmd = " ".join(f"'{c}'" for c in cmd)
+        pipe_cmd = f"grep -E '^SUDO_PASSWORD=' '{env_path}' | cut -d '=' -f2- | sudo -S {joined_cmd}"
+        return subprocess.run(pipe_cmd, shell=True, input=input_text, capture_output=True, text=True, check=False)
+
+    return subprocess.run(["sudo", "-n"] + cmd, input=input_text, capture_output=True, text=True, check=False)
+
+
 def _write_privileged_sysfs(target_path: str, value: str) -> bool:
     """Write value to sysfs or procfs securely using non-interactive sudo if needed."""
     p = Path(target_path)
@@ -122,19 +146,7 @@ def _write_privileged_sysfs(target_path: str, value: str) -> bool:
             p.write_text(f"{value}\n", encoding="utf-8")
             return True
 
-        # Non-interactive sudo pipe
-        cmd = f"echo '{value}' | sudo -S tee '{target_path}'"
-        env_path = Path.cwd() / ".env"
-        if env_path.is_file():
-            res = subprocess.run(
-                f"grep -E '^SUDO_PASSWORD=' '{env_path}' | cut -d '=' -f2- | {cmd}",
-                shell=True,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-        else:
-            res = subprocess.run(["sudo", "-n", "tee", target_path], input=f"{value}\n", text=True, capture_output=True, check=False)
+        res = _run_privileged(["tee", target_path], input_text=f"{value}\n")
         return res.returncode == 0
     except Exception:
         return False
@@ -310,23 +322,23 @@ def manage_psi_daemon(action: str) -> dict[str, Any]:
     if action == "start":
         unit_content = generate_psi_systemd_unit()
         _write_privileged_sysfs(SYSTEMD_PSI_UNIT_PATH, unit_content)
-        subprocess.run(["sudo", "systemctl", "daemon-reload"], capture_output=True, check=False)
-        res = subprocess.run(["sudo", "systemctl", "restart", "osm-psi.service"], capture_output=True, text=True, check=False)
+        _run_privileged(["systemctl", "daemon-reload"])
+        res = _run_privileged(["systemctl", "restart", "osm-psi.service"])
         return {"success": res.returncode == 0, "action": "start", "error": res.stderr}
 
     if action == "stop":
-        res = subprocess.run(["sudo", "systemctl", "stop", "osm-psi.service"], capture_output=True, text=True, check=False)
+        res = _run_privileged(["systemctl", "stop", "osm-psi.service"])
         return {"success": res.returncode == 0, "action": "stop", "error": res.stderr}
 
     if action == "enable":
         unit_content = generate_psi_systemd_unit()
         _write_privileged_sysfs(SYSTEMD_PSI_UNIT_PATH, unit_content)
-        subprocess.run(["sudo", "systemctl", "daemon-reload"], capture_output=True, check=False)
-        res = subprocess.run(["sudo", "systemctl", "enable", "--now", "osm-psi.service"], capture_output=True, text=True, check=False)
+        _run_privileged(["systemctl", "daemon-reload"])
+        res = _run_privileged(["systemctl", "enable", "--now", "osm-psi.service"])
         return {"success": res.returncode == 0, "action": "enable", "error": res.stderr}
 
     if action == "disable":
-        res = subprocess.run(["sudo", "systemctl", "disable", "--now", "osm-psi.service"], capture_output=True, text=True, check=False)
+        res = _run_privileged(["systemctl", "disable", "--now", "osm-psi.service"])
         return {"success": res.returncode == 0, "action": "disable", "error": res.stderr}
 
     return {"success": False, "error": f"Unknown daemon action '{action}'"}
@@ -373,7 +385,7 @@ def audit_psi_telemetry() -> dict[str, Any]:
 
 
 class PsiMonitorEngine:
-    """Monitoring and mitigation execution runner with dual epoll and polling loop."""
+    """Monitoring and mitigation execution runner with timer-based polling loop."""
 
     def __init__(self, thresholds: PsiThresholds | None = None):
         self.controller = StagedMitigationController(thresholds=thresholds)
