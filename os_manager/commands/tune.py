@@ -1186,6 +1186,9 @@ def collect_tune_telemetry() -> dict[str, Any]:
         "platform_profile": power_audit.get("platform_profile", "unknown"),
     }
 
+    # Kernel subsystem
+    kernel_data = audit_kernel_subsystem()
+
     return {
         "status": "success",
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -1198,6 +1201,7 @@ def collect_tune_telemetry() -> dict[str, Any]:
             "scheduler": scheduler_data,
             "audio": audio_data,
             "power": power_data,
+            "kernel": kernel_data,
         },
     }
 
@@ -2052,6 +2056,7 @@ def run_tune(args: list[str]) -> int:
                     TMPFILES_THP_PATH,
                     "/etc/default/earlyoom",
                     SYSCTL_SCHEDULER_PATH,
+                    SYSCTL_KERNEL_PATH,
                     SESSION_SLICE_PATH,
                     BACKGROUND_SLICE_PATH,
                     PIPEWIRE_CONF_PATH,
@@ -2098,14 +2103,18 @@ def run_tune(args: list[str]) -> int:
             sched_cfg = generate_eevdf_sysctl_config()
             sess_cfg = generate_session_slice_config()
             bg_cfg = generate_background_slice_config()
+            kernel_cfg = generate_kernel_sysctl_config()
             if os.geteuid() != 0:
                 subprocess.run(["sudo", "mkdir", "-p", "/etc/sysctl.d", "/etc/systemd/user/session.slice.d", "/etc/systemd/user/background.slice.d"], capture_output=True, check=False)
                 subprocess.run(["sudo", "tee", SYSCTL_SCHEDULER_PATH], input=sched_cfg, text=True, capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", SYSCTL_KERNEL_PATH], input=kernel_cfg, text=True, capture_output=True, check=False)
                 subprocess.run(["sudo", "tee", SESSION_SLICE_PATH], input=sess_cfg, text=True, capture_output=True, check=False)
                 subprocess.run(["sudo", "tee", BACKGROUND_SLICE_PATH], input=bg_cfg, text=True, capture_output=True, check=False)
             else:
                 Path(SYSCTL_SCHEDULER_PATH).parent.mkdir(parents=True, exist_ok=True)
                 Path(SYSCTL_SCHEDULER_PATH).write_text(sched_cfg, encoding="utf-8")
+                Path(SYSCTL_KERNEL_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(SYSCTL_KERNEL_PATH).write_text(kernel_cfg, encoding="utf-8")
                 Path(SESSION_SLICE_PATH).parent.mkdir(parents=True, exist_ok=True)
                 Path(SESSION_SLICE_PATH).write_text(sess_cfg, encoding="utf-8")
                 Path(BACKGROUND_SLICE_PATH).parent.mkdir(parents=True, exist_ok=True)
