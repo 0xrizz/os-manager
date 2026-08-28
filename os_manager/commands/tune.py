@@ -31,6 +31,7 @@ SYSFS_THP_ENABLED = "/sys/kernel/mm/transparent_hugepage/enabled"
 SYSFS_THP_DEFRAG = "/sys/kernel/mm/transparent_hugepage/defrag"
 SYSCTL_MEMORY_PATH = "/etc/sysctl.d/99-osm-memory.conf"
 SYSCTL_SCHEDULER_PATH = "/etc/sysctl.d/99-osm-scheduler.conf"
+SYSCTL_NETWORK_PATH = "/etc/sysctl.d/99-osm-network.conf"
 SESSION_SLICE_PATH = "/etc/systemd/user/session.slice.d/10-resources.conf"
 BACKGROUND_SLICE_PATH = "/etc/systemd/user/background.slice.d/10-resources.conf"
 TMPFILES_MGLRU_PATH = "/etc/tmpfiles.d/00-osm-mglru.conf"
@@ -534,17 +535,18 @@ net.ipv4.tcp_congestion_control = bbr
 """
 
 
+def _read_sysctl(key: str) -> str:
+    """Read sysctl parameter value from kernel."""
+    sysctl_bin = shutil.which("sysctl") or ("/sbin/sysctl" if os.path.exists("/sbin/sysctl") else "sysctl")
+    try:
+        res = subprocess.run([sysctl_bin, "-n", key], capture_output=True, text=True, check=False)
+        return res.stdout.strip() if res.returncode == 0 else "unknown"
+    except Exception:
+        return "unknown"
+
+
 def audit_sysctl_parameters() -> dict[str, str]:
     """Inspect active kernel sysctl values."""
-    sysctl_bin = shutil.which("sysctl") or ("/sbin/sysctl" if os.path.exists("/sbin/sysctl") else "sysctl")
-
-    def _read_sysctl(key: str) -> str:
-        try:
-            res = subprocess.run([sysctl_bin, "-n", key], capture_output=True, text=True, check=False)
-            return res.stdout.strip() if res.returncode == 0 else "unknown"
-        except Exception:
-            return "unknown"
-
     return {
         "swappiness": _read_sysctl("vm.swappiness"),
         "inotify_watches": _read_sysctl("fs.inotify.max_user_watches"),
@@ -928,6 +930,43 @@ def audit_memory_subsystem() -> dict[str, Any]:
     }
 
 
+def generate_network_sysctl_config(
+    congestion_control: str = "bbr",
+    qdisc: str = "fq_codel",
+    fastopen: int = 3,
+    somaxconn: int = 8192,
+) -> str:
+    """Generate sysctl configuration for high-throughput, low-latency network stack."""
+    return (
+        "# /etc/sysctl.d/99-osm-network.conf - Managed by os-manager\n"
+        f"net.core.default_qdisc = {qdisc}\n"
+        f"net.ipv4.tcp_congestion_control = {congestion_control}\n"
+        f"net.ipv4.tcp_fastopen = {fastopen}\n"
+        "net.ipv4.tcp_slow_start_after_idle = 0\n"
+        f"net.core.somaxconn = {somaxconn}\n"
+        f"net.ipv4.tcp_max_syn_backlog = {somaxconn}\n"
+        "net.ipv4.tcp_tw_reuse = 1\n"
+        "net.ipv4.tcp_fin_timeout = 15\n"
+        "net.ipv4.tcp_notsent_lowat = 16384\n"
+    )
+
+
+def audit_network_subsystem() -> dict[str, Any]:
+    """Inspect active kernel network parameters and drop-in configuration status."""
+    return {
+        "congestion_control": _read_sysctl("net.ipv4.tcp_congestion_control"),
+        "default_qdisc": _read_sysctl("net.core.default_qdisc"),
+        "tcp_fastopen": _read_sysctl("net.ipv4.tcp_fastopen"),
+        "slow_start_after_idle": _read_sysctl("net.ipv4.tcp_slow_start_after_idle"),
+        "somaxconn": _read_sysctl("net.core.somaxconn"),
+        "tcp_max_syn_backlog": _read_sysctl("net.ipv4.tcp_max_syn_backlog"),
+        "tcp_tw_reuse": _read_sysctl("net.ipv4.tcp_tw_reuse"),
+        "tcp_fin_timeout": _read_sysctl("net.ipv4.tcp_fin_timeout"),
+        "tcp_notsent_lowat": _read_sysctl("net.ipv4.tcp_notsent_lowat"),
+        "network_dropin_present": Path(SYSCTL_NETWORK_PATH).is_file(),
+    }
+
+
 def generate_earlyoom_config(ram_threshold: int = 5, swap_threshold: int = 5) -> str:
     """Generate /etc/default/earlyoom configuration with protected processes."""
     avoid_pattern = r"(^|/)(init|systemd|sshd|Xorg|wayland|gnome-shell|pipewire|wireplumber|agy|claude)$"
@@ -1157,6 +1196,9 @@ def collect_tune_telemetry() -> dict[str, Any]:
         "platform_profile": power_audit.get("platform_profile", "unknown"),
     }
 
+    # Network subsystem
+    network_data = audit_network_subsystem()
+
     return {
         "status": "success",
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -1169,6 +1211,7 @@ def collect_tune_telemetry() -> dict[str, Any]:
             "scheduler": scheduler_data,
             "audio": audio_data,
             "power": power_data,
+            "network": network_data,
         },
     }
 
@@ -1452,6 +1495,15 @@ def run_tune(args: list[str]) -> int:
     power_p.add_argument("--dry-run", action="store_true", help="Simulate dynamic power profile switching")
     power_p.add_argument("--json", action="store_true", help="Output power profile telemetry as JSON")
     power_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply", "ac", "battery", "status"])
+
+    # network
+    network_p = subparsers.add_parser("network", help="Manage Linux TCP BBR, fq_codel, and socket stack performance")
+    net_group = network_p.add_mutually_exclusive_group()
+    net_group.add_argument("--apply", action="store_true", help="Apply TCP BBR, fq_codel, and socket sysctl configuration")
+    net_group.add_argument("--audit", action="store_true", help="Audit Linux network stack parameters")
+    network_p.add_argument("--dry-run", action="store_true", help="Simulate network sysctl configuration")
+    network_p.add_argument("--json", action="store_true", help="Output network telemetry as JSON")
+    network_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
 
     # persist
     persist_p = subparsers.add_parser("persist", help="Manage hardware and system tuning boot persistence")
@@ -1866,6 +1918,46 @@ def run_tune(args: list[str]) -> int:
             print(f"3. Platform Profile: {audit.get('platform_profile', 'unknown')}")
             print(f"4. Battery Conservation: {audit.get('conservation_mode', 'unknown')}")
             print(f"5. Fn-Lock: {audit.get('fn_lock', 'unknown')}")
+            return 0
+
+    elif parsed_args.subaction == "network":
+        is_dry_run = getattr(parsed_args, "dry_run", False)
+        if is_dry_run:
+            print("[PLAN] Network tuning simulation: Configure TCP BBR congestion control, fq_codel default qdisc, TCP Fast Open (3), somaxconn (8192), and low-latency socket parameters at /etc/sysctl.d/99-osm-network.conf.")
+            return 0
+        is_json = getattr(parsed_args, "json", False)
+        is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
+        if is_apply:
+            create_system_snapshot(caller="osm tune network --apply", target_files=[SYSCTL_NETWORK_PATH])
+            net_cfg = generate_network_sysctl_config()
+            try:
+                if os.geteuid() != 0:
+                    subprocess.run(["sudo", "mkdir", "-p", "/etc/sysctl.d"], capture_output=True, check=False)
+                    subprocess.run(["sudo", "tee", SYSCTL_NETWORK_PATH], input=net_cfg, text=True, capture_output=True, check=False)
+                    subprocess.run(["sudo", "sysctl", "--system"], capture_output=True, check=False)
+                else:
+                    Path(SYSCTL_NETWORK_PATH).parent.mkdir(parents=True, exist_ok=True)
+                    Path(SYSCTL_NETWORK_PATH).write_text(net_cfg, encoding="utf-8")
+                    subprocess.run(["sysctl", "--system"], capture_output=True, check=False)
+                print("[PASS] Network stack tuning (TCP BBR, fq_codel, TCP Fast Open) applied successfully.")
+                return 0
+            except Exception as exc:
+                print(f"[FAIL] Failed to apply network tuning: {exc}")
+                return 1
+        else:
+            net_audit = audit_network_subsystem()
+            if is_json:
+                print(json.dumps(net_audit, indent=2))
+                return 0
+            print("==================================================")
+            print("       Linux Network & Socket Telemetry Audit     ")
+            print("==================================================")
+            print(f"1. TCP Congestion Control: {net_audit.get('congestion_control', 'unknown')}")
+            print(f"2. Default Packet Qdisc: {net_audit.get('default_qdisc', 'unknown')}")
+            print(f"3. TCP Fast Open: {net_audit.get('tcp_fastopen', 'unknown')}")
+            print(f"4. Slow Start After Idle: {net_audit.get('slow_start_after_idle', 'unknown')}")
+            print(f"5. Max Socket Backlog (somaxconn): {net_audit.get('somaxconn', 'unknown')}")
+            print(f"6. Network Drop-in Config: {'Present' if net_audit.get('network_dropin_present') else 'Missing'}")
             return 0
 
     elif parsed_args.subaction == "persist":

@@ -191,6 +191,25 @@ class TestOsmCli(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("vm.swappiness", out)
 
+    def test_cli_tune_network_audit(self):
+        """Verify osm tune network audit CLI invocation."""
+        code, out, _ = self.run_cli(["tune", "network"])
+        self.assertEqual(code, 0)
+        self.assertIn("TCP Congestion Control", out)
+
+    def test_cli_tune_network_dry_run(self):
+        """Verify osm tune network --dry-run CLI simulation."""
+        code, out, _ = self.run_cli(["tune", "network", "--apply", "--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertIn("[PLAN]", out)
+        self.assertIn("TCP BBR", out)
+
+    def test_cli_tune_network_json(self):
+        """Verify osm tune network --json output parsing."""
+        code, out, _ = self.run_cli(["tune", "network", "--json"])
+        self.assertEqual(code, 0)
+        self.assertIn("congestion_control", out)
+
     @patch("subprocess.run")
     def test_cli_tune_system_apply(self, mock_run):
         """Verify osm tune system --apply CLI invocation."""

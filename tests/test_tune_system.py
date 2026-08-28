@@ -282,6 +282,20 @@ class TestTuneSystem(unittest.TestCase):
         self.assertTrue(success)
         self.assertEqual(mock_run.call_count, 3)
 
+    def test_collect_tune_telemetry_includes_network(self):
+        """Verify master telemetry collector includes network subsystem."""
+        from os_manager.commands.tune import collect_tune_telemetry
+        with patch("os_manager.commands.tune.audit_network_subsystem") as mock_net_audit:
+            mock_net_audit.return_value = {
+                "congestion_control": "bbr",
+                "default_qdisc": "fq_codel",
+                "tcp_fastopen": "3",
+                "network_dropin_present": True,
+            }
+            telemetry = collect_tune_telemetry()
+            self.assertIn("network", telemetry.get("subsystems", {}))
+            self.assertEqual(telemetry["subsystems"]["network"]["congestion_control"], "bbr")
+
 
 if __name__ == "__main__":
     unittest.main()
