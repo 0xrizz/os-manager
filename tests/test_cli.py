@@ -46,6 +46,7 @@ class TestOsmCli(unittest.TestCase):
         code, out, _ = self.run_cli(["diag"])
         self.assertEqual(code, 0)
         self.assertIn("OS-Manager Diagnostic Report", out)
+        self.assertIn("Memory / zRAM", out)
 
     def test_diag_command_json(self):
         """Verify osm diag --json outputs valid parseable JSON."""
@@ -54,6 +55,8 @@ class TestOsmCli(unittest.TestCase):
         data = json.loads(out)
         self.assertIn("platform", data)
         self.assertIn("cpu_count", data)
+        self.assertIn("memory", data)
+        self.assertIn("zram_status", data["memory"])
 
     def test_clean_command_dry_run(self):
         """Verify osm clean --dry-run executes safely."""

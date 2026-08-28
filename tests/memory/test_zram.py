@@ -149,3 +149,71 @@ def test_unmask_zram_service():
         mock_priv.return_value = MagicMock(returncode=1)
         assert unmask_zram_service("zramswap.service") is False
 
+
+def test_hsi_audit_includes_zram_conflict():
+    from os_manager.commands.hsi import audit_hsi_posture
+    with patch("os_manager.memory.zram.audit_zram_system") as mock_audit:
+        mock_audit.return_value = ZramAuditReport(
+            conflicts_detected=True,
+            status="CONFLICT_DETECTED",
+            zram_device_active=True,
+            summary_message="Conflicting zRAM services detected: zramswap.service",
+        )
+        posture = audit_hsi_posture()
+        assert posture["swap"]["zram_conflict_detected"] is True
+        assert posture["swap"]["zram_status"] == "CONFLICT_DETECTED"
+        assert posture["swap"]["hardened"] is False
+        assert posture["overall_status"] == "needs_hardening"
+
+
+def test_hsi_apply_calls_remediate_zram_conflicts():
+    from os_manager.commands.hsi import run_hsi
+    with patch("os_manager.commands.hsi.remediate_zram_conflicts") as mock_rem, \
+         patch("os_manager.commands.hsi.run_privileged_command") as mock_priv, \
+         patch("pathlib.Path.is_file", return_value=True):
+        mock_rem.return_value = {"success": True, "dry_run": False}
+        mock_priv.return_value = MagicMock(returncode=0)
+
+        code = run_hsi(["apply"])
+        assert code == 0
+        mock_rem.assert_called_once_with(dry_run=False)
+        mock_priv.assert_called_once()
+
+
+def test_diag_memory_zram_telemetry_json(capsys):
+    from os_manager.commands.diag import run_diag
+    with patch("os_manager.commands.diag.audit_zram_system") as mock_zram:
+        mock_zram.return_value = ZramAuditReport(
+            conflicts_detected=True,
+            status="CONFLICT_DETECTED",
+            zram_device_active=True,
+            summary_message="Conflicting zRAM services detected: zramswap.service",
+            conflicting_services=[ConflictingServiceStatus(name="zramswap.service", installed=True, active=True)],
+        )
+        code = run_diag(["--json"])
+        assert code == 0
+        captured = capsys.readouterr()
+        import json
+        data = json.loads(captured.out)
+        assert "memory" in data
+        assert data["memory"]["conflicts_detected"] is True
+        assert data["memory"]["zram_status"] == "CONFLICT_DETECTED"
+        assert len(data["memory"]["conflicting_services"]) == 1
+
+
+def test_diag_memory_zram_warning_text(capsys):
+    from os_manager.commands.diag import run_diag
+    with patch("os_manager.commands.diag.audit_zram_system") as mock_zram:
+        mock_zram.return_value = ZramAuditReport(
+            conflicts_detected=True,
+            status="CONFLICT_DETECTED",
+            zram_device_active=True,
+            summary_message="Conflicting zRAM services detected: zramswap.service",
+        )
+        code = run_diag([])
+        assert code == 0
+        captured = capsys.readouterr()
+        assert "CONFLICT_DETECTED" in captured.out
+        assert "[WARN]" in captured.out or "Conflict Detected" in captured.out
+
+

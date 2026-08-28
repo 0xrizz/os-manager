@@ -81,7 +81,9 @@ def test_audit_hsi_posture():
     """Test comprehensive HSI posture audit aggregation."""
     with patch("os_manager.commands.hsi.check_sleep_state", return_value={"current": "s2idle", "hardened": True}), \
          patch("os_manager.commands.hsi.check_active_swap", return_value={"hardened": True, "zram_active": True}), \
-         patch("os_manager.commands.hsi.check_fwupd_dbx", return_value={"supported": True, "dbx_version": "371"}):
+         patch("os_manager.commands.hsi.check_fwupd_dbx", return_value={"supported": True, "dbx_version": "371"}), \
+         patch("os_manager.commands.hsi.audit_zram_system") as mock_zram:
+        mock_zram.return_value = MagicMock(conflicts_detected=False, status="OPTIMAL")
         res = audit_hsi_posture()
         assert res["sleep_state"]["hardened"] is True
         assert res["swap"]["hardened"] is True
