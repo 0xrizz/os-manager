@@ -470,6 +470,19 @@ elif command -v python3 >/dev/null 2>&1; then
     assert_exit_code "full python discovery test suite (python3)" 0 $?
 fi
 
+echo "--- Testing Heterogeneous CPU Affinity Router Suite ---"
+PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli cpu --help > /dev/null 2>&1
+assert_exit_code "osm cpu --help execution" 0 $?
+
+PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli cpu topology --json > /dev/null 2>&1
+assert_exit_code "osm cpu topology --json execution" 0 $?
+
+PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli cpu audit --json > /dev/null 2>&1
+assert_exit_code "osm cpu audit --json execution" 0 $?
+
+PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli tune cpu --dry-run > /dev/null 2>&1
+assert_exit_code "osm tune cpu --dry-run execution" 0 $?
+
 echo "--- Testing Sandbox Bubblewrap Isolation Suite ---"
 "${WORKSPACE_ROOT}/tests/security/test_sandbox_bwrap.sh" > /dev/null 2>&1
 assert_exit_code "test_sandbox_bwrap.sh execution" 0 $?

@@ -74,6 +74,9 @@ def build_parser() -> argparse.ArgumentParser:
     # gpu
     subparsers.add_parser("gpu", add_help=False, help="Dual-GPU Subsystem Management and Workload Router")
 
+    # cpu
+    subparsers.add_parser("cpu", add_help=False, help="Heterogeneous CPU Core Affinity Router & Topology Partitioning")
+
     return parser
 
 
@@ -117,6 +120,9 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "gpu":
         from .commands.gpu import run_gpu
         return run_gpu(argv[1:])
+    elif args.command == "cpu":
+        from .commands.cpu import run_cpu
+        return run_cpu(argv[1:])
     else:
         parser.print_help()
         return 0

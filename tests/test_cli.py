@@ -316,6 +316,7 @@ class TestOsmCli(unittest.TestCase):
         self.assertIn("hardware", data["subsystems"])
         self.assertIn("sysctl", data["subsystems"])
         self.assertIn("kernel", data["subsystems"])
+        self.assertIn("cpu", data["subsystems"])
         self.assertEqual(data["status"], "success")
 
     def test_collect_tune_telemetry(self):
@@ -329,6 +330,7 @@ class TestOsmCli(unittest.TestCase):
         self.assertIn("hardware", telemetry["subsystems"])
         self.assertIn("sysctl", telemetry["subsystems"])
         self.assertIn("kernel", telemetry["subsystems"])
+        self.assertIn("cpu", telemetry["subsystems"])
 
     def test_cli_hsi_subcommand(self):
         """Verify that osm hsi routes to run_hsi."""
