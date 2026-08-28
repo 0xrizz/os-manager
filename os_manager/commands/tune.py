@@ -31,6 +31,7 @@ SYSFS_THP_ENABLED = "/sys/kernel/mm/transparent_hugepage/enabled"
 SYSFS_THP_DEFRAG = "/sys/kernel/mm/transparent_hugepage/defrag"
 SYSCTL_MEMORY_PATH = "/etc/sysctl.d/99-osm-memory.conf"
 SYSCTL_SCHEDULER_PATH = "/etc/sysctl.d/99-osm-scheduler.conf"
+SYSCTL_KERNEL_PATH = "/etc/sysctl.d/99-osm-kernel.conf"
 SESSION_SLICE_PATH = "/etc/systemd/user/session.slice.d/10-resources.conf"
 BACKGROUND_SLICE_PATH = "/etc/systemd/user/background.slice.d/10-resources.conf"
 TMPFILES_MGLRU_PATH = "/etc/tmpfiles.d/00-osm-mglru.conf"
@@ -534,17 +535,18 @@ net.ipv4.tcp_congestion_control = bbr
 """
 
 
+def _read_sysctl(key: str) -> str:
+    """Read sysctl parameter value from kernel."""
+    sysctl_bin = shutil.which("sysctl") or ("/sbin/sysctl" if os.path.exists("/sbin/sysctl") else "sysctl")
+    try:
+        res = subprocess.run([sysctl_bin, "-n", key], capture_output=True, text=True, check=False)
+        return res.stdout.strip() if res.returncode == 0 else "unknown"
+    except Exception:
+        return "unknown"
+
+
 def audit_sysctl_parameters() -> dict[str, str]:
     """Inspect active kernel sysctl values."""
-    sysctl_bin = shutil.which("sysctl") or ("/sbin/sysctl" if os.path.exists("/sbin/sysctl") else "sysctl")
-
-    def _read_sysctl(key: str) -> str:
-        try:
-            res = subprocess.run([sysctl_bin, "-n", key], capture_output=True, text=True, check=False)
-            return res.stdout.strip() if res.returncode == 0 else "unknown"
-        except Exception:
-            return "unknown"
-
     return {
         "swappiness": _read_sysctl("vm.swappiness"),
         "inotify_watches": _read_sysctl("fs.inotify.max_user_watches"),
@@ -925,6 +927,33 @@ def audit_memory_subsystem() -> dict[str, Any]:
         "vfs_cache_pressure": _read_s("vm.vfs_cache_pressure"),
         "earlyoom_active": oom.get("active", False),
         "zram_active": swap.get("has_zram", False),
+    }
+
+
+def generate_kernel_sysctl_config(
+    nmi_watchdog: int = 0,
+    watchdog: int = 0,
+    vm_stat_interval: int = 10,
+    timer_migration: int = 0,
+) -> str:
+    """Generate sysctl configuration for reducing kernel polling and watchdog jitter."""
+    return (
+        "# /etc/sysctl.d/99-osm-kernel.conf - Managed by os-manager\n"
+        f"kernel.nmi_watchdog = {nmi_watchdog}\n"
+        f"kernel.watchdog = {watchdog}\n"
+        f"vm.stat_interval = {vm_stat_interval}\n"
+        f"kernel.timer_migration = {timer_migration}\n"
+    )
+
+
+def audit_kernel_subsystem() -> dict[str, Any]:
+    """Inspect active kernel watchdog and timer polling parameters and drop-in status."""
+    return {
+        "nmi_watchdog": _read_sysctl("kernel.nmi_watchdog"),
+        "watchdog": _read_sysctl("kernel.watchdog"),
+        "vm_stat_interval": _read_sysctl("vm.stat_interval"),
+        "timer_migration": _read_sysctl("kernel.timer_migration"),
+        "kernel_dropin_present": Path(SYSCTL_KERNEL_PATH).is_file(),
     }
 
 
