@@ -192,6 +192,28 @@ class ShellASTValidator:
                         )
                     )
 
+                # Check interactive sudo usage (fails fast instead of hanging on non-interactive TTY)
+                if cmd_name == "sudo":
+                    sudo_args = words[1:]
+                    has_non_interactive_flag = any(
+                        arg in ("-S", "--stdin", "-n", "--non-interactive", "-h", "--help", "-V", "--version", "-K", "-k")
+                        or arg.startswith("-S")
+                        or arg.startswith("-n")
+                        for arg in sudo_args
+                    )
+                    if not has_non_interactive_flag:
+                        violations.append(
+                            PolicyViolation(
+                                severity="HIGH",
+                                category="Command",
+                                target=cmd_name,
+                                reason=(
+                                    "Interactive 'sudo' invocation detected. Bare 'sudo' without -S or -n hangs non-interactive agent sessions. "
+                                    "Remediation: Use './scripts/sudo_exec.sh <command>' or pipe password via 'sudo -S'."
+                                ),
+                            )
+                        )
+
         # Recursive walk on children parts
         if hasattr(node, "parts"):
             for child in node.parts:

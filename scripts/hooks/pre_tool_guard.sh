@@ -112,6 +112,13 @@ if [ "${TOOL_NAME}" = "Bash" ]; then
         notify_security_violation "Raw disk formatting blocked: ${CMD}"
         exit 2
     fi
+
+    # Invariant Block: Interactive Sudo (Hang Prevention)
+    if echo "${CMD}" | grep -qE '(^|[;&|[:space:]])sudo\s+' && ! echo "${CMD}" | grep -qE '\bsudo\s+.*(-S|--stdin|-n|--non-interactive|-h|--help|-V|--version|-K|-k)\b'; then
+        echo "[HARNESS SECURITY BLOCKED] Invariant Violation (Tier 3): Interactive 'sudo' invocation detected. Bare 'sudo' without -S or -n hangs non-interactive agent sessions. Remediation: Use './scripts/sudo_exec.sh <command>' or pipe password via 'sudo -S'." >&2
+        notify_security_violation "Interactive sudo blocked: ${CMD}"
+        exit 2
+    fi
 fi
 
 exit 0

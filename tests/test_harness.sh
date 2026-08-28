@@ -110,6 +110,16 @@ PAYLOAD_TIER3_ZYPPER='{"tool_name":"Bash","tool_input":{"command":"zypper remove
 echo "${PAYLOAD_TIER3_ZYPPER}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
 assert_exit_code "Tier 3 Block (zypper remove *)" 2 $?
 
+# Tier 3 Block: Interactive bare sudo
+PAYLOAD_TIER3_SUDO='{"tool_name":"Bash","tool_input":{"command":"sudo apt-get update"}}'
+echo "${PAYLOAD_TIER3_SUDO}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
+assert_exit_code "Tier 3 Block (bare interactive sudo apt-get)" 2 $?
+
+# Tier 2 Allow: Sudo execution wrapper
+PAYLOAD_TIER2_SUDO_EXEC='{"tool_name":"Bash","tool_input":{"command":"./scripts/sudo_exec.sh id"}}'
+echo "${PAYLOAD_TIER2_SUDO_EXEC}" | "${HOOKS_DIR}/pre_tool_guard.sh" > /dev/null 2>&1
+assert_exit_code "Tier 2 Whitelisted Script (sudo_exec.sh)" 0 $?
+
 echo "--- Testing PostToolUse Auto-Healing Linting ---"
 
 # Test valid bash file passes
