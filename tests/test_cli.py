@@ -198,6 +198,40 @@ class TestOsmCli(unittest.TestCase):
         code, out, _ = self.run_cli(["tune", "system", "--apply"])
         self.assertEqual(code, 0)
 
+    def test_cli_tune_kernel_audit(self):
+        """Verify osm tune kernel audit CLI invocation."""
+        code, out, _ = self.run_cli(["tune", "kernel"])
+        self.assertEqual(code, 0)
+        self.assertIn("Kernel Watchdog & Polling Telemetry Audit", out)
+        self.assertIn("NMI Watchdog", out)
+
+    def test_cli_tune_kernel_json(self):
+        """Verify osm tune kernel --json CLI invocation."""
+        code, out, _ = self.run_cli(["tune", "kernel", "--json"])
+        self.assertEqual(code, 0)
+        data = json.loads(out)
+        self.assertIn("nmi_watchdog", data)
+        self.assertIn("watchdog", data)
+        self.assertIn("vm_stat_interval", data)
+        self.assertIn("timer_migration", data)
+        self.assertIn("kernel_dropin_present", data)
+
+    def test_cli_tune_kernel_dry_run(self):
+        """Verify osm tune kernel --dry-run CLI invocation."""
+        code, out, _ = self.run_cli(["tune", "kernel", "--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertIn("PLAN", out)
+        self.assertIn("99-osm-kernel.conf", out)
+
+    @patch("subprocess.run")
+    def test_cli_tune_kernel_apply(self, mock_run):
+        """Verify osm tune kernel --apply CLI invocation."""
+        mock_run.return_value = MagicMock(returncode=0)
+        code, out, _ = self.run_cli(["tune", "kernel", "--apply"])
+        self.assertEqual(code, 0)
+        self.assertIn("PASS", out)
+        self.assertIn("Kernel watchdog and timer polling tuning applied", out)
+
     def test_cli_tune_persist_status(self):
         """Verify osm tune persist --status CLI invocation."""
         code, out, _ = self.run_cli(["tune", "persist", "--status"])

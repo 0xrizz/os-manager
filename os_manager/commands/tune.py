@@ -1482,6 +1482,15 @@ def run_tune(args: list[str]) -> int:
     power_p.add_argument("--json", action="store_true", help="Output power profile telemetry as JSON")
     power_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply", "ac", "battery", "status"])
 
+    # kernel
+    kernel_p = subparsers.add_parser("kernel", help="Manage Linux kernel watchdog, timer migration, and VM stat interval")
+    kernel_group = kernel_p.add_mutually_exclusive_group()
+    kernel_group.add_argument("--apply", action="store_true", help="Apply kernel watchdog and timer polling sysctl configuration")
+    kernel_group.add_argument("--audit", action="store_true", help="Audit kernel watchdog and timer polling parameters")
+    kernel_p.add_argument("--dry-run", action="store_true", help="Simulate kernel watchdog sysctl configuration")
+    kernel_p.add_argument("--json", action="store_true", help="Output kernel watchdog telemetry as JSON")
+    kernel_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
+
     # persist
     persist_p = subparsers.add_parser("persist", help="Manage hardware and system tuning boot persistence")
     persist_group = persist_p.add_mutually_exclusive_group()
@@ -1895,6 +1904,45 @@ def run_tune(args: list[str]) -> int:
             print(f"3. Platform Profile: {audit.get('platform_profile', 'unknown')}")
             print(f"4. Battery Conservation: {audit.get('conservation_mode', 'unknown')}")
             print(f"5. Fn-Lock: {audit.get('fn_lock', 'unknown')}")
+            return 0
+
+    elif parsed_args.subaction == "kernel":
+        is_dry_run = getattr(parsed_args, "dry_run", False)
+        if is_dry_run:
+            print("[PLAN] Kernel tuning simulation: Configure NMI watchdog (0), soft watchdog (0), vm.stat_interval (10), and timer_migration (0) at /etc/sysctl.d/99-osm-kernel.conf.")
+            return 0
+        is_json = getattr(parsed_args, "json", False)
+        is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
+        if is_apply:
+            create_system_snapshot(caller="osm tune kernel --apply", target_files=[SYSCTL_KERNEL_PATH])
+            kernel_cfg = generate_kernel_sysctl_config()
+            try:
+                if os.geteuid() != 0:
+                    subprocess.run(["sudo", "mkdir", "-p", "/etc/sysctl.d"], capture_output=True, check=False)
+                    subprocess.run(["sudo", "tee", SYSCTL_KERNEL_PATH], input=kernel_cfg, text=True, capture_output=True, check=False)
+                    subprocess.run(["sudo", "sysctl", "--system"], capture_output=True, check=False)
+                else:
+                    Path(SYSCTL_KERNEL_PATH).parent.mkdir(parents=True, exist_ok=True)
+                    Path(SYSCTL_KERNEL_PATH).write_text(kernel_cfg, encoding="utf-8")
+                    subprocess.run(["sysctl", "--system"], capture_output=True, check=False)
+                print("[PASS] Kernel watchdog and timer polling tuning applied successfully.")
+                return 0
+            except Exception as exc:
+                print(f"[FAIL] Failed to apply kernel tuning: {exc}")
+                return 1
+        else:
+            kernel_audit = audit_kernel_subsystem()
+            if is_json:
+                print(json.dumps(kernel_audit, indent=2))
+                return 0
+            print("==================================================")
+            print("  Kernel Watchdog & Polling Telemetry Audit       ")
+            print("==================================================")
+            print(f"1. NMI Watchdog: {kernel_audit.get('nmi_watchdog', 'unknown')}")
+            print(f"2. Generic Watchdog: {kernel_audit.get('watchdog', 'unknown')}")
+            print(f"3. VM Stat Interval: {kernel_audit.get('vm_stat_interval', 'unknown')}")
+            print(f"4. Timer Migration: {kernel_audit.get('timer_migration', 'unknown')}")
+            print(f"5. Kernel Drop-in Config: {'Present' if kernel_audit.get('kernel_dropin_present') else 'Missing'}")
             return 0
 
     elif parsed_args.subaction == "persist":
