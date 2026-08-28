@@ -1172,32 +1172,38 @@ def generate_background_slice_config(cpu_weight: int = 20, io_weight: int = 20, 
 def audit_scheduler_subsystem() -> dict[str, Any]:
     """Inspect active EEVDF tunables, systemd user slice configurations, and sched_ext dynamic scheduler."""
     sysctl_bin = shutil.which("sysctl") or "/sbin/sysctl"
-    slice_val = "unknown"
+    base_slice_ns = None
     try:
-        res = subprocess.run([sysctl_bin, "-n", "kernel.sched_base_slice_ns"], capture_output=True, text=True, check=False)
-        slice_val = res.stdout.strip() if res.returncode == 0 else "unknown"
+        res_slice = subprocess.run([sysctl_bin, "-n", "kernel.sched_base_slice_ns"], capture_output=True, text=True, check=False)
+        if res_slice.returncode == 0:
+            base_slice_ns = res_slice.stdout.strip()
     except Exception:
         pass
 
-    session_cfg = Path(SESSION_SLICE_PATH).is_file()
-    bg_cfg = Path(BACKGROUND_SLICE_PATH).is_file()
+    cfs_slice_us = None
+    try:
+        res_cfs = subprocess.run([sysctl_bin, "-n", "kernel.sched_cfs_bandwidth_slice_us"], capture_output=True, text=True, check=False)
+        if res_cfs.returncode == 0:
+            cfs_slice_us = res_cfs.stdout.strip()
+    except Exception:
+        pass
 
     scx_status = probe_sched_ext_support()
-    scx_data = {
-        "kernel_supported": scx_status.kernel_supported,
-        "sysfs_present": scx_status.sysfs_present,
-        "active_scheduler": scx_status.active_scheduler,
-        "installed_schedulers": scx_status.installed_schedulers,
-        "service_active": scx_status.service_active,
-        "service_enabled": scx_status.service_enabled,
-        "details": scx_status.details,
-    }
 
     return {
-        "base_slice_ns": slice_val,
-        "session_slice_configured": session_cfg,
-        "background_slice_configured": bg_cfg,
-        "sched_ext": scx_data,
+        "base_slice_ns": base_slice_ns,
+        "cfs_bandwidth_slice_us": cfs_slice_us,
+        "session_slice_configured": Path(SESSION_SLICE_PATH).is_file(),
+        "background_slice_configured": Path(BACKGROUND_SLICE_PATH).is_file(),
+        "sched_ext": {
+            "kernel_supported": scx_status.kernel_supported,
+            "sysfs_present": scx_status.sysfs_present,
+            "active_scheduler": scx_status.active_scheduler,
+            "installed_schedulers": scx_status.installed_schedulers,
+            "service_active": scx_status.service_active,
+            "service_enabled": scx_status.service_enabled,
+            "details": scx_status.details,
+        },
     }
 
 
@@ -1271,7 +1277,8 @@ def collect_tune_telemetry() -> dict[str, Any]:
     # Scheduler subsystem
     sched_audit = audit_scheduler_subsystem()
     scheduler_data = {
-        "base_slice_ns": sched_audit.get("base_slice_ns", "unknown"),
+        "base_slice_ns": sched_audit.get("base_slice_ns"),
+        "cfs_bandwidth_slice_us": sched_audit.get("cfs_bandwidth_slice_us"),
         "session_slice_configured": sched_audit.get("session_slice_configured", False),
         "background_slice_configured": sched_audit.get("background_slice_configured", False),
         "sched_ext": sched_audit.get("sched_ext", {}),
