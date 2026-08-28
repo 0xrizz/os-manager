@@ -77,6 +77,9 @@ def build_parser() -> argparse.ArgumentParser:
     # cpu
     subparsers.add_parser("cpu", add_help=False, help="Heterogeneous CPU Core Affinity Router & Topology Partitioning")
 
+    # psi
+    subparsers.add_parser("psi", add_help=False, help="Autonomous Linux PSI Feedback & zRAM Compaction")
+
     return parser
 
 
@@ -123,6 +126,9 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "cpu":
         from .commands.cpu import run_cpu
         return run_cpu(argv[1:])
+    elif args.command == "psi":
+        from .commands.psi import run_psi
+        return run_psi(argv[1:])
     else:
         parser.print_help()
         return 0
