@@ -9,6 +9,8 @@ from .base import (
     AbstractHardwareDriver,
     BatteryHealthInfo,
     DmiInfo,
+    GpuDeviceInfo,
+    GpuSubsystemInfo,
     PlatformProfileInfo,
 )
 
@@ -43,3 +45,15 @@ class DarwinDriver(AbstractHardwareDriver):
 
     def get_gpu_power_status(self) -> Dict[str, Any]:
         return {"supported": False, "status": "integrated"}
+
+    def audit_gpu_subsystem(self) -> GpuSubsystemInfo:
+        return GpuSubsystemInfo(
+            primary_display_gpu=GpuDeviceInfo(
+                vendor="Apple",
+                device_name="Apple Silicon Integrated GPU",
+                is_discrete=False,
+                power_state="active",
+            ),
+            active_profile="integrated",
+            driver_flavor="native",
+        )

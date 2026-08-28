@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Common Development and Operational Commands
 
 ### Testing and Validation
-- Run master harness test suite (81 assertions): `./tests/test_harness.sh`
+- Run master harness test suite (82 assertions): `./tests/test_harness.sh`
 - Run complete Pytest test suite (301 tests): `.venv/bin/pytest tests/`
 - Run Python unittest discovery: `.venv/bin/python -m unittest discover -s tests -p "test_*.py"`
 - Run individual module test suites:
@@ -58,13 +58,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```text
 os-manager/
-├── .agents/
-│   └── skills/                  # Relative symlinks to .claude/skills/ (Universal Agent standard)
 ├── .claude/
 │   ├── agents/                  # Custom subagents (security-auditor, system-operator, etc.)
 │   ├── commands/                # Custom slash commands (/diag, /clean, /perf, /snapshot, etc.)
 │   ├── rules/                   # Modular prompt rules (WSL boundaries, safety tiers, error recovery)
-│   ├── skills/                  # Master SSOT skill definitions (25 skills)
+│   ├── skills/                  # Master SSOT skill definitions (34 skills)
 │   └── settings.json            # Master harness configuration (permissions, hooks, env)
 ├── os_manager/                  # Core Python package
 │   ├── cli.py                   # Main CLI argument parser and routing dispatcher
@@ -92,9 +90,24 @@ os-manager/
 │   ├── mcp/                     # MCP protocol, tools, server, and client installer tests
 │   ├── platform/                # HAL and vendor driver tests
 │   ├── security/                # AST guard and Bubblewrap sandbox tests
-│   └── test_harness.sh          # Master test harness runner (79 assertions)
+│   └── test_harness.sh          # Master test harness runner (82 assertions)
 └── CLAUDE.md                    # Project guidance and governance rules
 ```
+
+---
+
+## Non-Interactive Sudo Execution & Credentials
+
+The environment contains sudo credentials stored in `${CLAUDE_PROJECT_DIR}/.env` (`SUDO_PASSWORD=...`) for privileged operations.
+
+- **Execution Protocol**:
+  1. Test passwordless execution first: `sudo -n true 2>/dev/null`
+  2. If a password is required, stream non-interactively via `sudo -S`:
+     ```bash
+     grep -E '^SUDO_PASSWORD=' "${CLAUDE_PROJECT_DIR:-.}/.env" | cut -d '=' -f2- | sudo -S <command>
+     ```
+  3. Never run interactive `sudo <command>` that blocks on a TTY password prompt.
+  4. In Python code, use `os_manager.commands.hsi.run_privileged_command` or resolve `SUDO_PASSWORD` from `.env` before passing to `subprocess.run(input=...)`.
 
 ---
 

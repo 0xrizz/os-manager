@@ -8,6 +8,8 @@ from os_manager.platform.hal.base import (
     AbstractHardwareDriver,
     BatteryHealthInfo,
     DmiInfo,
+    GpuDeviceInfo,
+    GpuSubsystemInfo,
     PlatformProfileInfo,
 )
 
@@ -38,6 +40,12 @@ class MockDriver(AbstractHardwareDriver):
 
     def get_gpu_power_status(self) -> dict:
         return {"status": "suspended"}
+
+    def audit_gpu_subsystem(self) -> GpuSubsystemInfo:
+        return GpuSubsystemInfo(
+            primary_display_gpu=GpuDeviceInfo(vendor="MockVendor", is_discrete=False),
+            active_profile="integrated",
+        )
 
 
 class TestHalBase(unittest.TestCase):

@@ -5,6 +5,8 @@ from .base import (
     AbstractHardwareDriver,
     BatteryHealthInfo,
     DmiInfo,
+    GpuDeviceInfo,
+    GpuSubsystemInfo,
     PlatformProfileInfo,
 )
 from .dell import DellDriver
@@ -21,6 +23,8 @@ __all__ = [
     "PlatformProfileInfo",
     "BatteryHealthInfo",
     "DmiInfo",
+    "GpuDeviceInfo",
+    "GpuSubsystemInfo",
     "LenovoDriver",
     "ThinkPadDriver",
     "AsusDriver",

@@ -56,3 +56,8 @@ backups/logs/*.json
 htmlcov/
 .mypy_cache/
 .uv/
+
+# Local custom/scratch scripts (ignored from open-source repo)
+scripts/stratch/
+scripts/scratch/
+
