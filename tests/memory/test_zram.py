@@ -6,6 +6,9 @@ from os_manager.memory.zram import (
     ZramAuditReport,
     ConflictingServiceStatus,
     CONFLICTING_ZRAM_SERVICES,
+    remediate_zram_conflicts,
+    unmask_zram_service,
+    generate_canonical_zram_conf,
 )
 
 
@@ -95,3 +98,54 @@ def test_audit_zram_unconfigured(tmp_path):
         assert report.zram_device_active is False
         assert report.canonical_configured is False
         assert report.conflicts_detected is False
+
+
+def test_generate_canonical_zram_conf():
+    conf = generate_canonical_zram_conf()
+    assert "[zram0]" in conf
+    assert "zram-size = min(ram, 8192)" in conf
+    assert "compression-algorithm = zstd" in conf
+    assert "swap-priority = 100" in conf
+
+
+def test_remediate_zram_conflicts_dry_run():
+    report = ZramAuditReport(
+        conflicts_detected=True,
+        conflicting_services=[
+            ConflictingServiceStatus(name="zramswap.service", installed=True, failed=True)
+        ],
+    )
+    res = remediate_zram_conflicts(report=report, dry_run=True)
+    assert res["success"] is True
+    assert res["dry_run"] is True
+    assert len(res["actions"]) > 0
+    assert any("mask zramswap.service" in a for a in res["actions"])
+
+
+def test_remediate_zram_conflicts_execution():
+    report = ZramAuditReport(
+        conflicts_detected=True,
+        conflicting_services=[
+            ConflictingServiceStatus(name="zramswap.service", installed=True, failed=True)
+        ],
+    )
+    with patch("os_manager.commands.hsi.run_privileged_command") as mock_priv, \
+         patch("os_manager.memory.zram.audit_zram_system") as mock_audit:
+        mock_priv.return_value = MagicMock(returncode=0)
+        mock_audit.return_value = ZramAuditReport(status="OPTIMAL", zram_device_active=True)
+
+        res = remediate_zram_conflicts(report=report, dry_run=False)
+        assert res["success"] is True
+        assert res["dry_run"] is False
+        assert mock_priv.call_count >= 4  # stop, disable, mask, reset-failed, daemon-reload
+
+
+def test_unmask_zram_service():
+    with patch("os_manager.commands.hsi.run_privileged_command") as mock_priv:
+        mock_priv.return_value = MagicMock(returncode=0)
+        assert unmask_zram_service("zramswap.service") is True
+        mock_priv.assert_called_once_with(["systemctl", "unmask", "zramswap.service"], env_path=None, check=False)
+
+        mock_priv.return_value = MagicMock(returncode=1)
+        assert unmask_zram_service("zramswap.service") is False
+
