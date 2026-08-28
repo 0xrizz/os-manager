@@ -223,3 +223,143 @@ def probe_sched_ext_support(
         service_enabled=srv_enabled,
         details=details,
     )
+
+
+def _run_privileged(cmd: list[str], input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    """Execute privileged command via sudo_exec.sh wrapper or sudo fallback."""
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    sudo_wrapper = repo_root / "scripts" / "sudo_exec.sh"
+
+    if os.geteuid() == 0:
+        return subprocess.run(cmd, input=input_text, capture_output=True, text=True, check=False)
+
+    if sudo_wrapper.is_file() and os.access(sudo_wrapper, os.X_OK):
+        full_cmd = [str(sudo_wrapper)] + cmd
+    else:
+        full_cmd = ["sudo"] + cmd
+
+    return subprocess.run(full_cmd, input=input_text, capture_output=True, text=True, check=False)
+
+
+def start_scx_scheduler(
+    profile: ScxProfileName = "lavd",
+    runtime_only: bool = False,
+    custom_args: list[str] | None = None,
+) -> dict[str, Any]:
+    """Start or switch to a sched_ext eBPF scheduler profile via systemd or detached execution."""
+    if profile not in SCX_PROFILES:
+        return {"success": False, "error": f"Unknown profile '{profile}'. Choices: {list(SCX_PROFILES.keys())}"}
+
+    prof = SCX_PROFILES[profile]
+    status = probe_sched_ext_support()
+
+    if not status.kernel_supported:
+        return {
+            "success": False,
+            "error": f"Kernel does not support sched_ext. {status.details}",
+        }
+
+    bin_path = shutil.which(prof.binary_name)
+    if not bin_path:
+        # Check standard cargo and local bin dirs
+        candidates = [
+            Path(f"/usr/local/bin/{prof.binary_name}"),
+            Path(f"/usr/bin/{prof.binary_name}"),
+            Path(os.path.expanduser(f"~/.cargo/bin/{prof.binary_name}")),
+        ]
+        for c in candidates:
+            if c.is_file() and os.access(c, os.X_OK):
+                bin_path = str(c)
+                break
+
+    if not bin_path:
+        return {
+            "success": False,
+            "error": f"Binary '{prof.binary_name}' not found in PATH or standard directories.",
+        }
+
+    args = custom_args if custom_args is not None else prof.default_args
+
+    if runtime_only:
+        try:
+            cmd = [bin_path] + args
+            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            return {
+                "success": True,
+                "profile": profile,
+                "mode": "runtime",
+                "pid": proc.pid,
+                "message": f"Started {prof.binary_name} directly with PID {proc.pid}.",
+            }
+        except Exception as exc:
+            return {"success": False, "error": f"Failed to execute {bin_path}: {exc}"}
+
+    # Systemd managed deployment
+    unit_content = generate_scx_systemd_unit(bin_path, args)
+    try:
+        # Write unit file
+        write_res = _run_privileged(["tee", SYSTEMD_SCX_UNIT_PATH], input_text=unit_content)
+        if write_res.returncode != 0:
+            return {"success": False, "error": f"Failed to write {SYSTEMD_SCX_UNIT_PATH}: {write_res.stderr}"}
+
+        # Reload systemd and restart service
+        _run_privileged(["systemctl", "daemon-reload"])
+        start_res = _run_privileged(["systemctl", "restart", "scx.service"])
+        if start_res.returncode != 0:
+            return {"success": False, "error": f"Failed to start scx.service: {start_res.stderr}"}
+
+        return {
+            "success": True,
+            "profile": profile,
+            "mode": "systemd",
+            "message": f"Successfully activated {profile} ({prof.binary_name}) via scx.service.",
+        }
+    except Exception as exc:
+        return {"success": False, "error": str(exc)}
+
+
+def stop_scx_scheduler() -> dict[str, Any]:
+    """Stop active sched_ext scheduler and revert cleanly to Linux EEVDF."""
+    try:
+        _run_privileged(["systemctl", "stop", "scx.service"])
+        _run_privileged(["pkill", "-f", "scx_"])
+        return {
+            "success": True,
+            "message": "sched_ext scheduler stopped. Linux default EEVDF fallback active.",
+        }
+    except Exception as exc:
+        return {"success": False, "error": f"Failed to stop scheduler: {exc}"}
+
+
+def enable_scx_service(
+    profile: ScxProfileName = "lavd",
+    custom_args: list[str] | None = None,
+) -> dict[str, Any]:
+    """Write systemd service unit and enable scx.service on boot."""
+    start_res = start_scx_scheduler(profile=profile, runtime_only=False, custom_args=custom_args)
+    if not start_res.get("success"):
+        return start_res
+
+    res = _run_privileged(["systemctl", "enable", "scx.service"])
+    if res.returncode != 0:
+        return {"success": False, "error": f"Failed to enable scx.service: {res.stderr}"}
+
+    return {
+        "success": True,
+        "profile": profile,
+        "message": f"scx.service configured with profile '{profile}' and enabled at boot.",
+    }
+
+
+def disable_scx_service() -> dict[str, Any]:
+    """Disable scx.service at boot and stop running instance."""
+    try:
+        _run_privileged(["systemctl", "disable", "scx.service"])
+        stop_scx_scheduler()
+        return {
+            "success": True,
+            "message": "scx.service disabled at boot and stopped.",
+        }
+    except Exception as exc:
+        return {"success": False, "error": str(exc)}
+
