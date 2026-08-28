@@ -10,6 +10,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from os_manager.cpu import (
+    CpuTopology,
+    detect_cpu_topology,
+)
 from os_manager.memory.zram import (
     audit_zram_system,
     remediate_zram_conflicts,
@@ -33,6 +37,8 @@ SYSCTL_MEMORY_PATH = "/etc/sysctl.d/99-osm-memory.conf"
 SYSCTL_SCHEDULER_PATH = "/etc/sysctl.d/99-osm-scheduler.conf"
 SYSCTL_NETWORK_PATH = "/etc/sysctl.d/99-osm-network.conf"
 SYSCTL_KERNEL_PATH = "/etc/sysctl.d/99-osm-kernel.conf"
+SESSION_CPUSET_SLICE_PATH = "/etc/systemd/user/session.slice.d/10-cpuset.conf"
+BACKGROUND_CPUSET_SLICE_PATH = "/etc/systemd/user/background.slice.d/10-cpuset.conf"
 SESSION_SLICE_PATH = "/etc/systemd/user/session.slice.d/10-resources.conf"
 BACKGROUND_SLICE_PATH = "/etc/systemd/user/background.slice.d/10-resources.conf"
 TMPFILES_MGLRU_PATH = "/etc/tmpfiles.d/00-osm-mglru.conf"
@@ -1088,6 +1094,47 @@ def generate_eevdf_sysctl_config(base_slice_ns: int = 2000000, cfs_bandwidth_sli
     )
 
 
+def generate_session_cpuset_config(allowed_cpus: str | None = None) -> str:
+    """Generate systemd user session.slice AllowedCPUs drop-in."""
+    if not allowed_cpus:
+        topo = detect_cpu_topology()
+        allowed_cpus = topo.p_core_mask or topo.all_cores_mask
+    return (
+        "# /etc/systemd/user/session.slice.d/10-cpuset.conf - Managed by os-manager\n"
+        "[Slice]\n"
+        f"AllowedCPUs={allowed_cpus}\n"
+    )
+
+
+def generate_background_cpuset_config(allowed_cpus: str | None = None) -> str:
+    """Generate systemd user background.slice AllowedCPUs drop-in."""
+    if not allowed_cpus:
+        topo = detect_cpu_topology()
+        allowed_cpus = topo.e_core_mask or topo.all_cores_mask
+    return (
+        "# /etc/systemd/user/background.slice.d/10-cpuset.conf - Managed by os-manager\n"
+        "[Slice]\n"
+        f"AllowedCPUs={allowed_cpus}\n"
+    )
+
+
+def audit_cpu_subsystem() -> dict[str, Any]:
+    """Inspect CPU topology, P/E core partition, and systemd user slice configuration."""
+    topo = detect_cpu_topology()
+    return {
+        "total_cpus": topo.total_cpus,
+        "is_heterogeneous": topo.is_heterogeneous,
+        "detection_method": topo.detection_method,
+        "p_cores": topo.p_cores,
+        "e_cores": topo.e_cores,
+        "p_core_mask": topo.p_core_mask,
+        "e_core_mask": topo.e_core_mask,
+        "all_cores_mask": topo.all_cores_mask,
+        "session_cpuset_configured": Path(SESSION_CPUSET_SLICE_PATH).is_file(),
+        "background_cpuset_configured": Path(BACKGROUND_CPUSET_SLICE_PATH).is_file(),
+    }
+
+
 def generate_session_slice_config(cpu_weight: int = 500, io_weight: int = 500) -> str:
     """Generate systemd user session.slice resource override."""
     return (
@@ -1230,6 +1277,9 @@ def collect_tune_telemetry() -> dict[str, Any]:
     # Kernel subsystem
     kernel_data = audit_kernel_subsystem()
 
+    # CPU topology and affinity subsystem
+    cpu_data = audit_cpu_subsystem()
+
     return {
         "status": "success",
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -1244,6 +1294,7 @@ def collect_tune_telemetry() -> dict[str, Any]:
             "power": power_data,
             "network": network_data,
             "kernel": kernel_data,
+            "cpu": cpu_data,
         },
     }
 
@@ -1545,6 +1596,15 @@ def run_tune(args: list[str]) -> int:
     kernel_p.add_argument("--dry-run", action="store_true", help="Simulate kernel watchdog sysctl configuration")
     kernel_p.add_argument("--json", action="store_true", help="Output kernel watchdog telemetry as JSON")
     kernel_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
+
+    # cpu
+    cpu_p = subparsers.add_parser("cpu", help="Manage heterogeneous CPU core affinity and systemd user slices")
+    cpu_group = cpu_p.add_mutually_exclusive_group()
+    cpu_group.add_argument("--apply", action="store_true", help="Apply declarative systemd user cpuset slice configurations")
+    cpu_group.add_argument("--audit", action="store_true", help="Audit CPU topology, P/E core masks, and cpuset drop-ins")
+    cpu_p.add_argument("--dry-run", action="store_true", help="Simulate CPU core affinity slice configuration")
+    cpu_p.add_argument("--json", action="store_true", help="Output CPU topology telemetry as JSON")
+    cpu_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
 
     # persist
     persist_p = subparsers.add_parser("persist", help="Manage hardware and system tuning boot persistence")
@@ -2039,6 +2099,53 @@ def run_tune(args: list[str]) -> int:
             print(f"4. Timer Migration: {kernel_audit.get('timer_migration', 'unknown')}")
             print(f"5. Kernel Drop-in Config: {'Present' if kernel_audit.get('kernel_dropin_present') else 'Missing'}")
             return 0
+
+    elif parsed_args.subaction == "cpu":
+        is_dry_run = getattr(parsed_args, "dry_run", False)
+        if is_dry_run:
+            topo = detect_cpu_topology()
+            print(f"[PLAN] CPU affinity tuning simulation: session.slice (AllowedCPUs={topo.p_core_mask or topo.all_cores_mask}) and background.slice (AllowedCPUs={topo.e_core_mask or topo.all_cores_mask}).")
+            return 0
+        is_json = getattr(parsed_args, "json", False)
+        is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
+        if is_apply:
+            create_system_snapshot(
+                caller="osm tune cpu --apply",
+                target_files=[SESSION_CPUSET_SLICE_PATH, BACKGROUND_CPUSET_SLICE_PATH],
+            )
+            sess_cfg = generate_session_cpuset_config()
+            bg_cfg = generate_background_cpuset_config()
+            try:
+                if os.geteuid() != 0:
+                    subprocess.run(["sudo", "mkdir", "-p", "/etc/systemd/user/session.slice.d", "/etc/systemd/user/background.slice.d"], capture_output=True, check=False)
+                    subprocess.run(["sudo", "tee", SESSION_CPUSET_SLICE_PATH], input=sess_cfg, text=True, capture_output=True, check=False)
+                    subprocess.run(["sudo", "tee", BACKGROUND_CPUSET_SLICE_PATH], input=bg_cfg, text=True, capture_output=True, check=False)
+                    subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True, check=False)
+                else:
+                    Path(SESSION_CPUSET_SLICE_PATH).parent.mkdir(parents=True, exist_ok=True)
+                    Path(SESSION_CPUSET_SLICE_PATH).write_text(sess_cfg, encoding="utf-8")
+                    Path(BACKGROUND_CPUSET_SLICE_PATH).parent.mkdir(parents=True, exist_ok=True)
+                    Path(BACKGROUND_CPUSET_SLICE_PATH).write_text(bg_cfg, encoding="utf-8")
+                    subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True, check=False)
+                print("[PASS] CPU core affinity and systemd user slice cpuset drop-ins applied.")
+                return 0
+            except Exception as exc:
+                print(f"[FAIL] Failed to apply CPU affinity tuning: {exc}")
+                return 1
+        else:
+            cpu_info = audit_cpu_subsystem()
+            if is_json:
+                print(json.dumps(cpu_info, indent=2))
+                return 0
+            print("==================================================")
+            print("       CPU Topology & Systemd Slices Audit        ")
+            print("==================================================")
+            print(f"1. Total Logical Cores: {cpu_info['total_cpus']}")
+            print(f"2. Heterogeneous: {'Yes' if cpu_info['is_heterogeneous'] else 'No (Homogeneous)'} (via {cpu_info['detection_method']})")
+            print(f"3. P-Cores Mask: {cpu_info['p_core_mask']}")
+            print(f"4. E-Cores Mask: {cpu_info['e_core_mask']}")
+            print(f"5. session.slice Cpuset: {'Configured' if cpu_info['session_cpuset_configured'] else 'Missing'}")
+            print(f"6. background.slice Cpuset: {'Configured' if cpu_info['background_cpuset_configured'] else 'Missing'}")
             return 0
 
     elif parsed_args.subaction == "persist":
@@ -2151,6 +2258,8 @@ def run_tune(args: list[str]) -> int:
                     SYSCTL_KERNEL_PATH,
                     SESSION_SLICE_PATH,
                     BACKGROUND_SLICE_PATH,
+                    SESSION_CPUSET_SLICE_PATH,
+                    BACKGROUND_CPUSET_SLICE_PATH,
                     PIPEWIRE_CONF_PATH,
                     PAM_AUDIO_LIMITS_PATH,
                     POWER_PROFILE_UDEV_PATH,
@@ -2191,10 +2300,12 @@ def run_tune(args: list[str]) -> int:
                 Path(SYSCTL_MEMORY_PATH).write_text(vm_cfg, encoding="utf-8")
                 subprocess.run(["systemd-tmpfiles", "--create"], capture_output=True, check=False)
 
-            # Scheduler
+            # Scheduler & CPU Core Affinity
             sched_cfg = generate_eevdf_sysctl_config()
             sess_cfg = generate_session_slice_config()
             bg_cfg = generate_background_slice_config()
+            sess_cpuset_cfg = generate_session_cpuset_config()
+            bg_cpuset_cfg = generate_background_cpuset_config()
             kernel_cfg = generate_kernel_sysctl_config()
             if os.geteuid() != 0:
                 subprocess.run(["sudo", "mkdir", "-p", "/etc/sysctl.d", "/etc/systemd/user/session.slice.d", "/etc/systemd/user/background.slice.d"], capture_output=True, check=False)
@@ -2202,6 +2313,9 @@ def run_tune(args: list[str]) -> int:
                 subprocess.run(["sudo", "tee", SYSCTL_KERNEL_PATH], input=kernel_cfg, text=True, capture_output=True, check=False)
                 subprocess.run(["sudo", "tee", SESSION_SLICE_PATH], input=sess_cfg, text=True, capture_output=True, check=False)
                 subprocess.run(["sudo", "tee", BACKGROUND_SLICE_PATH], input=bg_cfg, text=True, capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", SESSION_CPUSET_SLICE_PATH], input=sess_cpuset_cfg, text=True, capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", BACKGROUND_CPUSET_SLICE_PATH], input=bg_cpuset_cfg, text=True, capture_output=True, check=False)
+                subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True, check=False)
             else:
                 Path(SYSCTL_SCHEDULER_PATH).parent.mkdir(parents=True, exist_ok=True)
                 Path(SYSCTL_SCHEDULER_PATH).write_text(sched_cfg, encoding="utf-8")
@@ -2211,6 +2325,11 @@ def run_tune(args: list[str]) -> int:
                 Path(SESSION_SLICE_PATH).write_text(sess_cfg, encoding="utf-8")
                 Path(BACKGROUND_SLICE_PATH).parent.mkdir(parents=True, exist_ok=True)
                 Path(BACKGROUND_SLICE_PATH).write_text(bg_cfg, encoding="utf-8")
+                Path(SESSION_CPUSET_SLICE_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(SESSION_CPUSET_SLICE_PATH).write_text(sess_cpuset_cfg, encoding="utf-8")
+                Path(BACKGROUND_CPUSET_SLICE_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(BACKGROUND_CPUSET_SLICE_PATH).write_text(bg_cpuset_cfg, encoding="utf-8")
+                subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True, check=False)
 
             # Audio & GPU
             pw_cfg = generate_pipewire_low_latency_config()
