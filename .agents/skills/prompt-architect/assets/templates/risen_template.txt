@@ -1,0 +1,28 @@
+SOURCE MATERIAL:
+[OPTIONAL — include only if the procedure below operates on something the user already has.
+If so, emit a literal paste instruction naming the specific artifact, e.g. "[Paste the authentication module source here]"
+or "[Paste the Q3 sales dataset here]" — then one line of prose tying it to what follows,
+e.g. "The material above is what the steps below are applied to."
+If the task generates entirely from scratch, omit this section — do not emit an empty placeholder.]
+
+ROLE:
+[Define the expertise level, persona, or perspective to adopt. What knowledge should be demonstrated?]
+
+INSTRUCTIONS:
+[Provide high-level guidance, principles, and overarching direction. What methodology or approach should guide this work?]
+
+STEPS:
+1. [First specific action or stage]
+2. [Second specific action or stage]
+3. [Third specific action or stage]
+[Continue with detailed, sequential steps...]
+
+END GOAL:
+[Define success criteria and final desired outcome. What should be true when complete? How will we know it's done correctly?]
+
+NARROWING:
+- Do NOT: [Specific thing to avoid]
+- Avoid: [Approach or pattern to avoid]
+- Out of scope: [What's not included]
+- Stay within: [Boundaries and constraints]
+- Constraints: [Limitations to respect]

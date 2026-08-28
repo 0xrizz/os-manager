@@ -1,0 +1,30 @@
+{
+  "safety-guard": {
+    "PreToolUse": [
+      {
+        "matcher": "run_command|write_to_file|replace_file_content|multi_replace_file_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./scripts/hooks/antigravity_pre_tool_guard.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  },
+  "syntax-linter": {
+    "PostToolUse": [
+      {
+        "matcher": "write_to_file|replace_file_content|multi_replace_file_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./scripts/hooks/antigravity_post_tool_lint.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

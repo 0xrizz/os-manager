@@ -250,35 +250,49 @@ class ShellASTValidator:
 def evaluate_payload(
     payload: dict, config: Optional[OsmConfig] = None
 ) -> SecurityEvaluation:
-    """Evaluate Claude tool invocation payload against security invariants."""
+    """Evaluate Claude or Antigravity tool invocation payload against security invariants."""
     cfg = config or load_config()
-    tool_name = payload.get("tool_name") or payload.get("name") or ""
-    tool_input = payload.get("tool_input") or {}
+
+    # Antigravity protojson schema: {"toolCall": {"name": "run_command", "args": {...}}}
+    # Claude Code schema: {"tool_name": "Bash", "tool_input": {...}}
+    tool_call = payload.get("toolCall")
+    if isinstance(tool_call, dict):
+        tool_name = tool_call.get("name") or ""
+        tool_args = tool_call.get("args") or {}
+    else:
+        tool_name = payload.get("tool_name") or payload.get("name") or ""
+        tool_args = payload.get("tool_input") or {}
 
     validator = ShellASTValidator(cfg.invariants)
 
-    # 1. Guard File Operations (Edit, Write, Read)
-    if tool_name in ("Edit", "Write", "Read"):
+    # 1. Guard File Operations (Edit, Write, Read, write_to_file, replace_file_content, multi_replace_file_content, view_file)
+    file_write_tools = ("Edit", "Write", "write_to_file", "replace_file_content", "multi_replace_file_content")
+    file_read_tools = ("Read", "view_file", "list_dir", "grep_search")
+
+    if tool_name in file_write_tools or tool_name in file_read_tools:
         target_path = (
-            tool_input.get("file_path")
-            or tool_input.get("notebook_path")
+            tool_args.get("file_path")
+            or tool_args.get("notebook_path")
+            or tool_args.get("TargetFile")
+            or tool_args.get("AbsolutePath")
+            or tool_args.get("SearchPath")
             or ""
         )
-        if target_path and tool_name in ("Edit", "Write"):
+        if target_path and tool_name in file_write_tools:
             violations: List[PolicyViolation] = []
             validator._check_path_violation(target_path, "PathTraversal", violations)
             if violations:
                 return SecurityEvaluation(
                     allowed=False,
                     exit_code=2,
-                    reason=violations[0].reason,
+                    reason=f"[HARNESS SECURITY BLOCKED] Invariant Violation (Tier 3): {violations[0].reason}",
                     violations=violations,
                 )
         return SecurityEvaluation(allowed=True, exit_code=0, reason="Allowed file operation")
 
-    # 2. Guard Shell Executions (Bash)
-    if tool_name == "Bash":
-        raw_cmd = tool_input.get("command") or ""
+    # 2. Guard Shell Executions (Bash, run_command)
+    if tool_name in ("Bash", "run_command"):
+        raw_cmd = tool_args.get("command") or tool_args.get("CommandLine") or ""
         allowed, violations, sandbox_recommended = validator.analyze_command(raw_cmd)
         if not allowed:
             first_reason = violations[0].reason if violations else "Invariant Violation"
@@ -301,16 +315,36 @@ def evaluate_payload(
 
 def main() -> int:
     """CLI entrypoint for stdin tool payload evaluation."""
+    is_antigravity_mode = "--antigravity" in sys.argv
+
     try:
         raw_input = sys.stdin.read()
         if not raw_input.strip():
+            if is_antigravity_mode:
+                print(json.dumps({"decision": "allow"}))
             return 0
         payload = json.loads(raw_input)
     except Exception as exc:
-        print(f"[HARNESS SECURITY] Failed to parse input JSON payload: {exc}. Failing closed.", file=sys.stderr)
+        err_msg = f"[HARNESS SECURITY] Failed to parse input JSON payload: {exc}. Failing closed."
+        if is_antigravity_mode:
+            print(json.dumps({"decision": "deny", "reason": err_msg}))
+            return 0
+        print(err_msg, file=sys.stderr)
         return 2
 
+    # Auto-detect Antigravity payload if not explicitly flagged
+    if "toolCall" in payload and not is_antigravity_mode:
+        is_antigravity_mode = True
+
     eval_result = evaluate_payload(payload)
+
+    if is_antigravity_mode:
+        if eval_result.allowed:
+            print(json.dumps({"decision": "allow"}))
+        else:
+            print(json.dumps({"decision": "deny", "reason": eval_result.reason}))
+        return 0
+
     if not eval_result.allowed:
         print(eval_result.reason, file=sys.stderr)
         return eval_result.exit_code

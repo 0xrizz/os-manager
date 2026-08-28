@@ -470,6 +470,19 @@ elif command -v python3 >/dev/null 2>&1; then
     assert_exit_code "full python discovery test suite (python3)" 0 $?
 fi
 
+echo "--- Testing sched_ext Dynamic eBPF Scheduler Suite ---"
+python3 -m unittest discover -s "${WORKSPACE_ROOT}/tests/scheduler" -p "test_*.py" > /dev/null 2>&1
+assert_exit_code "tests/scheduler unit test discovery suite" 0 $?
+
+python3 -m unittest "${WORKSPACE_ROOT}/tests/test_tune_scheduler.py" > /dev/null 2>&1
+assert_exit_code "test_tune_scheduler.py unit test suite" 0 $?
+
+PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli tune scheduler --help > /dev/null 2>&1
+assert_exit_code "osm tune scheduler --help execution" 0 $?
+
+PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli tune scheduler status --json > /dev/null 2>&1
+assert_exit_code "osm tune scheduler status --json execution" 0 $?
+
 echo "--- Testing Heterogeneous CPU Affinity Router Suite ---"
 PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli cpu --help > /dev/null 2>&1
 assert_exit_code "osm cpu --help execution" 0 $?
@@ -487,6 +500,65 @@ echo "--- Testing Sandbox Bubblewrap Isolation Suite ---"
 "${WORKSPACE_ROOT}/tests/security/test_sandbox_bwrap.sh" > /dev/null 2>&1
 assert_exit_code "test_sandbox_bwrap.sh execution" 0 $?
 
+echo "--- Testing Antigravity Harness Configuration & Hook Adapters ---"
+# Hooks JSON config validity
+jq empty "${WORKSPACE_ROOT}/.agents/hooks.json" > /dev/null 2>&1
+assert_exit_code "Antigravity .agents/hooks.json valid" 0 $?
+
+# Antigravity PreToolUse: run_command allowed
+AGY_PAYLOAD_ALLOW='{"toolCall":{"name":"run_command","args":{"CommandLine":"git status"}}}'
+AGY_RES_ALLOW=$(echo "${AGY_PAYLOAD_ALLOW}" | "${HOOKS_DIR}/antigravity_pre_tool_guard.sh" 2>/dev/null)
+if echo "${AGY_RES_ALLOW}" | grep -q '"decision":\s*"allow"'; then
+    assert_exit_code "Antigravity PreToolUse allow (git status)" 0 0
+else
+    assert_exit_code "Antigravity PreToolUse allow (git status)" 0 1
+fi
+
+# Antigravity PreToolUse: run_command blocked (rm -rf /)
+AGY_PAYLOAD_ROOT='{"toolCall":{"name":"run_command","args":{"CommandLine":"rm -rf /"}}}'
+AGY_RES_ROOT=$(echo "${AGY_PAYLOAD_ROOT}" | "${HOOKS_DIR}/antigravity_pre_tool_guard.sh" 2>/dev/null)
+if echo "${AGY_RES_ROOT}" | grep -q '"decision":\s*"deny"'; then
+    assert_exit_code "Antigravity PreToolUse deny (rm -rf /)" 0 0
+else
+    assert_exit_code "Antigravity PreToolUse deny (rm -rf /)" 0 1
+fi
+
+# Antigravity PreToolUse: run_command blocked (wsl.exe --unregister)
+AGY_PAYLOAD_WSL='{"toolCall":{"name":"run_command","args":{"CommandLine":"wsl.exe --unregister Debian"}}}'
+AGY_RES_WSL=$(echo "${AGY_PAYLOAD_WSL}" | "${HOOKS_DIR}/antigravity_pre_tool_guard.sh" 2>/dev/null)
+if echo "${AGY_RES_WSL}" | grep -q '"decision":\s*"deny"'; then
+    assert_exit_code "Antigravity PreToolUse deny (wsl.exe --unregister)" 0 0
+else
+    assert_exit_code "Antigravity PreToolUse deny (wsl.exe --unregister)" 0 1
+fi
+
+# Antigravity PreToolUse: write_to_file blocked (Windows host)
+AGY_PAYLOAD_WIN='{"toolCall":{"name":"write_to_file","args":{"TargetFile":"/mnt/c/Windows/System32/drivers/etc/hosts"}}}'
+AGY_RES_WIN=$(echo "${AGY_PAYLOAD_WIN}" | "${HOOKS_DIR}/antigravity_pre_tool_guard.sh" 2>/dev/null)
+if echo "${AGY_RES_WIN}" | grep -q '"decision":\s*"deny"'; then
+    assert_exit_code "Antigravity PreToolUse deny (/mnt/c/Windows/...)" 0 0
+else
+    assert_exit_code "Antigravity PreToolUse deny (/mnt/c/Windows/...)" 0 1
+fi
+
+# Antigravity PreToolUse: write_to_file allowed (Workspace file)
+AGY_PAYLOAD_WS="{\"toolCall\":{\"name\":\"write_to_file\",\"args\":{\"TargetFile\":\"${WORKSPACE_ROOT}/README.md\"}}}"
+AGY_RES_WS=$(echo "${AGY_PAYLOAD_WS}" | "${HOOKS_DIR}/antigravity_pre_tool_guard.sh" 2>/dev/null)
+if echo "${AGY_RES_WS}" | grep -q '"decision":\s*"allow"'; then
+    assert_exit_code "Antigravity PreToolUse allow (workspace file)" 0 0
+else
+    assert_exit_code "Antigravity PreToolUse allow (workspace file)" 0 1
+fi
+
+# Antigravity PostToolUse: linter execution
+AGY_POST_PAYLOAD="{\"toolCall\":{\"name\":\"write_to_file\",\"args\":{\"TargetFile\":\"${WORKSPACE_ROOT}/scripts/hooks/antigravity_pre_tool_guard.sh\"}}}"
+AGY_POST_RES=$(echo "${AGY_POST_PAYLOAD}" | "${HOOKS_DIR}/antigravity_post_tool_lint.sh" 2>/dev/null)
+if echo "${AGY_POST_RES}" | grep -q '{}'; then
+    assert_exit_code "Antigravity PostToolUse lint execution" 0 0
+else
+    assert_exit_code "Antigravity PostToolUse lint execution" 0 1
+fi
+
 echo "--- Testing Multi-Agent Harness Isolation Suite ---"
 "${WORKSPACE_ROOT}/tests/test_harness_isolation.sh" > /dev/null 2>&1
 assert_exit_code "test_harness_isolation.sh complete suite" 0 $?
@@ -496,3 +568,4 @@ echo "Summary: ${PASSED_TESTS}/${TOTAL_TESTS} passed"
 if [ "${FAILED_TESTS}" -gt 0 ]; then
     exit 1
 fi
+

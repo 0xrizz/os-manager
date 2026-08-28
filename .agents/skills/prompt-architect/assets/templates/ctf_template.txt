@@ -1,0 +1,23 @@
+SOURCE MATERIAL:
+[Optional — include only if this task operates on material you already have. Paste the
+specific artifact here and name it in this line, e.g. "Paste the legacy authentication
+function here", "Paste the revised requirements doc here" — the artifact itself, not a
+description of it. If this task generates from scratch, delete this bracketed block along
+with the sentence directly below it.]
+Use the material above as the basis for the task described below.
+
+CONTEXT:
+[Describe the situation, background, or circumstances surrounding this task.
+Include relevant details like: current state, constraints, what's already been done,
+why this is needed, and any important background the AI should know.]
+
+TASK:
+[State clearly and specifically what needs to be done. Be explicit about the deliverable.]
+
+FORMAT:
+[Specify exactly how the output should be structured:
+- Overall format (document, code, list, table, etc.)
+- Required sections or components
+- Length constraints
+- Style requirements
+- Any specific formatting rules]

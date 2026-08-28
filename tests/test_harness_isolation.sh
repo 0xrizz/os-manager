@@ -39,14 +39,14 @@ if [ -d "${HOME}/.agent" ] || [ -d "${HOME}/.agents" ]; then
     echo "FAIL: Deprecated ~/.agent or ~/.agents directory found in home"
     exit 1
 fi
-echo "PASS: No deprecated agent directories present."
+echo "PASS: No deprecated agent directories present in home."
 
-echo "==> [ISO-04] Asserting absence of workspace .agents directory..."
-if [ -d "${WORKSPACE_ROOT}/.agents" ]; then
-    echo "FAIL: Deprecated .agents directory found in workspace"
+echo "==> [ISO-04] Asserting valid Antigravity workspace harness structure..."
+if [ ! -d "${WORKSPACE_ROOT}/.agents/skills" ] || [ ! -d "${WORKSPACE_ROOT}/.agents/workflows" ] || [ ! -f "${WORKSPACE_ROOT}/.agents/hooks.json" ]; then
+    echo "FAIL: Antigravity workspace harness structure (.agents/skills, .agents/workflows, .agents/hooks.json) missing"
     exit 1
 fi
-echo "PASS: Workspace .agents mirror absent."
+echo "PASS: Antigravity workspace harness verified."
 
 echo "✓ All Harness Isolation checks passed."
 exit 0

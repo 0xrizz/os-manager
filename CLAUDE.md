@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## ⚠️ CRITICAL OPERATIONAL INVARIANTS
+## CRITICAL OPERATIONAL INVARIANTS
 
 ### 1. Non-Interactive Sudo & Terminal Execution (Zero-Stall Standard)
 
@@ -33,12 +33,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Zero Password Leakage**: NEVER echo, print, or log `.env` contents or the raw password to stdout, stderr, reports, or transcripts.
 
 ```bash
-# ❌ FORBIDDEN (Hangs agent session):
+# FORBIDDEN (Hangs agent session):
 sudo apt-get update
 sudo systemctl restart NetworkManager
 sudo sysctl -p
 
-# ✅ REQUIRED (Non-interactive execution):
+# REQUIRED (Non-interactive execution):
 ./scripts/sudo_exec.sh apt-get update
 ./scripts/sudo_exec.sh systemctl restart NetworkManager
 ./scripts/sudo_exec.sh sysctl -p
@@ -114,6 +114,9 @@ Lifecycle hooks in `scripts/hooks/` and `os_manager/security/ast_guard.py` enfor
 - `osm check [--json]`: Run master harness test suite
 - `osm diag [--json]`: Gather real-time system, platform, and DMI diagnostics
 - `osm tune [status|apply|revert]`: Tune CPU governor, I/O schedulers, memory, and platform profiles
+- `osm psi [status|compact|monitor|daemon]`: Autonomous Linux PSI stall feedback & zRAM compaction
+- `osm cpu [topology|audit|run|pin]`: Heterogeneous CPU affinity router & P/E-core partitioning
+- `osm gpu [status|install|run|sync-profiles|profile]`: Dual-GPU subsystem management & workload router
 - `osm hsi [audit|apply [--dry-run]]`: Host Security ID hardware & firmware hardening
 - `osm ai [status|start|stop|restart|configure]`: Unified AI gateway (Headroom & 9Router)
 - `osm clean [--dry-run|--all]`: Evict package manager caches and temp files
