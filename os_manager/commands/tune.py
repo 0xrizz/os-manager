@@ -930,6 +930,8 @@ def audit_memory_subsystem() -> dict[str, Any]:
 
     oom = audit_earlyoom_status()
     swap = audit_dual_tier_swap_status()
+    from ..memory.psi_daemon import audit_psi_telemetry
+    psi_telemetry = audit_psi_telemetry()
 
     return {
         "mglru_enabled": mglru_en,
@@ -942,6 +944,7 @@ def audit_memory_subsystem() -> dict[str, Any]:
         "vfs_cache_pressure": _read_s("vm.vfs_cache_pressure"),
         "earlyoom_active": oom.get("active", False),
         "zram_active": swap.get("has_zram", False),
+        "psi": psi_telemetry,
     }
 
 
@@ -1816,6 +1819,7 @@ def run_tune(args: list[str]) -> int:
             print(f"3. Dual-Tier ZRAM Active: {swap.get('has_zram', False)} (Priority: {swap.get('zram_priority', 0)})")
             print(f"4. Dual-Tier Swapfile Active: {swap.get('has_swapfile', False)} (Priority: {swap.get('swapfile_priority', 0)})")
             print(f"5. zRAM Manager Status: {zram_audit.status}")
+            print(f"6. PSI Daemon Active: {mem_audit.get('psi', {}).get('daemon_active', False)}")
             if zram_audit.conflicts_detected:
                 print(f"   [WARN] {zram_audit.summary_message}")
             return 0

@@ -77,3 +77,17 @@ class TestTuneMemory(unittest.TestCase):
             self.assertEqual(res["swappiness"], "unknown")
             self.assertFalse(res["earlyoom_active"])
             self.assertFalse(res["zram_active"])
+
+    def test_audit_memory_subsystem_includes_psi(self):
+        """Verify audit_memory_subsystem includes PSI telemetry fields."""
+        with patch("pathlib.Path.read_text", return_value="always [madvise] never\n"), \
+             patch("pathlib.Path.is_file", return_value=True), \
+             patch("subprocess.run", return_value=MagicMock(returncode=0, stdout="180\n")), \
+             patch("os_manager.commands.tune.audit_earlyoom_status", return_value={"active": True}), \
+             patch("os_manager.commands.tune.audit_dual_tier_swap_status", return_value={"has_zram": True}), \
+             patch("os_manager.memory.psi_daemon.audit_psi_telemetry", return_value={"supported": True, "daemon_active": True}) as mock_psi:
+            res = audit_memory_subsystem()
+            self.assertIn("psi", res)
+            self.assertTrue(res["psi"]["supported"])
+            self.assertTrue(res["psi"]["daemon_active"])
+
