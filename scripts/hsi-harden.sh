@@ -24,6 +24,7 @@ PROTECTED_MOUNT="/mnt/data"
 if [[ "${DRY_RUN}" == "true" ]]; then
     echo "[DRY-RUN] Mode active. No system files will be written."
     echo "[DRY-RUN] Protected partition ${PROTECTED_PARTITION} (${PROTECTED_MOUNT}) is safe."
+    echo "[DRY-RUN] Would remediate conflicting zRAM services (zramswap, zram-config, zram, zram-init)"
     echo "[DRY-RUN] Would install systemd-zram-generator"
     echo "[DRY-RUN] Would configure /etc/systemd/zram-generator.conf"
     echo "[DRY-RUN] Would update /etc/default/grub with mem_sleep_default=s2idle"
@@ -37,12 +38,30 @@ if [[ "$(id -u)" -ne 0 ]]; then
     exit 1
 fi
 
+remediate_zram_conflicts() {
+    echo "    Auditing and remediating conflicting zRAM services..."
+    local conflicts=("zramswap.service" "zram-config.service" "zram.service" "zram-init.service")
+    for svc in "${conflicts[@]}"; do
+        if systemctl list-unit-files "$svc" &>/dev/null; then
+            echo "    Conflicting zRAM service detected: $svc. Disabling and masking..."
+            systemctl stop "$svc" 2>/dev/null || true
+            systemctl disable "$svc" 2>/dev/null || true
+            systemctl mask "$svc" 2>/dev/null || true
+            systemctl reset-failed "$svc" 2>/dev/null || true
+        fi
+    done
+    systemctl daemon-reload
+    systemctl restart systemd-zram-setup@zram0.service 2>/dev/null || true
+}
+
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 
 # ------------------------------------------------------------------------------
 # 1. Swap Hardening: Configure volatile zRAM & Decommission Plaintext Swap
 # ------------------------------------------------------------------------------
 echo "==> [1/3] Hardening Swap Architecture (zRAM + Plaintext Swap Decommission)..."
+
+remediate_zram_conflicts
 
 if ! dpkg -s systemd-zram-generator >/dev/null 2>&1; then
     echo "    Installing systemd-zram-generator..."

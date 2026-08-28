@@ -427,6 +427,12 @@ status_earlyoom() {
 
 audit_swap() {
     log_info "Auditing dual-tier swap hierarchy..."
+    local conflicts=("zramswap.service" "zram-config.service" "zram.service" "zram-init.service")
+    for svc in "${conflicts[@]}"; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null || systemctl is-enabled --quiet "$svc" 2>/dev/null || systemctl is-failed --quiet "$svc" 2>/dev/null; then
+            log_warn "Conflicting zRAM service detected: $svc (active/enabled/failed)"
+        fi
+    done
     if [[ -f "/proc/swaps" ]]; then
         local zram_found=0
         local swapfile_found=0
@@ -450,7 +456,24 @@ audit_swap() {
     fi
 }
 
+remediate_zram_conflicts() {
+    log_info "Auditing and remediating conflicting zRAM services..."
+    local conflicts=("zramswap.service" "zram-config.service" "zram.service" "zram-init.service")
+    for svc in "${conflicts[@]}"; do
+        if systemctl list-unit-files "$svc" &>/dev/null; then
+            log_warn "Conflicting zRAM service detected: $svc. Disabling and masking..."
+            systemctl stop "$svc" 2>/dev/null || true
+            systemctl disable "$svc" 2>/dev/null || true
+            systemctl mask "$svc" 2>/dev/null || true
+            systemctl reset-failed "$svc" 2>/dev/null || true
+        fi
+    done
+    systemctl daemon-reload
+    systemctl restart systemd-zram-setup@zram0.service 2>/dev/null || true
+}
+
 apply_memory_tuning() {
+    remediate_zram_conflicts
     log_info "Applying Linux memory & VM parameters (MGLRU, zRAM swappiness=180, THP madvise)..."
     local mglru_conf="/etc/tmpfiles.d/00-osm-mglru.conf"
     local thp_conf="/etc/tmpfiles.d/00-osm-thp.conf"
