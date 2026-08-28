@@ -5,7 +5,9 @@ from .scx import (
     ScxProfile,
     ScxProfileName,
     ScxSupportStatus,
+    discover_installed_schedulers,
     generate_scx_systemd_unit,
+    probe_sched_ext_support,
 )
 
 __all__ = [
@@ -13,5 +15,7 @@ __all__ = [
     "ScxProfile",
     "ScxProfileName",
     "ScxSupportStatus",
+    "discover_installed_schedulers",
     "generate_scx_systemd_unit",
+    "probe_sched_ext_support",
 ]

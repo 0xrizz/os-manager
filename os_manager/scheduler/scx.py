@@ -1,5 +1,10 @@
 """sched_ext (Extensible Scheduler Class) dynamic eBPF scheduler controller and profile registry."""
 
+import gzip
+import os
+import platform
+import shutil
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -86,3 +91,135 @@ LimitMEMLOCK=infinity
 [Install]
 WantedBy=multi-user.target
 """
+
+
+def discover_installed_schedulers(search_dirs: list[str] | None = None) -> list[str]:
+    """Scan directories and $PATH for available sched_ext binary executables (scx_*)."""
+    found: set[str] = set()
+    paths: list[Path] = []
+
+    if search_dirs:
+        for d in search_dirs:
+            p = Path(d)
+            if p.is_dir():
+                paths.append(p)
+    else:
+        env_paths = os.environ.get("PATH", "").split(os.pathsep)
+        extra_paths = ["/usr/local/bin", "/usr/bin", os.path.expanduser("~/.cargo/bin")]
+        for d in env_paths + extra_paths:
+            p = Path(d)
+            if p.is_dir() and p not in paths:
+                paths.append(p)
+
+    for directory in paths:
+        try:
+            for item in directory.iterdir():
+                if item.name.startswith("scx_") and os.access(item, os.X_OK) and not item.is_dir():
+                    found.add(item.name)
+        except (PermissionError, OSError):
+            continue
+
+    return sorted(list(found))
+
+
+def probe_sched_ext_support(
+    sysfs_root: str = "/sys/kernel/sched_ext",
+    boot_dir: str = "/boot",
+    proc_config: str = "/proc/config.gz",
+) -> ScxSupportStatus:
+    """Probe system kernel, sysfs, installed binaries, and systemd service for sched_ext support."""
+    sysfs_p = Path(sysfs_root)
+    state_file = sysfs_p / "state"
+    sysfs_present = sysfs_p.is_dir()
+    kernel_supported = False
+    active_scheduler: str | None = None
+    details = ""
+
+    # 1. Inspect sysfs state if node exists
+    if state_file.is_file():
+        try:
+            state_val = state_file.read_text(encoding="utf-8").strip()
+            kernel_supported = True
+            if state_val == "enabled":
+                ops_file = sysfs_p / "root" / "ops"
+                if ops_file.is_file():
+                    active_scheduler = ops_file.read_text(encoding="utf-8").strip()
+                else:
+                    active_scheduler = "unknown_scx"
+                details = f"sched_ext active ({state_val}), scheduler: {active_scheduler}"
+            else:
+                details = f"sched_ext compiled ({state_val}), no eBPF scheduler loaded."
+        except Exception as exc:
+            kernel_supported = True
+            details = f"sched_ext sysfs present but read error: {exc}"
+    else:
+        # 2. Inspect kernel config in /boot/config-$(uname -r) or /proc/config.gz
+        rel = platform.release()
+        cfg_file = Path(boot_dir) / f"config-{rel}"
+        config_content = ""
+
+        if cfg_file.is_file():
+            try:
+                config_content = cfg_file.read_text(encoding="utf-8", errors="ignore")
+            except Exception:
+                pass
+        elif Path(proc_config).is_file():
+            try:
+                with gzip.open(proc_config, "rt", encoding="utf-8", errors="ignore") as gz:
+                    config_content = gz.read()
+            except Exception:
+                pass
+
+        if "CONFIG_SCHED_CLASS_EXT=y" in config_content:
+            kernel_supported = True
+            details = "sched_ext supported via kernel config (CONFIG_SCHED_CLASS_EXT=y), module/sysfs unmounted."
+        else:
+            kernel_supported = False
+            details = (
+                f"Stock kernel detected ({rel}). CONFIG_SCHED_CLASS_EXT not set. "
+                "EEVDF baseline active. To enable sched_ext, install a 6.12+ kernel "
+                "with CONFIG_SCHED_CLASS_EXT=y (e.g. CachyOS or XanMod)."
+            )
+
+    # 3. Discover installed schedulers
+    installed = discover_installed_schedulers()
+
+    # 4. Check active process if active_scheduler not yet detected
+    if not active_scheduler and kernel_supported:
+        try:
+            res_pgrep = subprocess.run(["pgrep", "-a", "-f", "scx_"], capture_output=True, text=True, check=False)
+            if res_pgrep.returncode == 0 and res_pgrep.stdout.strip():
+                for line in res_pgrep.stdout.splitlines():
+                    for prof_name, prof in SCX_PROFILES.items():
+                        if prof.binary_name in line:
+                            active_scheduler = prof_name
+                            break
+                    if active_scheduler:
+                        break
+        except Exception:
+            pass
+
+    # 5. Check systemd service status
+    srv_active = False
+    srv_enabled = False
+    try:
+        res_act = subprocess.run(["systemctl", "is-active", "scx.service"], capture_output=True, text=True, check=False)
+        srv_active = res_act.stdout.strip() == "active"
+    except Exception:
+        pass
+
+    try:
+        res_en = subprocess.run(["systemctl", "is-enabled", "scx.service"], capture_output=True, text=True, check=False)
+        srv_enabled = res_en.stdout.strip() == "enabled"
+    except Exception:
+        pass
+
+    return ScxSupportStatus(
+        kernel_supported=kernel_supported,
+        sysfs_present=sysfs_present,
+        active_scheduler=active_scheduler,
+        installed_schedulers=installed,
+        service_active=srv_active,
+        service_enabled=srv_enabled,
+        details=details,
+    )
