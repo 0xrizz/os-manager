@@ -251,6 +251,40 @@ class TestOsmCli(unittest.TestCase):
         self.assertIn("PASS", out)
         self.assertIn("Kernel watchdog and timer polling tuning applied", out)
 
+    def test_cli_tune_scheduler_audit(self):
+        """Verify osm tune scheduler audit CLI invocation."""
+        code, out, _ = self.run_cli(["tune", "scheduler", "audit"])
+        self.assertEqual(code, 0)
+        self.assertIn("EEVDF Scheduler", out)
+        self.assertIn("sched_ext", out)
+
+    def test_cli_tune_scheduler_json(self):
+        """Verify osm tune scheduler --json outputs valid telemetry."""
+        code, out, _ = self.run_cli(["tune", "scheduler", "--json"])
+        self.assertEqual(code, 0)
+        data = json.loads(out)
+        self.assertIn("base_slice_ns", data)
+        self.assertIn("sched_ext", data)
+        self.assertIn("kernel_supported", data["sched_ext"])
+
+    @patch("os_manager.commands.tune.start_scx_scheduler")
+    def test_cli_tune_scheduler_scx_start(self, mock_start):
+        """Verify osm tune scheduler --scx start --profile lavd routing."""
+        mock_start.return_value = {"success": True, "profile": "lavd", "mode": "systemd", "message": "Activated lavd"}
+        code, out, _ = self.run_cli(["tune", "scheduler", "--scx", "start", "--profile", "lavd"])
+        self.assertEqual(code, 0)
+        self.assertIn("PASS", out)
+        mock_start.assert_called_once_with(profile="lavd")
+
+    @patch("os_manager.commands.tune.stop_scx_scheduler")
+    def test_cli_tune_scheduler_scx_stop(self, mock_stop):
+        """Verify osm tune scheduler --scx stop routing."""
+        mock_stop.return_value = {"success": True, "message": "Stopped sched_ext"}
+        code, out, _ = self.run_cli(["tune", "scheduler", "--scx", "stop"])
+        self.assertEqual(code, 0)
+        self.assertIn("PASS", out)
+        mock_stop.assert_called_once()
+
     def test_cli_tune_persist_status(self):
         """Verify osm tune persist --status CLI invocation."""
         code, out, _ = self.run_cli(["tune", "persist", "--status"])

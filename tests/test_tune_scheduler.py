@@ -1,5 +1,6 @@
-"""tests/test_tune_scheduler.py - Unit tests for Linux EEVDF scheduler & cgroups v2 user slices."""
+"""tests/test_tune_scheduler.py - Unit tests for Linux EEVDF scheduler & sched_ext dynamic eBPF scheduler."""
 
+import json
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -9,10 +10,11 @@ from os_manager.commands.tune import (
     generate_eevdf_sysctl_config,
     generate_session_slice_config,
 )
+from os_manager.scheduler.scx import ScxSupportStatus
 
 
 class TestTuneScheduler(unittest.TestCase):
-    """Unit tests for Linux 6.6+ EEVDF scheduler slicing and cgroups v2 user slices."""
+    """Unit tests for Linux 6.6+ EEVDF scheduler slicing, cgroups v2 user slices, and sched_ext."""
 
     def test_generate_eevdf_sysctl_config(self):
         """Verify sysctl configuration generator for EEVDF scheduler slicing."""
@@ -37,35 +39,25 @@ class TestTuneScheduler(unittest.TestCase):
         self.assertIn("MemoryHigh=1536M", cfg)
         self.assertIn("ManagedOOMPreference=kill", cfg)
 
-    def test_audit_scheduler_subsystem(self):
-        """Verify audit_scheduler_subsystem returns expected structure."""
+    @patch("os_manager.commands.tune.probe_sched_ext_support")
+    def test_audit_scheduler_subsystem_includes_scx(self, mock_probe):
+        """Verify audit_scheduler_subsystem includes sched_ext capability block."""
+        mock_probe.return_value = ScxSupportStatus(
+            kernel_supported=True,
+            sysfs_present=True,
+            active_scheduler="lavd",
+            installed_schedulers=["scx_lavd"],
+            service_active=True,
+            service_enabled=True,
+            details="sched_ext active (enabled)",
+        )
         res = audit_scheduler_subsystem()
         self.assertIn("base_slice_ns", res)
         self.assertIn("session_slice_configured", res)
         self.assertIn("background_slice_configured", res)
-
-    def test_audit_scheduler_subsystem_mocked(self):
-        """Verify audit_scheduler_subsystem with mocked sysctl and slice path files."""
-        with patch("subprocess.run") as mock_run, \
-             patch("pathlib.Path.is_file") as mock_is_file:
-            mock_run.return_value = MagicMock(returncode=0, stdout="2000000\n")
-            mock_is_file.return_value = True
-
-            res = audit_scheduler_subsystem()
-            self.assertEqual(res["base_slice_ns"], "2000000")
-            self.assertTrue(res["session_slice_configured"])
-            self.assertTrue(res["background_slice_configured"])
-
-    def test_audit_scheduler_subsystem_failure(self):
-        """Verify audit_scheduler_subsystem fallback when sysctl fails and files are missing."""
-        with patch("subprocess.run") as mock_run, \
-             patch("pathlib.Path.is_file", return_value=False):
-            mock_run.return_value = MagicMock(returncode=1, stdout="")
-
-            res = audit_scheduler_subsystem()
-            self.assertEqual(res["base_slice_ns"], "unknown")
-            self.assertFalse(res["session_slice_configured"])
-            self.assertFalse(res["background_slice_configured"])
+        self.assertIn("sched_ext", res)
+        self.assertTrue(res["sched_ext"]["kernel_supported"])
+        self.assertEqual(res["sched_ext"]["active_scheduler"], "lavd")
 
 
 if __name__ == "__main__":

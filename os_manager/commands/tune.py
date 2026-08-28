@@ -18,6 +18,14 @@ from os_manager.platform.hal import (
     audit_storage_subsystem,
     get_active_hardware_driver,
 )
+from os_manager.scheduler.scx import (
+    SCX_PROFILES,
+    disable_scx_service,
+    enable_scx_service,
+    probe_sched_ext_support,
+    start_scx_scheduler,
+    stop_scx_scheduler,
+)
 
 SYSFS_CONSERVATION_DEFAULT = "/sys/bus/platform/drivers/ideapad_acpi/VPC2004:00/conservation_mode"
 SYSFS_PROFILE_DEFAULT = "/sys/firmware/acpi/platform_profile"
@@ -1112,7 +1120,7 @@ def generate_background_slice_config(cpu_weight: int = 20, io_weight: int = 20, 
 
 
 def audit_scheduler_subsystem() -> dict[str, Any]:
-    """Inspect active EEVDF tunables and systemd user slice configurations."""
+    """Inspect active EEVDF tunables, systemd user slice configurations, and sched_ext dynamic scheduler."""
     sysctl_bin = shutil.which("sysctl") or "/sbin/sysctl"
     slice_val = "unknown"
     try:
@@ -1124,10 +1132,22 @@ def audit_scheduler_subsystem() -> dict[str, Any]:
     session_cfg = Path(SESSION_SLICE_PATH).is_file()
     bg_cfg = Path(BACKGROUND_SLICE_PATH).is_file()
 
+    scx_status = probe_sched_ext_support()
+    scx_data = {
+        "kernel_supported": scx_status.kernel_supported,
+        "sysfs_present": scx_status.sysfs_present,
+        "active_scheduler": scx_status.active_scheduler,
+        "installed_schedulers": scx_status.installed_schedulers,
+        "service_active": scx_status.service_active,
+        "service_enabled": scx_status.service_enabled,
+        "details": scx_status.details,
+    }
+
     return {
         "base_slice_ns": slice_val,
         "session_slice_configured": session_cfg,
         "background_slice_configured": bg_cfg,
+        "sched_ext": scx_data,
     }
 
 
@@ -1204,6 +1224,7 @@ def collect_tune_telemetry() -> dict[str, Any]:
         "base_slice_ns": sched_audit.get("base_slice_ns", "unknown"),
         "session_slice_configured": sched_audit.get("session_slice_configured", False),
         "background_slice_configured": sched_audit.get("background_slice_configured", False),
+        "sched_ext": sched_audit.get("sched_ext", {}),
     }
 
     # Audio subsystem
@@ -1501,13 +1522,16 @@ def run_tune(args: list[str]) -> int:
     sys_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
 
     # scheduler
-    sched_p = subparsers.add_parser("scheduler", help="Manage EEVDF scheduler slicing and cgroups v2 user slices")
+    sched_p = subparsers.add_parser("scheduler", help="Manage EEVDF scheduler slicing and sched_ext eBPF schedulers")
     sched_group = sched_p.add_mutually_exclusive_group()
     sched_group.add_argument("--apply", action="store_true", help="Apply EEVDF scheduler and cgroups v2 slice configuration")
-    sched_group.add_argument("--audit", action="store_true", help="Audit EEVDF scheduler and cgroups v2 user slices")
-    sched_p.add_argument("--dry-run", action="store_true", help="Simulate EEVDF and slice tuning")
+    sched_group.add_argument("--audit", action="store_true", help="Audit EEVDF scheduler, cgroups v2 slices, and sched_ext")
+    sched_p.add_argument("--scx", choices=["status", "start", "stop", "enable", "disable"], default=None, help="Manage sched_ext dynamic eBPF scheduler")
+    sched_p.add_argument("--profile", choices=list(SCX_PROFILES.keys()), default="lavd", help="Select sched_ext profile")
+    sched_p.add_argument("--base-slice-ns", type=int, default=2000000, help="EEVDF base slice duration in nanoseconds")
+    sched_p.add_argument("--dry-run", action="store_true", help="Simulate scheduler tuning")
     sched_p.add_argument("--json", action="store_true", help="Output scheduler audit as JSON")
-    sched_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
+    sched_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply", "status", "start", "stop", "enable", "disable"])
 
     # audio
     audio_p = subparsers.add_parser("audio", help="Manage PipeWire low-latency configuration and PAM audio limits")
@@ -1816,13 +1840,59 @@ def run_tune(args: list[str]) -> int:
     elif parsed_args.subaction == "scheduler":
         is_dry_run = getattr(parsed_args, "dry_run", False)
         if is_dry_run:
-            print("[PLAN] Scheduler tuning simulation: EEVDF base slice (2ms), CFS bandwidth (3ms), session.slice (weight 500), and background.slice (weight 20, 1536M memory limit).")
+            print("[PLAN] Scheduler tuning simulation: EEVDF base_slice_ns configuration and sched_ext eBPF scheduler management.")
             return 0
         is_json = getattr(parsed_args, "json", False)
-        is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
+        scx_action = getattr(parsed_args, "scx", None)
+        action = getattr(parsed_args, "action", "audit")
+        effective_scx = scx_action if scx_action else (action if action in ["status", "start", "stop", "enable", "disable"] else None)
+        profile_name = getattr(parsed_args, "profile", "lavd")
+
+        if effective_scx == "start":
+            res = start_scx_scheduler(profile=profile_name)
+            if is_json:
+                print(json.dumps(res, indent=2))
+                return 0 if res.get("success") else 1
+            if res.get("success"):
+                print(f"[PASS] {res.get('message')}")
+                return 0
+            else:
+                print(f"[FAIL] {res.get('error')}")
+                return 1
+
+        elif effective_scx == "stop":
+            res = stop_scx_scheduler()
+            if is_json:
+                print(json.dumps(res, indent=2))
+                return 0 if res.get("success") else 1
+            print(f"[PASS] {res.get('message')}")
+            return 0
+
+        elif effective_scx == "enable":
+            res = enable_scx_service(profile=profile_name)
+            if is_json:
+                print(json.dumps(res, indent=2))
+                return 0 if res.get("success") else 1
+            if res.get("success"):
+                print(f"[PASS] {res.get('message')}")
+                return 0
+            else:
+                print(f"[FAIL] {res.get('error')}")
+                return 1
+
+        elif effective_scx == "disable":
+            res = disable_scx_service()
+            if is_json:
+                print(json.dumps(res, indent=2))
+                return 0 if res.get("success") else 1
+            print(f"[PASS] {res.get('message')}")
+            return 0
+
+        is_apply = getattr(parsed_args, "apply", False) or action == "apply"
         if is_apply:
+            base_slice = getattr(parsed_args, "base_slice_ns", 2000000)
             create_system_snapshot(caller="osm tune scheduler --apply", target_files=[SYSCTL_SCHEDULER_PATH, SESSION_SLICE_PATH, BACKGROUND_SLICE_PATH])
-            sched_cfg = generate_eevdf_sysctl_config()
+            sched_cfg = generate_eevdf_sysctl_config(base_slice_ns=base_slice)
             sess_cfg = generate_session_slice_config()
             bg_cfg = generate_background_slice_config()
             try:
@@ -1831,19 +1901,19 @@ def run_tune(args: list[str]) -> int:
                     subprocess.run(["sudo", "tee", SYSCTL_SCHEDULER_PATH], input=sched_cfg, text=True, capture_output=True, check=False)
                     subprocess.run(["sudo", "tee", SESSION_SLICE_PATH], input=sess_cfg, text=True, capture_output=True, check=False)
                     subprocess.run(["sudo", "tee", BACKGROUND_SLICE_PATH], input=bg_cfg, text=True, capture_output=True, check=False)
-                    subprocess.run(["sudo", "sysctl", "--system"], capture_output=True, check=False)
+                    subprocess.run(["sudo", "sysctl", "-p", SYSCTL_SCHEDULER_PATH], capture_output=True, check=False)
                 else:
                     Path(SYSCTL_SCHEDULER_PATH).parent.mkdir(parents=True, exist_ok=True)
-                    Path(SYSCTL_SCHEDULER_PATH).write_text(sched_cfg, encoding="utf-8")
                     Path(SESSION_SLICE_PATH).parent.mkdir(parents=True, exist_ok=True)
-                    Path(SESSION_SLICE_PATH).write_text(sess_cfg, encoding="utf-8")
                     Path(BACKGROUND_SLICE_PATH).parent.mkdir(parents=True, exist_ok=True)
+                    Path(SYSCTL_SCHEDULER_PATH).write_text(sched_cfg, encoding="utf-8")
+                    Path(SESSION_SLICE_PATH).write_text(sess_cfg, encoding="utf-8")
                     Path(BACKGROUND_SLICE_PATH).write_text(bg_cfg, encoding="utf-8")
-                    subprocess.run(["sysctl", "--system"], capture_output=True, check=False)
-                print("[PASS] EEVDF scheduler slicing (2ms base slice) and cgroups v2 user slices applied.")
+                    subprocess.run(["sysctl", "-p", SYSCTL_SCHEDULER_PATH], capture_output=True, check=False)
+                print("[PASS] EEVDF scheduler and cgroups v2 user slices applied.")
                 return 0
             except Exception as exc:
-                print(f"[FAIL] Failed to apply scheduler tuning: {exc}")
+                print(f"[FAIL] Failed to apply scheduler configuration: {exc}")
                 return 1
         else:
             sched = audit_scheduler_subsystem()
@@ -1851,11 +1921,16 @@ def run_tune(args: list[str]) -> int:
                 print(json.dumps(sched, indent=2))
                 return 0
             print("==================================================")
-            print("   EEVDF Scheduler & Cgroups v2 User Slices Audit ")
+            print("   EEVDF Scheduler & sched_ext Subsystem Audit    ")
             print("==================================================")
             print(f"1. EEVDF Base Slice (ns): {sched['base_slice_ns']}")
             print(f"2. session.slice Overrides: {'Configured' if sched['session_slice_configured'] else 'Missing'}")
             print(f"3. background.slice Overrides: {'Configured' if sched['background_slice_configured'] else 'Missing'}")
+            scx_info = sched.get("sched_ext", {})
+            print(f"4. sched_ext Kernel Support: {scx_info.get('kernel_supported', False)}")
+            print(f"5. sched_ext Active Scheduler: {scx_info.get('active_scheduler') or 'None (EEVDF active)'}")
+            print(f"6. sched_ext Installed: {', '.join(scx_info.get('installed_schedulers', [])) or 'None'}")
+            print(f"7. Details: {scx_info.get('details', '')}")
             return 0
 
     elif parsed_args.subaction == "audio":
