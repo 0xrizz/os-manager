@@ -285,6 +285,24 @@ class TestOsmCli(unittest.TestCase):
         self.assertIn("PASS", out)
         mock_stop.assert_called_once()
 
+    @patch("os_manager.commands.tune.enable_scx_service")
+    def test_cli_tune_scheduler_scx_enable(self, mock_enable):
+        """Verify osm tune scheduler --scx enable --profile rusty routing."""
+        mock_enable.return_value = {"success": True, "profile": "rusty", "message": "Enabled scx with profile rusty"}
+        code, out, _ = self.run_cli(["tune", "scheduler", "--scx", "enable", "--profile", "rusty"])
+        self.assertEqual(code, 0)
+        self.assertIn("PASS", out)
+        mock_enable.assert_called_once_with(profile="rusty")
+
+    @patch("os_manager.commands.tune.disable_scx_service")
+    def test_cli_tune_scheduler_scx_disable(self, mock_disable):
+        """Verify osm tune scheduler --scx disable routing."""
+        mock_disable.return_value = {"success": True, "message": "Disabled scx service"}
+        code, out, _ = self.run_cli(["tune", "scheduler", "--scx", "disable"])
+        self.assertEqual(code, 0)
+        self.assertIn("PASS", out)
+        mock_disable.assert_called_once()
+
     def test_cli_tune_persist_status(self):
         """Verify osm tune persist --status CLI invocation."""
         code, out, _ = self.run_cli(["tune", "persist", "--status"])
