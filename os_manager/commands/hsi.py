@@ -8,6 +8,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from ..memory.zram import audit_zram_system, remediate_zram_conflicts
+
 SYSFS_MEM_SLEEP_DEFAULT = "/sys/power/mem_sleep"
 PROC_SWAPS_DEFAULT = "/proc/swaps"
 
@@ -131,6 +133,12 @@ def audit_hsi_posture() -> dict[str, Any]:
     sleep_info = check_sleep_state()
     swap_info = check_active_swap()
     fwupd_info = check_fwupd_dbx()
+    zram_report = audit_zram_system()
+
+    swap_info["zram_conflict_detected"] = zram_report.conflicts_detected
+    swap_info["zram_status"] = zram_report.status
+    if zram_report.conflicts_detected:
+        swap_info["hardened"] = False
 
     is_hardened = sleep_info.get("hardened", False) and swap_info.get("hardened", False)
 
@@ -232,10 +240,14 @@ def run_hsi(args: list[str]) -> int:
 
     if parsed.action == "apply":
         if getattr(parsed, "dry_run", False):
+            print("[DRY-RUN] Would remediate conflicting zRAM services and enforce systemd-zram-generator")
             print("[DRY-RUN] Would install systemd-zram-generator and configure /etc/systemd/zram-generator.conf")
             print("[DRY-RUN] Would update /etc/default/grub with mem_sleep_default=s2idle and run update-grub")
             print("[DRY-RUN] Would invoke fwupdmgr refresh and fwupdmgr update")
             return 0
+
+        print("[INFO] Remediating conflicting zRAM services...")
+        remediate_zram_conflicts(dry_run=False)
 
         print("[INFO] Invoking scripts/hsi-harden.sh for system-level remediation...")
         script_path = Path(__file__).resolve().parents[2] / "scripts" / "hsi-harden.sh"

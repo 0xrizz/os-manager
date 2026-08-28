@@ -80,8 +80,20 @@ echo "Distribution Family : ${OS_DISTRO_FAMILY:-unknown}"
 echo "Distribution Name   : ${OS_DISTRO_NAME:-Linux}"
 echo "Package Manager     : ${OS_PKG_MANAGER:-unknown}"
 
-echo -e "\n==> [2/6] Memory Usage: ${BADGE_OK} ${RAM_SUMMARY}"
+echo -e "\n==> [2/6] Memory & Swap Usage: ${BADGE_OK} ${RAM_SUMMARY}"
 free -h
+if command -v systemctl &>/dev/null; then
+    ZRAM_CONFLICTS=0
+    for svc in zramswap.service zram-config.service zram.service zram-init.service; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null || systemctl is-enabled --quiet "$svc" 2>/dev/null || systemctl is-failed --quiet "$svc" 2>/dev/null; then
+            echo -e "  ${BADGE_WARN} Conflicting zRAM service detected: ${svc} (active/enabled/failed)"
+            ZRAM_CONFLICTS=$((ZRAM_CONFLICTS + 1))
+        fi
+    done
+    if [ "$ZRAM_CONFLICTS" -eq 0 ]; then
+        echo -e "  ${BADGE_OK} zRAM service manager: Optimal (no legacy unit conflicts)"
+    fi
+fi
 
 echo -e "\n==> [3/6] Disk Allocations: ${BADGE_OK} ${DISK_SUMMARY}"
 df -h / /mnt/c /mnt/d 2>/dev/null || df -h /
