@@ -2,7 +2,9 @@
 
 import json
 from pathlib import Path
+import shutil
 import subprocess
+import sys
 import unittest
 
 WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -12,8 +14,10 @@ class TestMcpEndToEnd(unittest.TestCase):
     """Test full MCP handshake and tool invocation over subprocess stdio pipe."""
 
     def test_mcp_stdio_handshake_and_tool_call(self) -> None:
+        venv_py = WORKSPACE_ROOT / ".venv/bin/python"
+        py_bin = str(venv_py) if venv_py.is_file() else sys.executable
         proc = subprocess.Popen(
-            [str(WORKSPACE_ROOT / ".venv/bin/python"), "-m", "os_manager.cli", "mcp", "serve"],
+            [py_bin, "-m", "os_manager.cli", "mcp", "serve"],
             cwd=WORKSPACE_ROOT,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,

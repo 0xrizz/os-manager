@@ -1865,8 +1865,12 @@ def run_tune(args: list[str]) -> int:
             if is_json:
                 print(json.dumps(res, indent=2))
                 return 0 if res.get("success") else 1
-            print(f"[PASS] {res.get('message')}")
-            return 0
+            if res.get("success"):
+                print(f"[PASS] {res.get('message')}")
+                return 0
+            else:
+                print(f"[FAIL] {res.get('error')}")
+                return 1
 
         elif effective_scx == "enable":
             res = enable_scx_service(profile=profile_name)
@@ -1885,8 +1889,12 @@ def run_tune(args: list[str]) -> int:
             if is_json:
                 print(json.dumps(res, indent=2))
                 return 0 if res.get("success") else 1
-            print(f"[PASS] {res.get('message')}")
-            return 0
+            if res.get("success"):
+                print(f"[PASS] {res.get('message')}")
+                return 0
+            else:
+                print(f"[FAIL] {res.get('error')}")
+                return 1
 
         is_apply = getattr(parsed_args, "apply", False) or action == "apply"
         if is_apply:
