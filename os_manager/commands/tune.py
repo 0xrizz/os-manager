@@ -1905,11 +1905,13 @@ def run_tune(args: list[str]) -> int:
             bg_cfg = generate_background_slice_config()
             try:
                 if os.geteuid() != 0:
-                    subprocess.run(["sudo", "mkdir", "-p", "/etc/sysctl.d", "/etc/systemd/user/session.slice.d", "/etc/systemd/user/background.slice.d"], capture_output=True, check=False)
-                    subprocess.run(["sudo", "tee", SYSCTL_SCHEDULER_PATH], input=sched_cfg, text=True, capture_output=True, check=False)
-                    subprocess.run(["sudo", "tee", SESSION_SLICE_PATH], input=sess_cfg, text=True, capture_output=True, check=False)
-                    subprocess.run(["sudo", "tee", BACKGROUND_SLICE_PATH], input=bg_cfg, text=True, capture_output=True, check=False)
-                    subprocess.run(["sudo", "sysctl", "-p", SYSCTL_SCHEDULER_PATH], capture_output=True, check=False)
+                    sudo_wrapper = SCRIPTS_DIR / "sudo_exec.sh"
+                    sudo_cmd = [str(sudo_wrapper)] if sudo_wrapper.is_file() and os.access(sudo_wrapper, os.X_OK) else ["sudo"]
+                    subprocess.run(sudo_cmd + ["mkdir", "-p", "/etc/sysctl.d", "/etc/systemd/user/session.slice.d", "/etc/systemd/user/background.slice.d"], capture_output=True, check=False)
+                    subprocess.run(sudo_cmd + ["tee", SYSCTL_SCHEDULER_PATH], input=sched_cfg, text=True, capture_output=True, check=False)
+                    subprocess.run(sudo_cmd + ["tee", SESSION_SLICE_PATH], input=sess_cfg, text=True, capture_output=True, check=False)
+                    subprocess.run(sudo_cmd + ["tee", BACKGROUND_SLICE_PATH], input=bg_cfg, text=True, capture_output=True, check=False)
+                    subprocess.run(sudo_cmd + ["sysctl", "-p", SYSCTL_SCHEDULER_PATH], capture_output=True, check=False)
                 else:
                     Path(SYSCTL_SCHEDULER_PATH).parent.mkdir(parents=True, exist_ok=True)
                     Path(SESSION_SLICE_PATH).parent.mkdir(parents=True, exist_ok=True)
