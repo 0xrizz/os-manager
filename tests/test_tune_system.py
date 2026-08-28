@@ -296,6 +296,22 @@ class TestTuneSystem(unittest.TestCase):
             self.assertIn("network", telemetry.get("subsystems", {}))
             self.assertEqual(telemetry["subsystems"]["network"]["congestion_control"], "bbr")
 
+    def test_collect_tune_telemetry_includes_kernel(self):
+        """Verify master telemetry collector includes kernel subsystem."""
+        from os_manager.commands.tune import collect_tune_telemetry
+        with patch("os_manager.commands.tune.audit_kernel_subsystem") as mock_kernel_audit:
+            mock_kernel_audit.return_value = {
+                "nmi_watchdog": "0",
+                "watchdog": "0",
+                "vm_stat_interval": "10",
+                "timer_migration": "0",
+                "kernel_dropin_present": True,
+            }
+            telemetry = collect_tune_telemetry()
+            self.assertIn("kernel", telemetry.get("subsystems", {}))
+            self.assertEqual(telemetry["subsystems"]["kernel"]["nmi_watchdog"], "0")
+
+
 
 if __name__ == "__main__":
     unittest.main()

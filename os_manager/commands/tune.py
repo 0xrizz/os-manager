@@ -32,6 +32,7 @@ SYSFS_THP_DEFRAG = "/sys/kernel/mm/transparent_hugepage/defrag"
 SYSCTL_MEMORY_PATH = "/etc/sysctl.d/99-osm-memory.conf"
 SYSCTL_SCHEDULER_PATH = "/etc/sysctl.d/99-osm-scheduler.conf"
 SYSCTL_NETWORK_PATH = "/etc/sysctl.d/99-osm-network.conf"
+SYSCTL_KERNEL_PATH = "/etc/sysctl.d/99-osm-kernel.conf"
 SESSION_SLICE_PATH = "/etc/systemd/user/session.slice.d/10-resources.conf"
 BACKGROUND_SLICE_PATH = "/etc/systemd/user/background.slice.d/10-resources.conf"
 TMPFILES_MGLRU_PATH = "/etc/tmpfiles.d/00-osm-mglru.conf"
@@ -967,6 +968,33 @@ def audit_network_subsystem() -> dict[str, Any]:
     }
 
 
+def generate_kernel_sysctl_config(
+    nmi_watchdog: int = 0,
+    watchdog: int = 0,
+    vm_stat_interval: int = 10,
+    timer_migration: int = 0,
+) -> str:
+    """Generate sysctl configuration for reducing kernel polling and watchdog jitter."""
+    return (
+        "# /etc/sysctl.d/99-osm-kernel.conf - Managed by os-manager\n"
+        f"kernel.nmi_watchdog = {nmi_watchdog}\n"
+        f"kernel.watchdog = {watchdog}\n"
+        f"vm.stat_interval = {vm_stat_interval}\n"
+        f"kernel.timer_migration = {timer_migration}\n"
+    )
+
+
+def audit_kernel_subsystem() -> dict[str, Any]:
+    """Inspect active kernel watchdog and timer polling parameters and drop-in status."""
+    return {
+        "nmi_watchdog": _read_sysctl("kernel.nmi_watchdog"),
+        "watchdog": _read_sysctl("kernel.watchdog"),
+        "vm_stat_interval": _read_sysctl("vm.stat_interval"),
+        "timer_migration": _read_sysctl("kernel.timer_migration"),
+        "kernel_dropin_present": Path(SYSCTL_KERNEL_PATH).is_file(),
+    }
+
+
 def generate_earlyoom_config(ram_threshold: int = 5, swap_threshold: int = 5) -> str:
     """Generate /etc/default/earlyoom configuration with protected processes."""
     avoid_pattern = r"(^|/)(init|systemd|sshd|Xorg|wayland|gnome-shell|pipewire|wireplumber|agy|claude)$"
@@ -1199,6 +1227,9 @@ def collect_tune_telemetry() -> dict[str, Any]:
     # Network subsystem
     network_data = audit_network_subsystem()
 
+    # Kernel subsystem
+    kernel_data = audit_kernel_subsystem()
+
     return {
         "status": "success",
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -1212,6 +1243,7 @@ def collect_tune_telemetry() -> dict[str, Any]:
             "audio": audio_data,
             "power": power_data,
             "network": network_data,
+            "kernel": kernel_data,
         },
     }
 
@@ -1504,6 +1536,15 @@ def run_tune(args: list[str]) -> int:
     network_p.add_argument("--dry-run", action="store_true", help="Simulate network sysctl configuration")
     network_p.add_argument("--json", action="store_true", help="Output network telemetry as JSON")
     network_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
+
+    # kernel
+    kernel_p = subparsers.add_parser("kernel", help="Manage Linux kernel watchdog, timer migration, and VM stat interval")
+    kernel_group = kernel_p.add_mutually_exclusive_group()
+    kernel_group.add_argument("--apply", action="store_true", help="Apply kernel watchdog and timer polling sysctl configuration")
+    kernel_group.add_argument("--audit", action="store_true", help="Audit kernel watchdog and timer polling parameters")
+    kernel_p.add_argument("--dry-run", action="store_true", help="Simulate kernel watchdog sysctl configuration")
+    kernel_p.add_argument("--json", action="store_true", help="Output kernel watchdog telemetry as JSON")
+    kernel_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
 
     # persist
     persist_p = subparsers.add_parser("persist", help="Manage hardware and system tuning boot persistence")
@@ -1960,6 +2001,46 @@ def run_tune(args: list[str]) -> int:
             print(f"6. Network Drop-in Config: {'Present' if net_audit.get('network_dropin_present') else 'Missing'}")
             return 0
 
+    elif parsed_args.subaction == "kernel":
+        is_dry_run = getattr(parsed_args, "dry_run", False)
+        if is_dry_run:
+            print("[PLAN] Kernel tuning simulation: Configure NMI watchdog (0), soft watchdog (0), vm.stat_interval (10), and timer_migration (0) at /etc/sysctl.d/99-osm-kernel.conf.")
+            return 0
+        is_json = getattr(parsed_args, "json", False)
+        is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
+        if is_apply:
+            create_system_snapshot(caller="osm tune kernel --apply", target_files=[SYSCTL_KERNEL_PATH])
+            kernel_cfg = generate_kernel_sysctl_config()
+            try:
+                if os.geteuid() != 0:
+                    subprocess.run(["sudo", "mkdir", "-p", "/etc/sysctl.d"], capture_output=True, check=False)
+                    subprocess.run(["sudo", "tee", SYSCTL_KERNEL_PATH], input=kernel_cfg, text=True, capture_output=True, check=False)
+                    subprocess.run(["sudo", "sysctl", "--system"], capture_output=True, check=False)
+                else:
+                    Path(SYSCTL_KERNEL_PATH).parent.mkdir(parents=True, exist_ok=True)
+                    Path(SYSCTL_KERNEL_PATH).write_text(kernel_cfg, encoding="utf-8")
+                    subprocess.run(["sysctl", "--system"], capture_output=True, check=False)
+                print("[PASS] Kernel watchdog and timer polling tuning applied successfully.")
+                return 0
+            except Exception as exc:
+                print(f"[FAIL] Failed to apply kernel tuning: {exc}")
+                return 1
+        else:
+            kernel_audit = audit_kernel_subsystem()
+            if is_json:
+                print(json.dumps(kernel_audit, indent=2))
+                return 0
+            print("==================================================")
+            print("  Kernel Watchdog & Polling Telemetry Audit       ")
+            print("==================================================")
+            print(f"1. NMI Watchdog: {kernel_audit.get('nmi_watchdog', 'unknown')}")
+            print(f"2. Generic Watchdog: {kernel_audit.get('watchdog', 'unknown')}")
+            print(f"3. VM Stat Interval: {kernel_audit.get('vm_stat_interval', 'unknown')}")
+            print(f"4. Timer Migration: {kernel_audit.get('timer_migration', 'unknown')}")
+            print(f"5. Kernel Drop-in Config: {'Present' if kernel_audit.get('kernel_dropin_present') else 'Missing'}")
+            return 0
+            return 0
+
     elif parsed_args.subaction == "persist":
         is_dry_run = getattr(parsed_args, "dry_run", False)
         if is_dry_run:
@@ -2067,6 +2148,7 @@ def run_tune(args: list[str]) -> int:
                     TMPFILES_THP_PATH,
                     "/etc/default/earlyoom",
                     SYSCTL_SCHEDULER_PATH,
+                    SYSCTL_KERNEL_PATH,
                     SESSION_SLICE_PATH,
                     BACKGROUND_SLICE_PATH,
                     PIPEWIRE_CONF_PATH,
@@ -2113,14 +2195,18 @@ def run_tune(args: list[str]) -> int:
             sched_cfg = generate_eevdf_sysctl_config()
             sess_cfg = generate_session_slice_config()
             bg_cfg = generate_background_slice_config()
+            kernel_cfg = generate_kernel_sysctl_config()
             if os.geteuid() != 0:
                 subprocess.run(["sudo", "mkdir", "-p", "/etc/sysctl.d", "/etc/systemd/user/session.slice.d", "/etc/systemd/user/background.slice.d"], capture_output=True, check=False)
                 subprocess.run(["sudo", "tee", SYSCTL_SCHEDULER_PATH], input=sched_cfg, text=True, capture_output=True, check=False)
+                subprocess.run(["sudo", "tee", SYSCTL_KERNEL_PATH], input=kernel_cfg, text=True, capture_output=True, check=False)
                 subprocess.run(["sudo", "tee", SESSION_SLICE_PATH], input=sess_cfg, text=True, capture_output=True, check=False)
                 subprocess.run(["sudo", "tee", BACKGROUND_SLICE_PATH], input=bg_cfg, text=True, capture_output=True, check=False)
             else:
                 Path(SYSCTL_SCHEDULER_PATH).parent.mkdir(parents=True, exist_ok=True)
                 Path(SYSCTL_SCHEDULER_PATH).write_text(sched_cfg, encoding="utf-8")
+                Path(SYSCTL_KERNEL_PATH).parent.mkdir(parents=True, exist_ok=True)
+                Path(SYSCTL_KERNEL_PATH).write_text(kernel_cfg, encoding="utf-8")
                 Path(SESSION_SLICE_PATH).parent.mkdir(parents=True, exist_ok=True)
                 Path(SESSION_SLICE_PATH).write_text(sess_cfg, encoding="utf-8")
                 Path(BACKGROUND_SLICE_PATH).parent.mkdir(parents=True, exist_ok=True)
