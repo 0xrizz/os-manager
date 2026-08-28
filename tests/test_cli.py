@@ -375,6 +375,44 @@ class TestOsmCli(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("PLAN", out)
 
+    def test_cli_tune_memory_remediate_zram_dry_run(self):
+        """Verify osm tune memory --remediate-zram --dry-run CLI invocation."""
+        code, out, _ = self.run_cli(["tune", "memory", "--remediate-zram", "--dry-run"])
+        self.assertEqual(code, 0)
+        self.assertIn("zRAM", out)
+
+    def test_cli_tune_memory_remediate_zram_apply(self):
+        """Verify osm tune memory --remediate-zram CLI invocation."""
+        with patch("os_manager.commands.tune.remediate_zram_conflicts") as mock_rem:
+            mock_rem.return_value = {
+                "success": True,
+                "dry_run": False,
+                "actions": ["systemctl mask zramswap.service"],
+                "initial_status": "CONFLICT_DETECTED",
+                "post_status": "OPTIMAL",
+                "message": "Remediation executed successfully.",
+            }
+            code, out, _ = self.run_cli(["tune", "memory", "--remediate-zram"])
+            self.assertEqual(code, 0)
+            self.assertIn("Remediation", out)
+            mock_rem.assert_called_once_with(dry_run=False)
+
+    def test_cli_tune_memory_remediate_zram_json(self):
+        """Verify osm tune memory --remediate-zram --json CLI invocation."""
+        with patch("os_manager.commands.tune.remediate_zram_conflicts") as mock_rem:
+            mock_rem.return_value = {
+                "success": True,
+                "dry_run": True,
+                "actions": ["systemctl mask zramswap.service"],
+                "initial_status": "CONFLICT_DETECTED",
+                "message": "Dry-run simulation completed.",
+            }
+            code, out, _ = self.run_cli(["tune", "memory", "--remediate-zram", "--dry-run", "--json"])
+            self.assertEqual(code, 0)
+            data = json.loads(out)
+            self.assertTrue(data["success"])
+            self.assertTrue(data["dry_run"])
+
 
 if __name__ == "__main__":
     unittest.main()

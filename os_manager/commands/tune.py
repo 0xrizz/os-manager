@@ -10,6 +10,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from os_manager.memory.zram import (
+    audit_zram_system,
+    remediate_zram_conflicts,
+)
 from os_manager.platform.hal import (
     audit_storage_subsystem,
     get_active_hardware_driver,
@@ -1398,9 +1402,10 @@ def run_tune(args: list[str]) -> int:
     mem_group = mem_p.add_mutually_exclusive_group()
     mem_group.add_argument("--apply", action="store_true", help="Configure and enable EarlyOOM daemon")
     mem_group.add_argument("--audit", action="store_true", help="Audit EarlyOOM and swap telemetry")
+    mem_group.add_argument("--remediate-zram", action="store_true", help="Detect and remediate conflicting zRAM managers")
     mem_p.add_argument("--dry-run", action="store_true", help="Simulate memory tuning")
     mem_p.add_argument("--json", action="store_true", help="Output memory audit as JSON")
-    mem_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply"])
+    mem_p.add_argument("action", nargs="?", default="audit", choices=["audit", "apply", "remediate-zram"])
 
     # hardware
     hw_p = subparsers.add_parser("hardware", help="Manage Lenovo ACPI, GPU power gating, and thermald")
@@ -1575,21 +1580,54 @@ def run_tune(args: list[str]) -> int:
 
     elif parsed_args.subaction == "memory":
         is_dry_run = getattr(parsed_args, "dry_run", False)
-        if is_dry_run:
-            print("[PLAN] Memory tuning simulation: Configure EarlyOOM (-m 5 -s 5), MGLRU (enabled=7, ttl=1000ms), THP (madvise), and sysctl VM (swappiness=180, vfs_cache_pressure=50).")
-            return 0
         is_json = getattr(parsed_args, "json", False)
+        is_remediate = getattr(parsed_args, "remediate_zram", False) or parsed_args.action == "remediate-zram"
         is_apply = getattr(parsed_args, "apply", False) or parsed_args.action == "apply"
+
+        if is_remediate:
+            res = remediate_zram_conflicts(dry_run=is_dry_run)
+            if is_json:
+                print(json.dumps(res, indent=2))
+                return 0 if res.get("success") else 1
+            if is_dry_run:
+                print("[PLAN] zRAM Conflict Remediation Simulation:")
+                for act in res.get("actions", []):
+                    print(f"  - {act}")
+                return 0
+            if res.get("success"):
+                print(f"[PASS] zRAM Conflict Remediation: {res.get('message')}")
+                for act in res.get("actions", []):
+                    print(f"  - {act}")
+                return 0
+            else:
+                print(f"[FAIL] zRAM Conflict Remediation: {res.get('message')}")
+                return 1
+
+        if is_dry_run:
+            print("[PLAN] Memory tuning simulation: Configure EarlyOOM (-m 5 -s 5), MGLRU (enabled=7, ttl=1000ms), THP (madvise), sysctl VM (swappiness=180, vfs_cache_pressure=50), and remediate zRAM conflicts.")
+            return 0
+
         if is_apply:
             create_system_snapshot(caller="osm tune memory --apply", target_files=[SYSCTL_MEMORY_PATH, TMPFILES_MGLRU_PATH, TMPFILES_THP_PATH, "/etc/default/earlyoom"])
             success = configure_earlyoom()
+            remediate_zram_conflicts(dry_run=False)
             status_str = "configured and enabled" if success else "configuration failed"
             print(f"[PASS] Memory Resilience & EarlyOOM {status_str}.")
             return 0 if success else 1
         else:
             oom = audit_earlyoom_status()
             swap = audit_dual_tier_swap_status()
+            zram_audit = audit_zram_system()
             mem_audit = audit_memory_subsystem()
+            mem_audit["zram_audit"] = {
+                "status": zram_audit.status,
+                "conflicts_detected": zram_audit.conflicts_detected,
+                "summary_message": zram_audit.summary_message,
+                "conflicting_services": [
+                    {"name": c.name, "installed": c.installed, "enabled": c.enabled, "active": c.active, "failed": c.failed, "masked": c.masked}
+                    for c in zram_audit.conflicting_services
+                ],
+            }
             if is_json:
                 print(json.dumps(mem_audit, indent=2))
                 return 0
@@ -1600,6 +1638,9 @@ def run_tune(args: list[str]) -> int:
             print(f"2. EarlyOOM Daemon Active: {oom.get('active', False)}")
             print(f"3. Dual-Tier ZRAM Active: {swap.get('has_zram', False)} (Priority: {swap.get('zram_priority', 0)})")
             print(f"4. Dual-Tier Swapfile Active: {swap.get('has_swapfile', False)} (Priority: {swap.get('swapfile_priority', 0)})")
+            print(f"5. zRAM Manager Status: {zram_audit.status}")
+            if zram_audit.conflicts_detected:
+                print(f"   [WARN] {zram_audit.summary_message}")
             return 0
 
     elif parsed_args.subaction == "hardware":
