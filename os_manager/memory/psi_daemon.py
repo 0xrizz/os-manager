@@ -259,3 +259,144 @@ class StagedMitigationController:
             "cooldown_active": False,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
+
+
+SYSTEMD_PSI_UNIT_PATH = "/etc/systemd/system/osm-psi.service"
+
+
+def generate_psi_systemd_unit() -> str:
+    """Generate systemd unit file content for osm-psi background daemon."""
+    return """# /etc/systemd/system/osm-psi.service - Managed by os-manager
+[Unit]
+Description=os-manager Autonomous PSI Memory Feedback & zRAM Compaction Daemon
+Documentation=https://github.com/0xrizz/os-manager
+After=systemd-modules-load.service zramswap.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/osm psi daemon --run
+Restart=always
+RestartSec=5s
+Nice=-5
+MemoryHigh=64M
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+
+def manage_psi_daemon(action: str) -> dict[str, Any]:
+    """Control osm-psi daemon lifecycle: status, start, stop, enable, disable."""
+    unit_installed = Path(SYSTEMD_PSI_UNIT_PATH).is_file()
+
+    if action == "status":
+        active = False
+        enabled = False
+        try:
+            res_act = subprocess.run(["systemctl", "is-active", "osm-psi.service"], capture_output=True, text=True, check=False)
+            active = res_act.stdout.strip() == "active"
+            res_en = subprocess.run(["systemctl", "is-enabled", "osm-psi.service"], capture_output=True, text=True, check=False)
+            enabled = res_en.stdout.strip() == "enabled"
+        except Exception:
+            pass
+        return {
+            "installed": unit_installed,
+            "active": active,
+            "enabled": enabled,
+            "unit_path": SYSTEMD_PSI_UNIT_PATH,
+        }
+
+    if action == "start":
+        unit_content = generate_psi_systemd_unit()
+        _write_privileged_sysfs(SYSTEMD_PSI_UNIT_PATH, unit_content)
+        subprocess.run(["sudo", "systemctl", "daemon-reload"], capture_output=True, check=False)
+        res = subprocess.run(["sudo", "systemctl", "restart", "osm-psi.service"], capture_output=True, text=True, check=False)
+        return {"success": res.returncode == 0, "action": "start", "error": res.stderr}
+
+    if action == "stop":
+        res = subprocess.run(["sudo", "systemctl", "stop", "osm-psi.service"], capture_output=True, text=True, check=False)
+        return {"success": res.returncode == 0, "action": "stop", "error": res.stderr}
+
+    if action == "enable":
+        unit_content = generate_psi_systemd_unit()
+        _write_privileged_sysfs(SYSTEMD_PSI_UNIT_PATH, unit_content)
+        subprocess.run(["sudo", "systemctl", "daemon-reload"], capture_output=True, check=False)
+        res = subprocess.run(["sudo", "systemctl", "enable", "--now", "osm-psi.service"], capture_output=True, text=True, check=False)
+        return {"success": res.returncode == 0, "action": "enable", "error": res.stderr}
+
+    if action == "disable":
+        res = subprocess.run(["sudo", "systemctl", "disable", "--now", "osm-psi.service"], capture_output=True, text=True, check=False)
+        return {"success": res.returncode == 0, "action": "disable", "error": res.stderr}
+
+    return {"success": False, "error": f"Unknown daemon action '{action}'"}
+
+
+def audit_psi_telemetry() -> dict[str, Any]:
+    """Collect comprehensive telemetry for PSI support, daemon status, and live pressure."""
+    metrics = collect_psi_metrics()
+    supported = metrics is not None
+    daemon_status = manage_psi_daemon("status")
+    zram_devices = glob.glob("/sys/block/zram*/compact")
+
+    telemetry: dict[str, Any] = {
+        "supported": supported,
+        "daemon_installed": daemon_status.get("installed", False),
+        "daemon_active": daemon_status.get("active", False),
+        "zram_devices": zram_devices,
+    }
+
+    if metrics:
+        telemetry["timestamp"] = metrics.timestamp
+        telemetry["cpu"] = {
+            "some_avg10": metrics.cpu_some.avg10,
+            "some_avg60": metrics.cpu_some.avg60,
+            "some_avg300": metrics.cpu_some.avg300,
+        }
+        telemetry["memory"] = {
+            "some_avg10": metrics.memory_some.avg10,
+            "some_avg60": metrics.memory_some.avg60,
+            "some_avg300": metrics.memory_some.avg300,
+            "full_avg10": metrics.memory_full.avg10,
+            "full_avg60": metrics.memory_full.avg60,
+            "full_avg300": metrics.memory_full.avg300,
+        }
+        telemetry["io"] = {
+            "some_avg10": metrics.io_some.avg10,
+            "some_avg60": metrics.io_some.avg60,
+            "some_avg300": metrics.io_some.avg300,
+            "full_avg10": metrics.io_full.avg10,
+            "full_avg60": metrics.io_full.avg60,
+            "full_avg300": metrics.io_full.avg300,
+        }
+    return telemetry
+
+
+class PsiMonitorEngine:
+    """Monitoring and mitigation execution runner with dual epoll and polling loop."""
+
+    def __init__(self, thresholds: PsiThresholds | None = None):
+        self.controller = StagedMitigationController(thresholds=thresholds)
+
+    def step(self) -> dict[str, Any] | None:
+        """Execute one polling sample and evaluate mitigation."""
+        metrics = collect_psi_metrics()
+        if not metrics:
+            return None
+        mitigation_result = self.controller.evaluate_and_mitigate(metrics)
+        return {
+            "metrics": metrics,
+            "mitigation": mitigation_result,
+        }
+
+    def run_daemon_loop(self, interval: float = 2.0) -> None:
+        """Run continuous monitoring loop for daemon execution."""
+        while True:
+            try:
+                self.step()
+                time.sleep(interval)
+            except KeyboardInterrupt:
+                break
+            except Exception:
+                time.sleep(interval)
+
