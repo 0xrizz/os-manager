@@ -3,7 +3,6 @@
 import os
 import shutil
 import subprocess
-import sys
 
 
 def clean_caches(dry_run: bool = False, all_caches: bool = False) -> int:
