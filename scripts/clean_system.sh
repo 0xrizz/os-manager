@@ -40,7 +40,20 @@ echo "==> [1/4] Cleaning system package caches (${OS_DISTRO_NAME:-Linux})..."
 if declare -F pkg_clean >/dev/null 2>&1; then
     pkg_clean || true
 elif command -v apt &>/dev/null; then
-    sudo apt autoremove -y && sudo apt clean
+    if [ -x "${WORKSPACE_ROOT}/scripts/sudo_exec.sh" ]; then
+        "${WORKSPACE_ROOT}/scripts/sudo_exec.sh" apt autoremove -y && "${WORKSPACE_ROOT}/scripts/sudo_exec.sh" apt clean
+    else
+        sudo apt autoremove -y && sudo apt clean
+    fi
+fi
+
+echo "==> Cleaning mise toolchain cache..."
+MISE_BIN="$(command -v mise 2>/dev/null || echo "${HOME}/.local/bin/mise")"
+if [ -x "${MISE_BIN}" ]; then
+    "${MISE_BIN}" cache clear || true
+    if [ "${COMPACT_MODE}" = true ]; then
+        "${MISE_BIN}" prune -y || true
+    fi
 fi
 
 echo "==> [2/4] Cleaning Python UV tool caches..."
