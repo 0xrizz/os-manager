@@ -134,3 +134,114 @@ class TestAiCommand(unittest.TestCase):
         cmd = get_mise_cmd("exec", "--", "9router")
         self.assertEqual(cmd, ["exec", "--", "9router"])
 
+    @patch("subprocess.run")
+    def test_find_gnome_9router_scopes(self, mock_run):
+        """Verify discovery of active GNOME transient scopes for 9router."""
+        from os_manager.commands.ai import find_gnome_9router_scopes
+
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="app-gnome-9router-2511.scope loaded active running 9router\n",
+        )
+        scopes = find_gnome_9router_scopes()
+        self.assertEqual(scopes, ["app-gnome-9router-2511.scope"])
+
+    @patch("subprocess.run")
+    def test_find_9router_pids(self, mock_run):
+        """Verify discovery of 9router PIDs via pgrep."""
+        from os_manager.commands.ai import find_9router_pids
+
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="2511\n4096\n",
+        )
+        pids = find_9router_pids()
+        self.assertEqual(pids, [2511, 4096])
+
+    @patch("time.sleep")
+    @patch("os_manager.commands.ai.is_port_in_use")
+    @patch("os_manager.commands.ai.find_9router_pids")
+    @patch("os_manager.commands.ai.find_gnome_9router_scopes")
+    @patch("subprocess.run")
+    def test_manage_services_stop_full_flow(
+        self, mock_run, mock_scopes, mock_pids, mock_port, mock_sleep
+    ):
+        """Verify manage_services('stop') executes static units, scopes, and verifies drain."""
+        from os_manager.commands.ai import manage_services
+
+        mock_scopes.return_value = ["app-gnome-9router-2511.scope"]
+        mock_pids.return_value = []
+        # Port initially in use, then freed
+        mock_port.side_effect = [True, False]
+        mock_run.return_value = MagicMock(returncode=0)
+
+        code = manage_services("stop")
+        self.assertEqual(code, 0)
+
+        # Verify GNOME scope was stopped
+        mock_run.assert_any_call(["systemctl", "--user", "stop", "app-gnome-9router-2511.scope"], check=False)
+
+    @patch("subprocess.run", side_effect=Exception("systemctl error"))
+    def test_find_gnome_9router_scopes_exception(self, mock_run):
+        """Verify find_gnome_9router_scopes returns empty list on exception."""
+        from os_manager.commands.ai import find_gnome_9router_scopes
+
+        self.assertEqual(find_gnome_9router_scopes(), [])
+
+    @patch("subprocess.run", side_effect=Exception("pgrep error"))
+    def test_find_9router_pids_exception(self, mock_run):
+        """Verify find_9router_pids returns empty list on exception."""
+        from os_manager.commands.ai import find_9router_pids
+
+        self.assertEqual(find_9router_pids(), [])
+
+    @patch("subprocess.run")
+    @patch("os.getpid", return_value=1234)
+    def test_find_9router_pids_filters_self(self, mock_getpid, mock_run):
+        """Verify find_9router_pids filters out current process PID."""
+        from os_manager.commands.ai import find_9router_pids
+
+        mock_run.return_value = MagicMock(returncode=0, stdout="1234\n5678\n")
+        self.assertEqual(find_9router_pids(), [5678])
+
+    @patch("time.sleep")
+    @patch("os.kill")
+    @patch("os_manager.commands.ai.is_port_in_use")
+    @patch("os_manager.commands.ai.find_9router_pids")
+    @patch("os_manager.commands.ai.find_gnome_9router_scopes")
+    @patch("subprocess.run")
+    def test_stop_ai_services_pid_fallback_sigterm_and_sigkill(
+        self, mock_run, mock_scopes, mock_pids, mock_port, mock_kill, mock_sleep
+    ):
+        """Verify stop_ai_services sends SIGTERM and escalates to SIGKILL if port remains bound."""
+        import signal
+        from os_manager.commands.ai import stop_ai_services
+
+        mock_scopes.return_value = []
+        mock_pids.return_value = [9999]
+        # Port is in use for: initial check, check after SIGTERM, check during drain, then freed
+        mock_port.side_effect = [True, True, False]
+        mock_run.return_value = MagicMock(returncode=0)
+
+        code = stop_ai_services()
+        self.assertEqual(code, 0)
+        mock_kill.assert_any_call(9999, signal.SIGTERM)
+        mock_kill.assert_any_call(9999, signal.SIGKILL)
+
+    @patch("time.time")
+    @patch("time.sleep")
+    @patch("os_manager.commands.ai.is_port_in_use", return_value=True)
+    @patch("os_manager.commands.ai.find_9router_pids", return_value=[])
+    @patch("os_manager.commands.ai.find_gnome_9router_scopes", return_value=[])
+    @patch("subprocess.run")
+    def test_stop_ai_services_drain_timeout(
+        self, mock_run, mock_scopes, mock_pids, mock_port, mock_sleep, mock_time
+    ):
+        """Verify stop_ai_services returns 1 if port 20128 does not release within timeout."""
+        from os_manager.commands.ai import stop_ai_services
+
+        # Simulate time exceeding drain_deadline (start 100.0, then 104.0)
+        mock_time.side_effect = [100.0, 104.0]
+        code = stop_ai_services()
+        self.assertEqual(code, 1)
+

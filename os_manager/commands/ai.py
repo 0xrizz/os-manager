@@ -4,9 +4,11 @@ import argparse
 import json
 import os
 import shutil
+import signal
 import socket
 import sqlite3
 import subprocess
+import time
 import urllib.request
 import webbrowser
 
@@ -132,6 +134,102 @@ def open_dashboards(headroom: bool = True, router: bool = True) -> int:
     return 0
 
 
+def find_gnome_9router_scopes() -> list[str]:
+    """Discover active GNOME transient scopes associated with 9router."""
+    try:
+        proc = subprocess.run(
+            ["systemctl", "--user", "list-units", "--type=scope", "--state=active", "--no-legend", "app-gnome-9router-*.scope"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode == 0 and proc.stdout:
+            scopes = []
+            for line in proc.stdout.splitlines():
+                parts = line.strip().split()
+                if parts and parts[0].endswith(".scope"):
+                    scopes.append(parts[0])
+            return scopes
+    except Exception:
+        pass
+    return []
+
+
+def find_9router_pids() -> list[int]:
+    """Find process IDs running 9router via pgrep."""
+    try:
+        proc = subprocess.run(
+            ["pgrep", "-f", "9router"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode == 0 and proc.stdout:
+            my_pid = os.getpid()
+            pids = []
+            for line in proc.stdout.splitlines():
+                line = line.strip()
+                if line.isdigit():
+                    pid = int(line)
+                    if pid != my_pid:
+                        pids.append(pid)
+            return pids
+    except Exception:
+        pass
+    return []
+
+
+def stop_ai_services() -> int:
+    """Multi-tier coordinated stop sequence for Headroom and 9Router."""
+    print("-> Stopping Headroom proxy...")
+    subprocess.run(["systemctl", "--user", "stop", "headroom-default.service"], check=False)
+
+    print("-> Stopping 9Router gateway (static systemd units)...")
+    subprocess.run(["systemctl", "--user", "stop", "app-9router@autostart.service", "app-9router.service"], check=False)
+
+    # Clean GNOME 48 transient scopes
+    scopes = find_gnome_9router_scopes()
+    if scopes:
+        for scope in scopes:
+            print(f"-> Stopping GNOME transient scope: {scope}...")
+            subprocess.run(["systemctl", "--user", "stop", scope], check=False)
+
+    # PID Fallback if port 20128 is still in use
+    if is_port_in_use(20128):
+        pids = find_9router_pids()
+        if pids:
+            print(f"-> Port 20128 still bound; sending SIGTERM to PIDs: {pids}...")
+            for pid in pids:
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+            time.sleep(1.0)
+            if is_port_in_use(20128):
+                print(f"-> Port 20128 still bound; escalating to SIGKILL for PIDs: {pids}...")
+                for pid in pids:
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+
+    # Socket Drain Gate (up to 3.0 seconds)
+    drain_deadline = time.time() + 3.0
+    drained = False
+    while time.time() < drain_deadline:
+        if not is_port_in_use(20128):
+            drained = True
+            break
+        time.sleep(0.2)
+
+    if drained:
+        print("[OK] Services stopped and port 20128 released.")
+        return 0
+    else:
+        print("[Warning] Services stop dispatched, but port 20128 did not release within timeout.")
+        return 1
+
+
 def manage_services(action: str) -> int:
     """Supervise background services via systemctl user or fallback process."""
     print(f"=== AI Gateway Service Manager ({action}) ===")
@@ -145,14 +243,7 @@ def manage_services(action: str) -> int:
         else:
             print("[OK] Services start signal dispatched.")
     elif action == "stop":
-        print("-> Stopping Headroom proxy...")
-        res_h = subprocess.run(["systemctl", "--user", "stop", "headroom-default.service"], check=False)
-        print("-> Stopping 9Router gateway...")
-        res_r = subprocess.run(["systemctl", "--user", "stop", "app-9router@autostart.service"], check=False)
-        if res_h.returncode != 0 or res_r.returncode != 0:
-            print("[Warning] One or more service stop commands returned non-zero exit status.")
-        else:
-            print("[OK] Services stopped.")
+        return stop_ai_services()
     elif action == "restart":
         print("-> Restarting Headroom proxy & 9Router gateway...")
         res_h = subprocess.run(["systemctl", "--user", "restart", "headroom-default.service"], check=False)
