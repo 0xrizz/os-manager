@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Safety Tiers & Action Classification
 
 Execution classification and authorization boundaries enforced by the Claude Code PreToolUse guardrail engine.

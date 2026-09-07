@@ -5,6 +5,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 HOOKS_DIR="${WORKSPACE_ROOT}/scripts/hooks"
+PYTHON_BIN="${WORKSPACE_ROOT}/.venv/bin/python"
+if [ ! -x "${PYTHON_BIN}" ]; then
+    PYTHON_BIN="python3"
+fi
 
 TOTAL_TESTS=0
 PASSED_TESTS=0
@@ -273,13 +277,13 @@ validate_playbooks
 assert_exit_code "Playbooks Existence & Style Compliance" 0 $?
 
 echo "--- Testing Prometheus Metrics Exporter Suite ---"
-python3 -m py_compile "${WORKSPACE_ROOT}/scripts/metrics_exporter.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m py_compile "${WORKSPACE_ROOT}/scripts/metrics_exporter.py" > /dev/null 2>&1
 assert_exit_code "metrics_exporter.py bytecode compilation" 0 $?
 
 "${WORKSPACE_ROOT}/scripts/metrics_exporter.py" --help > /dev/null 2>&1
 assert_exit_code "metrics_exporter.py --help execution" 0 $?
 
-python3 -m unittest "${WORKSPACE_ROOT}/tests/test_metrics_exporter.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m unittest "${WORKSPACE_ROOT}/tests/test_metrics_exporter.py" > /dev/null 2>&1
 assert_exit_code "test_metrics_exporter.py unit test suite" 0 $?
 
 [ -f "${WORKSPACE_ROOT}/systemd/os-metrics-exporter.service" ] && SERVICE_EXISTS=0 || SERVICE_EXISTS=1
@@ -318,13 +322,13 @@ assert_exit_code "sandbox_exec.sh --dry-run contains --read-only" 0 $?
 assert_exit_code "test_sandbox.sh complete suite" 0 $?
 
 echo "--- Testing Inter-Agent Message Bus Suite ---"
-python3 -m py_compile "${WORKSPACE_ROOT}/scripts/agent_bus.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m py_compile "${WORKSPACE_ROOT}/scripts/agent_bus.py" > /dev/null 2>&1
 assert_exit_code "agent_bus.py bytecode compilation" 0 $?
 
 "${WORKSPACE_ROOT}/scripts/agent_bus.py" --help > /dev/null 2>&1
 assert_exit_code "agent_bus.py --help execution" 0 $?
 
-python3 -m unittest "${WORKSPACE_ROOT}/tests/test_agent_bus.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m unittest "${WORKSPACE_ROOT}/tests/test_agent_bus.py" > /dev/null 2>&1
 assert_exit_code "test_agent_bus.py unit test suite" 0 $?
 
 "${WORKSPACE_ROOT}/scripts/bus_send.sh" --help > /dev/null 2>&1
@@ -370,7 +374,7 @@ echo "--- Testing Packaging and CLI Suite ---"
 "${WORKSPACE_ROOT}/tests/test_installer.sh" > /dev/null 2>&1
 assert_exit_code "test_installer.sh execution" 0 $?
 
-python3 -m unittest "${WORKSPACE_ROOT}/tests/test_cli.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m unittest "${WORKSPACE_ROOT}/tests/test_cli.py" > /dev/null 2>&1
 assert_exit_code "test_cli.py execution" 0 $?
 
 echo "--- Testing Governance & CI Configuration Suite ---"
@@ -408,57 +412,57 @@ assert_exit_code "test_upgrade_preflight.sh complete suite" 0 $?
 "${WORKSPACE_ROOT}/tests/test_upgrade_pipeline.sh" > /dev/null 2>&1
 assert_exit_code "test_upgrade_pipeline.sh complete suite" 0 $?
 
-python3 -m unittest "${WORKSPACE_ROOT}/tests/test_upgrade_command.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m unittest "${WORKSPACE_ROOT}/tests/test_upgrade_command.py" > /dev/null 2>&1
 assert_exit_code "test_upgrade_command.py unit suite" 0 $?
 
 echo "--- Testing Debian 13 Customization & Hardware Tuning Suite ---"
-python3 -m unittest "${WORKSPACE_ROOT}/tests/test_tune_hardware.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m unittest "${WORKSPACE_ROOT}/tests/test_tune_hardware.py" > /dev/null 2>&1
 assert_exit_code "test_tune_hardware.py unit suite" 0 $?
 
-python3 -m unittest "${WORKSPACE_ROOT}/tests/test_tune_system.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m unittest "${WORKSPACE_ROOT}/tests/test_tune_system.py" > /dev/null 2>&1
 assert_exit_code "test_tune_system.py unit suite" 0 $?
 
-python3 -m unittest "${WORKSPACE_ROOT}/tests/test_desktop_customization.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m unittest "${WORKSPACE_ROOT}/tests/test_desktop_customization.py" > /dev/null 2>&1
 assert_exit_code "test_desktop_customization.py unit suite" 0 $?
 
-python3 -m unittest "${WORKSPACE_ROOT}/tests/test_terminal_customization.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m unittest "${WORKSPACE_ROOT}/tests/test_terminal_customization.py" > /dev/null 2>&1
 assert_exit_code "test_terminal_customization.py unit suite" 0 $?
 
-python3 -m unittest "${WORKSPACE_ROOT}/tests/test_tune_macos.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m unittest "${WORKSPACE_ROOT}/tests/test_tune_macos.py" > /dev/null 2>&1
 assert_exit_code "test_tune_macos.py unit suite" 0 $?
 
 echo "--- Testing AI Gateway Control Plane & CLI Suite ---"
-python3 -m unittest "${WORKSPACE_ROOT}/tests/test_ai_command.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m unittest "${WORKSPACE_ROOT}/tests/test_ai_command.py" > /dev/null 2>&1
 assert_exit_code "test_ai_command.py unit suite" 0 $?
 
-python3 -m unittest "${WORKSPACE_ROOT}/tests/test_ai_claude.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m unittest "${WORKSPACE_ROOT}/tests/test_ai_claude.py" > /dev/null 2>&1
 assert_exit_code "test_ai_claude.py unit suite" 0 $?
 
-PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli ai --help > /dev/null 2>&1
+PYTHONPATH="${WORKSPACE_ROOT}" "${PYTHON_BIN}" -m os_manager.cli ai --help > /dev/null 2>&1
 assert_exit_code "osm ai --help execution" 0 $?
 
-PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli ai status --json > /dev/null 2>&1
+PYTHONPATH="${WORKSPACE_ROOT}" "${PYTHON_BIN}" -m os_manager.cli ai status --json > /dev/null 2>&1
 assert_exit_code "osm ai status --json execution" 0 $?
 
 echo "--- Testing Native MCP Server Engine Suite ---"
-python3 -m unittest discover -s "${WORKSPACE_ROOT}/tests/mcp" -p "test_*.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m unittest discover -s "${WORKSPACE_ROOT}/tests/mcp" -p "test_*.py" > /dev/null 2>&1
 assert_exit_code "tests/mcp unit test discovery suite" 0 $?
 
-python3 -m unittest discover -s "${WORKSPACE_ROOT}/tests/integration" -p "test_mcp_*.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m unittest discover -s "${WORKSPACE_ROOT}/tests/integration" -p "test_mcp_*.py" > /dev/null 2>&1
 assert_exit_code "test_mcp_e2e.py end-to-end stdio suite" 0 $?
 
-PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli mcp --help > /dev/null 2>&1
+PYTHONPATH="${WORKSPACE_ROOT}" "${PYTHON_BIN}" -m os_manager.cli mcp --help > /dev/null 2>&1
 assert_exit_code "osm mcp --help execution" 0 $?
 
-PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli mcp tools > /dev/null 2>&1
+PYTHONPATH="${WORKSPACE_ROOT}" "${PYTHON_BIN}" -m os_manager.cli mcp tools > /dev/null 2>&1
 assert_exit_code "osm mcp tools execution" 0 $?
 
 echo "--- Testing Multi-Agent State Ledger & Handoff Suite ---"
-python3 -m unittest discover -s "${WORKSPACE_ROOT}/tests/ledger" -p "test_*.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m unittest discover -s "${WORKSPACE_ROOT}/tests/ledger" -p "test_*.py" > /dev/null 2>&1
 assert_exit_code "tests/ledger unit test discovery suite" 0 $?
 
 echo "--- Testing Multi-Platform Packaging Manifests Suite ---"
-python3 -m unittest discover -s "${WORKSPACE_ROOT}/tests/packaging" -p "test_*.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m unittest discover -s "${WORKSPACE_ROOT}/tests/packaging" -p "test_*.py" > /dev/null 2>&1
 assert_exit_code "tests/packaging unit test discovery suite" 0 $?
 
 echo "--- Testing Declarative Config & AST Security Pytest Suite ---"
@@ -471,29 +475,29 @@ elif command -v python3 >/dev/null 2>&1; then
 fi
 
 echo "--- Testing sched_ext Dynamic eBPF Scheduler Suite ---"
-python3 -m unittest discover -s "${WORKSPACE_ROOT}/tests/scheduler" -p "test_*.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m unittest discover -s "${WORKSPACE_ROOT}/tests/scheduler" -p "test_*.py" > /dev/null 2>&1
 assert_exit_code "tests/scheduler unit test discovery suite" 0 $?
 
-python3 -m unittest "${WORKSPACE_ROOT}/tests/test_tune_scheduler.py" > /dev/null 2>&1
+"${PYTHON_BIN}" -m unittest "${WORKSPACE_ROOT}/tests/test_tune_scheduler.py" > /dev/null 2>&1
 assert_exit_code "test_tune_scheduler.py unit test suite" 0 $?
 
-PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli tune scheduler --help > /dev/null 2>&1
+PYTHONPATH="${WORKSPACE_ROOT}" "${PYTHON_BIN}" -m os_manager.cli tune scheduler --help > /dev/null 2>&1
 assert_exit_code "osm tune scheduler --help execution" 0 $?
 
-PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli tune scheduler status --json > /dev/null 2>&1
+PYTHONPATH="${WORKSPACE_ROOT}" "${PYTHON_BIN}" -m os_manager.cli tune scheduler status --json > /dev/null 2>&1
 assert_exit_code "osm tune scheduler status --json execution" 0 $?
 
 echo "--- Testing Heterogeneous CPU Affinity Router Suite ---"
-PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli cpu --help > /dev/null 2>&1
+PYTHONPATH="${WORKSPACE_ROOT}" "${PYTHON_BIN}" -m os_manager.cli cpu --help > /dev/null 2>&1
 assert_exit_code "osm cpu --help execution" 0 $?
 
-PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli cpu topology --json > /dev/null 2>&1
+PYTHONPATH="${WORKSPACE_ROOT}" "${PYTHON_BIN}" -m os_manager.cli cpu topology --json > /dev/null 2>&1
 assert_exit_code "osm cpu topology --json execution" 0 $?
 
-PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli cpu audit --json > /dev/null 2>&1
+PYTHONPATH="${WORKSPACE_ROOT}" "${PYTHON_BIN}" -m os_manager.cli cpu audit --json > /dev/null 2>&1
 assert_exit_code "osm cpu audit --json execution" 0 $?
 
-PYTHONPATH="${WORKSPACE_ROOT}" python3 -m os_manager.cli tune cpu --dry-run > /dev/null 2>&1
+PYTHONPATH="${WORKSPACE_ROOT}" "${PYTHON_BIN}" -m os_manager.cli tune cpu --dry-run > /dev/null 2>&1
 assert_exit_code "osm tune cpu --dry-run execution" 0 $?
 
 echo "--- Testing Sandbox Bubblewrap Isolation Suite ---"

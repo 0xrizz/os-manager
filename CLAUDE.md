@@ -133,7 +133,7 @@ os-manager/
 ├── .claude/
 │   ├── agents/                  # Custom subagents (security-auditor, system-operator, etc.)
 │   ├── commands/                # Custom slash commands (/diag, /clean, /perf, /snapshot, etc.)
-│   ├── rules/                   # Modular prompt rules (sudo-execution, wsl-boundaries, safety-tiers)
+│   ├── rules/                   # Modular prompt rules (sudo-execution, wsl-boundaries, safety-tiers, user-mode)
 │   ├── skills/                  # Master SSOT skill definitions
 │   └── settings.json            # Master harness configuration (permissions, hooks, env)
 ├── os_manager/                  # Core Python package

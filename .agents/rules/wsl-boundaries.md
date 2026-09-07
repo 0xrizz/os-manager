@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # WSL2 Filesystem Boundaries & Storage Invariants
 
 Storage discipline and cross-OS interoperability rules for the Debian 13 WSL2 environment on Windows 11.

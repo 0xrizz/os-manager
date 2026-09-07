@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Error Recovery & Auto-Healing Protocols
 
 Operational protocols for responding to hook rejections, syntax verification failures, runtime exceptions, and tool degradation.

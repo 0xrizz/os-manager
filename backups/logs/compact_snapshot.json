@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-08-28T10:11:10Z",
-  "branch": "feat/sched-ext-dynamic-ebpf-scheduler",
-  "git_status": " M backups/logs/compact_snapshot.json\n M backups/logs/harness_audit.jsonl\n M backups/logs/harness_errors.jsonl\n?? docs/superpowers/plans/2026-08-28-heterogeneous-cpu-core-affinity-design.md\n?? docs/superpowers/plans/2026-08-28-sched-ext-dynamic-ebpf-scheduler-design.md"
+  "timestamp": "2026-08-30T20:41:35Z",
+  "branch": "main",
+  "git_status": " M .agents/hooks.json\n M .agents/rules/sudo-execution.md\n M .gitignore\n M CLAUDE.md\n M backups/logs/compact_snapshot.json\n M backups/logs/harness_audit.jsonl\n M backups/logs/harness_errors.jsonl\n M tests/test_harness.sh\n?? .agents/rules/user-mode.md\n?? .agents/workflows/user-mode.md\n?? .claude/commands/user-mode.md\n?? .claude/rules/user-mode.md\n?? zram-tools_0.3.7-1_all.deb"
 }

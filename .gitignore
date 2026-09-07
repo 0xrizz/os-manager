@@ -8,6 +8,7 @@
 *.tmp
 *.swp
 *~
+temp/
 
 # Local state & OS metadata
 .DS_Store

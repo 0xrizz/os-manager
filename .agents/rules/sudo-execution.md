@@ -4,21 +4,21 @@ trigger: always_on
 
 # Non-Interactive Sudo & Terminal Execution Standards
 
-Operational rules and protocols for elevated command execution within the `os-manager` workspace across Antigravity CLI (`agy`), Antigravity IDE, Claude Code, and automated harnesses.
+Operational rules and protocols for elevated command execution within the `os-manager` workspace.
 
 ## 1. Absolute Rule: No Interactive Sudo
 
-- **Failure Mode**: Non-interactive agent environments execute in subshells without an attached TTY. Bare `sudo <cmd>` hangs waiting indefinitely on stdin or crashes immediately with `sudo: a terminal is required to read the password`.
-- **Strict Prohibition**: NEVER issue bare `sudo <command>` directly via `run_command` or `Bash` tools.
+- **Failure Mode**: In Claude Code, tools execute in a non-interactive subshell without an attached TTY. Bare `sudo <cmd>` hangs waiting indefinitely on stdin or crashes immediately with `sudo: a terminal is required to read the password`.
+- **Strict Prohibition**: NEVER issue bare `sudo <command>` directly via the `run_command` tool.
 
 ```bash
-# STRICTLY FORBIDDEN (Hangs or crashes the agent session):
+# ❌ STRICTLY FORBIDDEN (Hangs or crashes the agent session):
 sudo apt-get update
 sudo systemctl restart NetworkManager
 sudo sysctl -p
 sudo cp file.conf /etc/systemd/
 
-# REQUIRED (Non-interactive execution):
+# ✅ REQUIRED (Non-interactive execution):
 ./scripts/sudo_exec.sh apt-get update
 ./scripts/sudo_exec.sh systemctl restart NetworkManager
 ./scripts/sudo_exec.sh sysctl -p
@@ -42,13 +42,13 @@ When invoking directly in bash scripts or subshells:
 if sudo -n true 2>/dev/null; then
     sudo <command>
 else
-    PASS=$(grep -E '^SUDO_PASSWORD=' "${PROJECT_DIR:-/home/rizz/dev/os-manager}/.env" | cut -d '=' -f2- || cat "${PROJECT_DIR:-/home/rizz/dev/os-manager}/.env" | tr -d '\r\n')
+    PASS=$(grep -E '^SUDO_PASSWORD=' "${PROJECT_DIR:-.}/.env" | cut -d '=' -f2- || cat "${PROJECT_DIR:-.}/.env" | tr -d '\r\n')
     echo "$PASS" | sudo -S <command>
 fi
 ```
 Or direct one-liner:
 ```bash
-grep -E '^SUDO_PASSWORD=' /home/rizz/dev/os-manager/.env | cut -d '=' -f2- | sudo -S <command>
+grep -E '^SUDO_PASSWORD=' "${PROJECT_DIR:-.}/.env" | cut -d '=' -f2- | sudo -S <command>
 ```
 
 ## 3. Zero Password Leakage Invariant
@@ -71,8 +71,8 @@ grep -E '^SUDO_PASSWORD=' /home/rizz/dev/os-manager/.env | cut -d '=' -f2- | sud
 
 ## 5. Error Recovery & Invariant Blocks
 
-- If PreToolUse guard returns rejection reporting `Interactive sudo detected`:
+- If `pre_tool_guard.sh` returns **Exit Code 2** reporting `Interactive sudo detected`:
   - Do NOT retry bare `sudo`.
   - Immediately switch to `./scripts/sudo_exec.sh <command>`.
 - If `sudo_exec.sh` reports missing credentials:
-  - Verify `.env` existence in `/home/rizz/dev/os-manager/.env`.
+  - Verify `.env` existence in `${PROJECT_DIR:-.}/.env` or `${HOME}/dev/os-manager/.env`.
