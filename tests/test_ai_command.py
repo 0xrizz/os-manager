@@ -95,3 +95,42 @@ class TestAiCommand(unittest.TestCase):
         data = json.loads(stdout.getvalue())
         self.assertIn("health", data)
         self.assertIn("telemetry", data)
+
+    def test_is_port_in_use_true_and_false(self):
+        """Verify is_port_in_use accurately checks socket binding."""
+        from os_manager.commands.ai import is_port_in_use
+        import socket
+
+        # Test against a temporarily bound listening socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            s.listen(1)
+            port = s.getsockname()[1]
+            self.assertTrue(is_port_in_use(port))
+
+        # Test against a port that is now closed
+        self.assertFalse(is_port_in_use(port))
+
+    @patch("shutil.which")
+    @patch("os.path.isfile")
+    @patch("os.access")
+    def test_get_mise_cmd_with_mise_binary(self, mock_access, mock_isfile, mock_which):
+        """Verify get_mise_cmd resolves mise executable when available."""
+        from os_manager.commands.ai import get_mise_cmd
+
+        mock_which.return_value = "/home/rizz/.local/bin/mise"
+        mock_isfile.return_value = True
+        mock_access.return_value = True
+
+        cmd = get_mise_cmd("exec", "--", "9router", "--tray")
+        self.assertEqual(cmd, ["/home/rizz/.local/bin/mise", "exec", "--", "9router", "--tray"])
+
+    @patch("shutil.which", return_value=None)
+    @patch("os.path.isfile", return_value=False)
+    def test_get_mise_cmd_fallback_when_mise_missing(self, mock_isfile, mock_which):
+        """Verify get_mise_cmd falls back to direct invocation when mise is absent."""
+        from os_manager.commands.ai import get_mise_cmd
+
+        cmd = get_mise_cmd("exec", "--", "9router")
+        self.assertEqual(cmd, ["exec", "--", "9router"])
+

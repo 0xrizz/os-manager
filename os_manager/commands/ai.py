@@ -3,6 +3,8 @@
 import argparse
 import json
 import os
+import shutil
+import socket
 import sqlite3
 import subprocess
 import urllib.request
@@ -14,6 +16,21 @@ ROUTER_HEALTH_URL = "http://127.0.0.1:20128/api/health"
 ROUTER_DASHBOARD_URL = "http://127.0.0.1:20128/dashboard"
 SAVINGS_FILE = os.path.expanduser("~/.headroom/proxy_savings.json")
 ROUTER_DB_FILE = os.path.expanduser("~/.9router/db/data.sqlite")
+
+
+def is_port_in_use(port: int, host: str = "127.0.0.1") -> bool:
+    """Check if a TCP port is currently open and bound."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex((host, port)) == 0
+
+
+def get_mise_cmd(subcommand: str, *args: str) -> list[str]:
+    """Resolve mise executable and build deterministic command list."""
+    mise_bin = shutil.which("mise") or os.path.expanduser("~/.local/bin/mise")
+    if os.path.isfile(mise_bin) and os.access(mise_bin, os.X_OK):
+        return [mise_bin, subcommand] + list(args)
+    return [subcommand] + list(args)
 
 
 def check_gateway_health() -> dict:
