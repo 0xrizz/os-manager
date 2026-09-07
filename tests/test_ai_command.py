@@ -134,6 +134,20 @@ class TestAiCommand(unittest.TestCase):
         cmd = get_mise_cmd("exec", "--", "9router")
         self.assertEqual(cmd, ["exec", "--", "9router"])
 
+    @patch("shutil.which")
+    @patch("os.path.isfile")
+    @patch("os.access")
+    def test_get_mise_cmd_fallback_when_not_executable(self, mock_access, mock_isfile, mock_which):
+        """Verify get_mise_cmd falls back gracefully when file exists but is unexecutable."""
+        from os_manager.commands.ai import get_mise_cmd
+
+        mock_which.return_value = "/home/rizz/.local/bin/mise"
+        mock_isfile.return_value = True
+        mock_access.return_value = False
+
+        cmd = get_mise_cmd("exec", "--", "9router")
+        self.assertEqual(cmd, ["exec", "--", "9router"])
+
     @patch("subprocess.run")
     def test_find_gnome_9router_scopes(self, mock_run):
         """Verify discovery of active GNOME transient scopes for 9router."""
@@ -228,6 +242,27 @@ class TestAiCommand(unittest.TestCase):
         mock_kill.assert_any_call(9999, signal.SIGTERM)
         mock_kill.assert_any_call(9999, signal.SIGKILL)
 
+    @patch("time.sleep")
+    @patch("os.kill", side_effect=PermissionError("Operation not permitted"))
+    @patch("os_manager.commands.ai.is_port_in_use")
+    @patch("os_manager.commands.ai.find_9router_pids")
+    @patch("os_manager.commands.ai.find_gnome_9router_scopes")
+    @patch("subprocess.run")
+    def test_stop_ai_services_os_kill_catches_oserror(
+        self, mock_run, mock_scopes, mock_pids, mock_port, mock_kill, mock_sleep
+    ):
+        """Verify stop_ai_services catches OSError (e.g. PermissionError) on kill without crashing."""
+        from os_manager.commands.ai import stop_ai_services
+
+        mock_scopes.return_value = []
+        mock_pids.return_value = [9999]
+        # Port is in use for initial check, then check after SIGTERM, then freed during drain
+        mock_port.side_effect = [True, True, False]
+        mock_run.return_value = MagicMock(returncode=0)
+
+        code = stop_ai_services()
+        self.assertEqual(code, 0)
+
     @patch("time.time")
     @patch("time.sleep")
     @patch("os_manager.commands.ai.is_port_in_use", return_value=True)
@@ -284,6 +319,42 @@ class TestAiCommand(unittest.TestCase):
         mock_run.assert_any_call(
             ["systemd-run", "--user", "--unit=app-9router", "--", "/home/rizz/.local/bin/mise", "exec", "--", "9router", "--tray", "--skip-update"],
             check=False
+        )
+
+    @patch("subprocess.Popen")
+    @patch("subprocess.run")
+    @patch("os_manager.commands.ai.check_gateway_health")
+    @patch("os_manager.commands.ai.is_port_in_use", return_value=False)
+    @patch("os_manager.commands.ai.get_mise_cmd")
+    def test_start_ai_services_tier3_popen_fallback(
+        self, mock_mise, mock_port, mock_health, mock_run, mock_popen
+    ):
+        """Verify start_ai_services falls back to subprocess.Popen when systemctl and systemd-run fail."""
+        import subprocess
+        from os_manager.commands.ai import start_ai_services
+
+        mise_cmd = ["/home/rizz/.local/bin/mise", "exec", "--", "9router", "--tray", "--skip-update"]
+        mock_mise.return_value = mise_cmd
+        # systemctl start app-9router@autostart fails with code 1
+        # systemd-run fails with code 1
+        # systemctl start headroom-default succeeds with code 0
+        mock_run.side_effect = [
+            MagicMock(returncode=1),  # systemctl start app-9router@autostart
+            MagicMock(returncode=1),  # systemd-run --user --unit=app-9router ...
+            MagicMock(returncode=0),  # systemctl start headroom-default
+        ]
+        mock_health.return_value = {
+            "headroom": {"online": True},
+            "router": {"online": False},
+        }
+
+        code = start_ai_services()
+        self.assertEqual(code, 0)
+        mock_popen.assert_called_once_with(
+            mise_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
         )
 
     @patch("os_manager.commands.ai.start_ai_services", return_value=0)

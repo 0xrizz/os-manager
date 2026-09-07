@@ -202,7 +202,7 @@ def stop_ai_services() -> int:
             for pid in pids:
                 try:
                     os.kill(pid, signal.SIGTERM)
-                except ProcessLookupError:
+                except OSError:
                     pass
             time.sleep(1.0)
             if is_port_in_use(20128):
@@ -210,7 +210,7 @@ def stop_ai_services() -> int:
                 for pid in pids:
                     try:
                         os.kill(pid, signal.SIGKILL)
-                    except ProcessLookupError:
+                    except OSError:
                         pass
 
     # Socket Drain Gate (up to 3.0 seconds)
