@@ -504,6 +504,13 @@ echo "--- Testing Sandbox Bubblewrap Isolation Suite ---"
 "${WORKSPACE_ROOT}/tests/security/test_sandbox_bwrap.sh" > /dev/null 2>&1
 assert_exit_code "test_sandbox_bwrap.sh execution" 0 $?
 
+echo "--- Testing Declarative Toolchains & Runtimes Suite ---"
+PYTHONPATH="${WORKSPACE_ROOT}" "${PYTHON_BIN}" -m os_manager.cli runtime --help > /dev/null 2>&1
+assert_exit_code "osm runtime --help execution" 0 $?
+
+PYTHONPATH="${WORKSPACE_ROOT}" "${PYTHON_BIN}" -m os_manager.cli toolchain --help > /dev/null 2>&1
+assert_exit_code "osm toolchain --help execution" 0 $?
+
 echo "--- Testing Antigravity Harness Configuration & Hook Adapters ---"
 # Hooks JSON config validity
 jq empty "${WORKSPACE_ROOT}/.agents/hooks.json" > /dev/null 2>&1
