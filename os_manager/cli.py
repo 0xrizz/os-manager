@@ -13,6 +13,7 @@ from .commands.perf import run_perf
 from .commands.service import run_service
 from .commands.tune import run_tune
 from .commands.upgrade import run_upgrade
+from .commands.runtime import run_runtime
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -80,6 +81,15 @@ def build_parser() -> argparse.ArgumentParser:
     # psi
     subparsers.add_parser("psi", add_help=False, help="Autonomous Linux PSI Feedback & zRAM Compaction")
 
+    # runtime / toolchain
+    runtime_parser = subparsers.add_parser("runtime", help="Mise declarative runtime and toolchain management")
+    runtime_parser.add_argument("action", nargs="?", default="status", choices=["status", "sync", "doctor"])
+    runtime_parser.add_argument("--json", action="store_true", help="Output status/doctor as JSON")
+
+    toolchain_parser = subparsers.add_parser("toolchain", help="Alias for runtime command")
+    toolchain_parser.add_argument("action", nargs="?", default="status", choices=["status", "sync", "doctor"])
+    toolchain_parser.add_argument("--json", action="store_true", help="Output status/doctor as JSON")
+
     return parser
 
 
@@ -129,6 +139,9 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "psi":
         from .commands.psi import run_psi
         return run_psi(argv[1:])
+    elif args.command in ("runtime", "toolchain"):
+        from .commands.runtime import run_runtime
+        return run_runtime(argv[1:])
     else:
         parser.print_help()
         return 0
