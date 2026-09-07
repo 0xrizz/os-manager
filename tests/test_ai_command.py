@@ -245,3 +245,56 @@ class TestAiCommand(unittest.TestCase):
         code = stop_ai_services()
         self.assertEqual(code, 1)
 
+    @patch("os_manager.commands.ai.check_gateway_health")
+    @patch("os_manager.commands.ai.is_port_in_use", return_value=True)
+    def test_start_ai_services_already_running(self, mock_port, mock_health):
+        """Verify start_ai_services skips launch if 9router is already healthy."""
+        from os_manager.commands.ai import start_ai_services
+
+        mock_health.return_value = {
+            "headroom": {"online": True},
+            "router": {"online": True},
+        }
+        code = start_ai_services()
+        self.assertEqual(code, 0)
+
+    @patch("subprocess.run")
+    @patch("os_manager.commands.ai.check_gateway_health")
+    @patch("os_manager.commands.ai.is_port_in_use", return_value=False)
+    @patch("os_manager.commands.ai.get_mise_cmd")
+    def test_start_ai_services_launches_under_mise(self, mock_mise, mock_port, mock_health, mock_run):
+        """Verify start_ai_services falls back to launching 9router via mise when unit is missing."""
+        from os_manager.commands.ai import start_ai_services
+
+        mock_mise.return_value = ["/home/rizz/.local/bin/mise", "exec", "--", "9router", "--tray", "--skip-update"]
+        # systemctl start app-9router@autostart fails with code 1
+        mock_run.side_effect = [
+            MagicMock(returncode=1),  # systemctl start app-9router@autostart
+            MagicMock(returncode=0),  # systemd-run --user --unit=app-9router ...
+            MagicMock(returncode=0),  # systemctl start headroom-default
+        ]
+        mock_health.return_value = {
+            "headroom": {"online": True},
+            "router": {"online": True},
+        }
+
+        code = start_ai_services()
+        self.assertEqual(code, 0)
+        # Verify systemd-run was called with mise command
+        mock_run.assert_any_call(
+            ["systemd-run", "--user", "--unit=app-9router", "--", "/home/rizz/.local/bin/mise", "exec", "--", "9router", "--tray", "--skip-update"],
+            check=False
+        )
+
+    @patch("os_manager.commands.ai.start_ai_services", return_value=0)
+    @patch("os_manager.commands.ai.stop_ai_services", return_value=0)
+    def test_manage_services_restart_calls_stop_then_start(self, mock_stop, mock_start):
+        """Verify manage_services('restart') cleanly chains stop and start."""
+        from os_manager.commands.ai import manage_services
+
+        code = manage_services("restart")
+        self.assertEqual(code, 0)
+        mock_stop.assert_called_once()
+        mock_start.assert_called_once()
+
+

@@ -230,28 +230,51 @@ def stop_ai_services() -> int:
         return 1
 
 
+def start_ai_services() -> int:
+    """Pre-flight check and coordinated start for 9Router and Headroom."""
+    health = check_gateway_health()
+    if health["router"]["online"] and is_port_in_use(20128):
+        print("[OK] 9Router gateway is already online on port 20128.")
+    else:
+        print("-> Starting 9Router gateway...")
+        # First try static autostart unit
+        res_r = subprocess.run(["systemctl", "--user", "start", "app-9router@autostart.service"], check=False)
+        if res_r.returncode != 0:
+            # Fallback to systemd-run with mise runner
+            mise_cmd = get_mise_cmd("exec", "--", "9router", "--tray", "--skip-update")
+            run_cmd = ["systemd-run", "--user", "--unit=app-9router", "--"] + mise_cmd
+            print(f"   [Notice] Launching via systemd-run with mise: {' '.join(mise_cmd)}")
+            res_run = subprocess.run(run_cmd, check=False)
+            if res_run.returncode != 0:
+                print("   [Fallback] Launching background process via mise directly...")
+                try:
+                    subprocess.Popen(mise_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                except Exception as exc:
+                    print(f"   [Error] Failed to spawn 9Router process: {exc}")
+
+    if health["headroom"]["online"] and is_port_in_use(8787):
+        print("[OK] Headroom proxy is already online on port 8787.")
+    else:
+        print("-> Starting Headroom proxy...")
+        res_h = subprocess.run(["systemctl", "--user", "start", "headroom-default.service"], check=False)
+        if res_h.returncode != 0:
+            print("   [Warning] Headroom proxy service start returned non-zero exit code.")
+
+    print("[OK] Services start sequence completed.")
+    return 0
+
+
 def manage_services(action: str) -> int:
     """Supervise background services via systemctl user or fallback process."""
     print(f"=== AI Gateway Service Manager ({action}) ===")
     if action == "start":
-        print("-> Starting 9Router gateway...")
-        res_r = subprocess.run(["systemctl", "--user", "start", "app-9router@autostart.service"], check=False)
-        print("-> Starting Headroom proxy...")
-        res_h = subprocess.run(["systemctl", "--user", "start", "headroom-default.service"], check=False)
-        if res_r.returncode != 0 or res_h.returncode != 0:
-            print("[Warning] One or more service start commands returned non-zero exit status.")
-        else:
-            print("[OK] Services start signal dispatched.")
+        return start_ai_services()
     elif action == "stop":
         return stop_ai_services()
     elif action == "restart":
-        print("-> Restarting Headroom proxy & 9Router gateway...")
-        res_h = subprocess.run(["systemctl", "--user", "restart", "headroom-default.service"], check=False)
-        res_r = subprocess.run(["systemctl", "--user", "restart", "app-9router@autostart.service"], check=False)
-        if res_h.returncode != 0 or res_r.returncode != 0:
-            print("[Warning] One or more service restart commands returned non-zero exit status.")
-        else:
-            print("[OK] Services restarted.")
+        res_stop = stop_ai_services()
+        res_start = start_ai_services()
+        return 0 if (res_stop == 0 and res_start == 0) else 1
     elif action == "logs":
         print("-> Tailing unified service logs (Ctrl+C to exit)...")
         try:
