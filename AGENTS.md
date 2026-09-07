@@ -294,6 +294,6 @@ fi
 * **Hybrid GPU Power-Gating:** NVIDIA MX330 discrete GPU must stay in runtime D3hot/D3cold power state when idle via `udev` rules and `system76-power` / `bumblebee` / `prime-select` profiles, preventing battery drain and thermal throttling on the Ice Lake CPU.
 
 ### 7.4 AI Tool Proxy & Multi-Model Routing Mesh
-* **9Router:** Multi-model proxy routing across cloud and local models (port `3000`).
+* **9Router:** Multi-model proxy routing across cloud and local models (port `20128`).
 * **Headroom:** Context compression and token reducer proxy (port `8787`).
 * Claude Code and Antigravity agents route through local proxy endpoints using standard environment configuration (`ANTHROPIC_BASE_URL=http://127.0.0.1:8787`).
