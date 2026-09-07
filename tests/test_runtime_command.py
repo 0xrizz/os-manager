@@ -156,7 +156,7 @@ def test_audit_doctor_logic():
     with patch("os_manager.commands.runtime.get_mise_bin", return_value="/bin/mise"), \
          patch.dict(os.environ, {"PATH": os.path.expanduser("~/.local/share/mise/shims") + ":/bin:/usr/bin"}), \
          patch("os.path.isfile", return_value=True), \
-         patch("os.path.islink", return_value=False), \
+         patch("os.path.realpath", return_value="/usr/bin/python3.13"), \
          patch("os.path.isdir", return_value=True), \
          patch("os.listdir", return_value=[]):
         res = audit_doctor()
@@ -165,6 +165,19 @@ def test_audit_doctor_logic():
         assert res["checks"]["shims_in_path"] is True
         assert res["checks"]["system_python_intact"] is True
         assert res["checks"]["shadowed_binaries"] == []
+
+
+def test_audit_doctor_system_python_altered():
+    with patch("os_manager.commands.runtime.get_mise_bin", return_value="/bin/mise"), \
+         patch.dict(os.environ, {"PATH": os.path.expanduser("~/.local/share/mise/shims") + ":/bin:/usr/bin"}), \
+         patch("os.path.isfile", return_value=True), \
+         patch("os.path.realpath", return_value="/custom/mise/bin/python3"), \
+         patch("os.path.isdir", return_value=True), \
+         patch("os.listdir", return_value=[]):
+        res = audit_doctor()
+        assert res["ok"] is False
+        assert res["checks"]["system_python_intact"] is False
+        assert any("system python" in issue for issue in res["issues"])
 
 
 def test_audit_doctor_shadowing():
@@ -181,13 +194,25 @@ def test_audit_doctor_shadowing():
     with patch("os_manager.commands.runtime.get_mise_bin", return_value="/bin/mise"), \
          patch.dict(os.environ, {"PATH": "/bin:/usr/bin"}), \
          patch("os.path.isfile", return_value=True), \
-         patch("os.path.islink", return_value=False), \
+         patch("os.path.realpath", return_value="/usr/bin/python3.13"), \
          patch("os.path.isdir", return_value=True), \
          patch("os.listdir", side_effect=mock_listdir):
         res = audit_doctor()
         assert res["ok"] is False
         assert "node" in res["checks"]["shadowed_binaries"]
         assert len(res["issues"]) >= 2  # shims not in PATH and shadowing node
+
+
+def test_runtime_default_status_flag(capsys):
+    mock_data = [{"plugin": "node", "version": "22.0.0"}]
+    with patch("os_manager.commands.runtime.get_mise_bin", return_value="/bin/mise"), \
+         patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_data))
+        rc = run_runtime(["--json"])
+        assert rc == 0
+        captured = capsys.readouterr()
+        res = json.loads(captured.out)
+        assert len(res) == 1
 
 
 def test_runtime_help(capsys):
@@ -208,14 +233,14 @@ def test_runtime_unknown_subcommand(capsys):
 
 
 def test_cli_integration_runtime():
-    with patch("os_manager.commands.runtime.run_runtime", return_value=0) as mock_rt:
+    with patch("os_manager.cli.run_runtime", return_value=0) as mock_rt:
         rc = cli_main(["runtime", "status"])
         assert rc == 0
         mock_rt.assert_called_once_with(["status"])
 
 
 def test_cli_integration_toolchain():
-    with patch("os_manager.commands.runtime.run_runtime", return_value=0) as mock_rt:
+    with patch("os_manager.cli.run_runtime", return_value=0) as mock_rt:
         rc = cli_main(["toolchain", "sync"])
         assert rc == 0
         mock_rt.assert_called_once_with(["sync"])

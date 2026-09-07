@@ -140,7 +140,6 @@ def main(argv: list[str] | None = None) -> int:
         from .commands.psi import run_psi
         return run_psi(argv[1:])
     elif args.command in ("runtime", "toolchain"):
-        from .commands.runtime import run_runtime
         return run_runtime(argv[1:])
     else:
         parser.print_help()

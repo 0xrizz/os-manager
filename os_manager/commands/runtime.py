@@ -101,7 +101,7 @@ def audit_doctor() -> dict:
 
     # Check 3: Debian System Python integrity (PEP 668)
     sys_python = "/usr/bin/python3"
-    checks["system_python_intact"] = os.path.isfile(sys_python) and not os.path.islink(sys_python)
+    checks["system_python_intact"] = os.path.isfile(sys_python) and os.path.realpath(sys_python).startswith("/usr/bin/python3")
     if not checks["system_python_intact"]:
         issues.append(f"Debian system python ({sys_python}) appears missing or altered")
 
@@ -154,8 +154,12 @@ def run_runtime(args: list[str]) -> int:
         print("  doctor   Inspect PATH precedence and system Python integrity")
         return 0
 
-    subcommand = args[0]
-    subargs = args[1:]
+    if args[0].startswith("-"):
+        subcommand = "status"
+        subargs = args
+    else:
+        subcommand = args[0]
+        subargs = args[1:]
     if subcommand == "status":
         return run_status(subargs)
     elif subcommand == "sync":
