@@ -269,6 +269,15 @@ if [ -n "$SYNC_TARGET" ]; then
 fi
 ```
 
+### 6.3 Declarative Toolchain & User-Space Substrate (Mise)
+* **Single Source of Truth:** `~/.config/mise/config.toml` is the official declarative runtime configuration for user-space toolchains (Node.js, Python CLI tools, Bun, Go, etc.).
+* **Prohibitions:**
+  * NEVER install global runtimes via unmanaged curl pipes, manual NVM scripts, or raw pyenv overrides.
+  * NEVER execute global unmanaged package installations (`npm install -g`, `pip install --user`).
+* **Execution & Shims:**
+  * All agent subshells and automated scripts must resolve user-space tools via `mise exec -- <cmd>` or via mise shims (`~/.local/share/mise/shims`).
+  * Mise runs strictly in user-space under UID 1000 (`rizz`), preventing permission pollution.
+
 ---
 
 ## Pillar VII: Hardware-Specific Operational Knowledge & Trixie Tuning Matrix

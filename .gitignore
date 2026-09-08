@@ -62,3 +62,6 @@ htmlcov/
 scripts/stratch/
 scripts/scratch/
 
+# Local git worktrees
+.worktrees/
+.worktrees

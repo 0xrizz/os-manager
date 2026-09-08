@@ -525,6 +525,18 @@ class TestOsmCli(unittest.TestCase):
             self.assertTrue(data["success"])
             self.assertTrue(data["dry_run"])
 
+    def test_cli_runtime_subcommand(self):
+        """Verify osm runtime --help displays usage and returns 0."""
+        code, out, _ = self.run_cli(["runtime", "--help"])
+        self.assertEqual(code, 0)
+        self.assertTrue("status" in out or "usage" in out.lower())
+
+    def test_cli_toolchain_subcommand(self):
+        """Verify osm toolchain --help displays usage and returns 0."""
+        code, out, _ = self.run_cli(["toolchain", "--help"])
+        self.assertEqual(code, 0)
+        self.assertTrue("status" in out or "usage" in out.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
